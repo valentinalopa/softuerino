@@ -1,0 +1,66 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// Membro del team
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   @default("member") // member | admin
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  leaveRequests LeaveRequest[]
+  events        EventParticipant[]
+}
+
+// Richiesta di ferie / permesso / smartworking
+model LeaveRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String // ferie | permesso | smartworking
+  startDate DateTime
+  endDate   DateTime
+  status    String   @default("pending") // pending | approved | rejected
+  note      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Evento di calendario: riunione di team, shooting, altro
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  title       String
+  type        String // riunione | shooting | altro
+  startAt     DateTime
+  endAt       DateTime
+  location    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  participants EventParticipant[]
+}
+
+// Join table partecipanti evento <-> utenti
+model EventParticipant {
+  id      String @id @default(cuid())
+  eventId String
+  userId  String
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
