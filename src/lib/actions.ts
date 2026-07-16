@@ -2,53 +2,319 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { EVENT_TYPES, LEAVE_TYPES } from "@/lib/constants";
+import { requireUser, requireSuperAdmin, revokeSessions } from "@/lib/auth/session";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import {
+  EVENT_TYPES,
+  DIPENDENTE_LEAVE_TYPES,
+  PRESENCE_SLOTS,
+  PRESENCE_MODES,
+  ROLES,
+  EMPLOYMENT_TYPES,
+  TASK_STATUSES,
+  TASK_PRIORITIES,
+  TASK_DONE_RETENTION_DAYS,
+  PED_STATUSES,
+  PED_SOCIALS,
+  CLIENT_CATEGORIES,
+  clientHasPed,
+} from "@/lib/constants";
+
+// Costruisce una Date a mezzanotte locale da una stringa "yyyy-MM-dd", evitando che
+// `new Date(str)` la interpreti come UTC (che sfaserebbe il giorno con fusi negativi).
+function localDate(dateStr: string) {
+  return new Date(`${dateStr}T00:00:00`);
+}
+
+// Le action segnalano gli errori attesi (validazione, autorizzazione) restituendo
+// { error } invece di lanciare: in produzione Next maschera i messaggi delle
+// eccezioni lanciate lato server, quindi un throw non arriverebbe mai all'utente.
+type ActionResult = { error: string } | undefined;
+
+function isUniqueViolation(err: unknown) {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "P2002"
+  );
+}
+
+// --- Team (solo Super Admin) ---
 
 export async function createUser(formData: FormData) {
+  await requireSuperAdmin();
+
   const name = String(formData.get("name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
-  const role = String(formData.get("role") ?? "member");
+  const email = String(formData.get("email") ?? "")
+    .trim()
+    .toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const role = String(formData.get("role") ?? "membro");
+  const employmentType = String(formData.get("employmentType") ?? "dipendente");
+
+  if (!name || !email || !password) {
+    return { error: "Nome, email e password sono obbligatori" };
+  }
+  if (!ROLES.includes(role as (typeof ROLES)[number])) {
+    return { error: "Ruolo non valido" };
+  }
+  if (!EMPLOYMENT_TYPES.includes(employmentType as (typeof EMPLOYMENT_TYPES)[number])) {
+    return { error: "Tipo di rapporto non valido" };
+  }
+
+  const passwordHash = await hashPassword(password);
+
+  try {
+    await prisma.user.create({
+      data: { name, email, passwordHash, role, employmentType },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { error: "Questa email è già in uso" };
+    }
+    throw err;
+  }
+
+  revalidatePath("/team");
+}
+
+export async function updateUser(userId: string, formData: FormData) {
+  const currentUser = await requireSuperAdmin();
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "")
+    .trim()
+    .toLowerCase();
+  const role = String(formData.get("role") ?? "membro");
+  const employmentType = String(formData.get("employmentType") ?? "dipendente");
+  const active = String(formData.get("active") ?? "true") === "true";
+  const password = String(formData.get("password") ?? "");
 
   if (!name || !email) {
-    throw new Error("Nome ed email sono obbligatori");
+    return { error: "Nome ed email sono obbligatori" };
+  }
+  if (!ROLES.includes(role as (typeof ROLES)[number])) {
+    return { error: "Ruolo non valido" };
+  }
+  if (!EMPLOYMENT_TYPES.includes(employmentType as (typeof EMPLOYMENT_TYPES)[number])) {
+    return { error: "Tipo di rapporto non valido" };
+  }
+  if (!active && userId === currentUser.id) {
+    return { error: "Non puoi disattivare il tuo account" };
   }
 
-  await prisma.user.create({
-    data: { name, email, role },
-  });
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name,
+        email,
+        role,
+        employmentType,
+        active,
+        ...(password ? { passwordHash: await hashPassword(password) } : {}),
+      },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { error: "Questa email è già in uso" };
+    }
+    throw err;
+  }
+
+  // Reset password da parte dell'admin: le sessioni attive del membro vanno
+  // revocate tutte (chi conosce la vecchia password non deve restare dentro).
+  if (password) {
+    await revokeSessions(userId);
+  }
 
   revalidatePath("/team");
 }
 
-export async function toggleUserActive(userId: string, active: boolean) {
+export async function deleteUser(userId: string) {
+  const currentUser = await requireSuperAdmin();
+
+  if (userId === currentUser.id) {
+    return { error: "Non puoi eliminare il tuo account" };
+  }
+
+  const [leaveCount, presenceCount, timeEntryCount, taskCount] =
+    await Promise.all([
+      prisma.leaveRequest.count({ where: { userId } }),
+      prisma.presenceEntry.count({ where: { userId } }),
+      prisma.timeEntry.count({ where: { userId } }),
+      prisma.taskAssignee.count({ where: { userId } }),
+    ]);
+  if (leaveCount + presenceCount + timeEntryCount + taskCount > 0) {
+    return {
+      error:
+        "Questo membro ha uno storico (ferie, presenze, ore loggate o task assegnati): disattivalo invece di eliminarlo, per non perdere i dati.",
+    };
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+  revalidatePath("/team");
+}
+
+// --- Profilo (utente corrente) ---
+
+export async function updateOwnProfile(formData: FormData) {
+  const currentUser = await requireUser();
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (!name || !email) {
+    return { error: "Nome ed email sono obbligatori" };
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing && existing.id !== currentUser.id) {
+    return { error: "Questa email è già in uso" };
+  }
+
   await prisma.user.update({
-    where: { id: userId },
-    data: { active },
+    where: { id: currentUser.id },
+    data: { name, email },
   });
-  revalidatePath("/team");
+
+  revalidatePath("/", "layout");
 }
+
+export async function changeOwnPassword(formData: FormData) {
+  const currentUser = await requireUser();
+
+  const currentPassword = String(formData.get("currentPassword") ?? "");
+  const newPassword = String(formData.get("newPassword") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return { error: "Compila tutti i campi" };
+  }
+  if (newPassword.length < 8) {
+    return { error: "La nuova password deve avere almeno 8 caratteri" };
+  }
+  if (newPassword !== confirmPassword) {
+    return { error: "Le due password non coincidono" };
+  }
+
+  // L'hash non è nel session user (omit globale): va richiesto esplicitamente.
+  const dbUser = await prisma.user.findUnique({
+    where: { id: currentUser.id },
+    omit: { passwordHash: false },
+  });
+  const valid = await verifyPassword(currentPassword, dbUser?.passwordHash ?? "");
+  if (!valid) {
+    return { error: "La password attuale non è corretta" };
+  }
+
+  await prisma.user.update({
+    where: { id: currentUser.id },
+    data: { passwordHash: await hashPassword(newPassword) },
+  });
+
+  // Dopo il cambio password le sessioni sugli altri dispositivi non devono
+  // restare valide (es. password cambiata perché compromessa).
+  await revokeSessions(currentUser.id, { exceptCurrent: true });
+}
+
+// --- Ferie / permesso / malattia ---
 
 export async function createLeaveRequest(formData: FormData) {
-  const userId = String(formData.get("userId") ?? "");
+  const user = await requireUser();
+
   const type = String(formData.get("type") ?? "");
-  const startDate = String(formData.get("startDate") ?? "");
-  const endDate = String(formData.get("endDate") ?? "");
+  const startDateRaw = String(formData.get("startDate") ?? "");
+  const endDateRaw = String(formData.get("endDate") ?? startDateRaw) || startDateRaw;
+  const hoursRaw = String(formData.get("hours") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim() || null;
 
-  if (!userId || !LEAVE_TYPES.includes(type as (typeof LEAVE_TYPES)[number])) {
-    throw new Error("Dati richiesta non validi");
+  // Il super admin può registrare ferie/permesso/malattia per conto di un altro
+  // membro (es. malattia comunicata a voce): in quel caso la richiesta nasce già
+  // approvata/registrata, senza passare dal flusso di approvazione.
+  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
+  const targetUserId = targetUserIdRaw || user.id;
+  const onBehalfOfOther = targetUserId !== user.id;
+  if (onBehalfOfOther && user.role !== "super_admin") {
+    return { error: "Non autorizzato" };
   }
-  if (!startDate || !endDate) {
-    throw new Error("Le date sono obbligatorie");
+
+  const targetUser = onBehalfOfOther
+    ? await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { employmentType: true },
+      })
+    : user;
+  if (!targetUser) {
+    return { error: "Membro non trovato" };
   }
+
+  // Dipendenti: ferie/permesso/malattia. Partite IVA: solo "assenza"
+  // (monte unico, nessuna distinzione di tipo).
+  const allowedTypes: readonly string[] =
+    targetUser.employmentType === "partita_iva"
+      ? ["assenza"]
+      : DIPENDENTE_LEAVE_TYPES;
+  if (!allowedTypes.includes(type)) {
+    return { error: "Tipo di richiesta non valido" };
+  }
+  if (!startDateRaw) {
+    return { error: "La data è obbligatoria" };
+  }
+  const effectiveEndDateRaw = type === "permesso" ? startDateRaw : endDateRaw;
+  if (effectiveEndDateRaw < startDateRaw) {
+    return { error: "La data di fine non può precedere quella di inizio" };
+  }
+
+  let hours: number | null = null;
+  if (type === "permesso") {
+    const parsed = Number(hoursRaw);
+    if (!hoursRaw || Number.isNaN(parsed) || parsed <= 0 || parsed > 24) {
+      return { error: "Indica un numero di ore di permesso valido (massimo 24)" };
+    }
+    hours = parsed;
+  }
+
+  const startDate = localDate(startDateRaw);
+  const endDate = localDate(effectiveEndDateRaw);
+
+  const overlapping = await prisma.leaveRequest.findFirst({
+    where: {
+      userId: targetUserId,
+      status: { not: "rejected" },
+      startDate: { lte: endDate },
+      endDate: { gte: startDate },
+    },
+  });
+  if (overlapping) {
+    return {
+      error: onBehalfOfOther
+        ? "Questo membro ha già una richiesta che copre (in parte) queste date"
+        : "Hai già una richiesta che copre (in parte) queste date",
+    };
+  }
+
+  // La malattia si registra e basta, non richiede approvazione. Le richieste
+  // inserite dall'admin per conto di altri nascono già approvate.
+  const status =
+    type === "malattia"
+      ? "registrata"
+      : onBehalfOfOther
+        ? "approved"
+        : "pending";
 
   await prisma.leaveRequest.create({
     data: {
-      userId,
+      userId: targetUserId,
       type,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      startDate,
+      endDate,
+      hours,
       note,
+      status,
     },
   });
 
@@ -59,52 +325,564 @@ export async function createLeaveRequest(formData: FormData) {
 export async function updateLeaveStatus(
   requestId: string,
   status: "approved" | "rejected"
-) {
-  await prisma.leaveRequest.update({
-    where: { id: requestId },
+): Promise<ActionResult> {
+  await requireSuperAdmin();
+
+  // updateMany invece di update: se la richiesta non è più pending (es. già
+  // gestita da un altro admin) non deve esplodere con P2025, solo non fare nulla.
+  const updated = await prisma.leaveRequest.updateMany({
+    where: { id: requestId, status: "pending" },
     data: { status },
   });
+  if (updated.count === 0) {
+    return { error: "Richiesta già gestita o non più in attesa" };
+  }
   revalidatePath("/richieste");
   revalidatePath("/");
 }
 
+// --- Calendario eventi (riunioni / shooting / altro) ---
+
 export async function createEvent(formData: FormData) {
+  const user = await requireUser();
+
   const title = String(formData.get("title") ?? "").trim();
   const type = String(formData.get("type") ?? "");
-  const startAt = String(formData.get("startAt") ?? "");
-  const endAt = String(formData.get("endAt") ?? "");
+  const startAtRaw = String(formData.get("startAt") ?? "");
+  const endAtRaw = String(formData.get("endAt") ?? "");
   const location = String(formData.get("location") ?? "").trim() || null;
   const description =
     String(formData.get("description") ?? "").trim() || null;
   const participantIds = formData.getAll("participantIds").map(String);
 
   if (!title || !EVENT_TYPES.includes(type as (typeof EVENT_TYPES)[number])) {
-    throw new Error("Dati evento non validi");
+    return { error: "Dati evento non validi" };
   }
-  if (!startAt || !endAt) {
-    throw new Error("Le date/ora sono obbligatorie");
+  if (!startAtRaw || !endAtRaw) {
+    return { error: "Le date/ora sono obbligatorie" };
+  }
+  const startAt = new Date(startAtRaw);
+  const endAt = new Date(endAtRaw);
+  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+    return { error: "Le date/ora non sono valide" };
+  }
+  if (endAt < startAt) {
+    return { error: "La fine non può precedere l'inizio" };
   }
 
   await prisma.calendarEvent.create({
     data: {
       title,
       type,
-      startAt: new Date(startAt),
-      endAt: new Date(endAt),
+      startAt,
+      endAt,
       location,
       description,
+      createdById: user.id,
       participants: {
         create: participantIds.map((userId) => ({ userId })),
       },
     },
   });
 
-  revalidatePath("/calendario");
   revalidatePath("/");
+  revalidatePath("/calendario");
 }
 
 export async function deleteEvent(eventId: string) {
+  const user = await requireUser();
+
+  // Può eliminare: super admin, chi ha creato l'evento, o un partecipante.
+  if (user.role !== "super_admin") {
+    const event = await prisma.calendarEvent.findUnique({
+      where: { id: eventId },
+      select: { createdById: true },
+    });
+    if (!event) {
+      return { error: "Evento non trovato" };
+    }
+    if (event.createdById !== user.id) {
+      const isParticipant = await prisma.eventParticipant.findUnique({
+        where: { eventId_userId: { eventId, userId: user.id } },
+      });
+      if (!isParticipant) {
+        return { error: "Non autorizzato" };
+      }
+    }
+  }
+
   await prisma.calendarEvent.delete({ where: { id: eventId } });
-  revalidatePath("/calendario");
   revalidatePath("/");
+  revalidatePath("/calendario");
+}
+
+// --- Calendario presenze (self-log, nessuna approvazione) ---
+
+// Slot incompatibili sullo stesso giorno: "giornata intera" non può convivere
+// con mattina/pomeriggio (e viceversa). Impostare uno slot rimuove i conflitti.
+function conflictingSlots(slot: string) {
+  return slot === "giornata_intera" ? ["mattina", "pomeriggio"] : ["giornata_intera"];
+}
+
+export async function createPresenceEntry(formData: FormData) {
+  const user = await requireUser();
+
+  const date = String(formData.get("date") ?? "");
+  const slot = String(formData.get("slot") ?? "");
+  const mode = String(formData.get("mode") ?? "");
+
+  if (!date) {
+    return { error: "La data è obbligatoria" };
+  }
+  if (!PRESENCE_SLOTS.includes(slot as (typeof PRESENCE_SLOTS)[number])) {
+    return { error: "Fascia oraria non valida" };
+  }
+  if (!PRESENCE_MODES.includes(mode as (typeof PRESENCE_MODES)[number])) {
+    return { error: "Modalità non valida" };
+  }
+
+  await prisma.$transaction([
+    prisma.presenceEntry.deleteMany({
+      where: {
+        userId: user.id,
+        date: localDate(date),
+        slot: { in: conflictingSlots(slot) },
+      },
+    }),
+    prisma.presenceEntry.upsert({
+      where: {
+        userId_date_slot: { userId: user.id, date: localDate(date), slot },
+      },
+      update: { mode },
+      create: { userId: user.id, date: localDate(date), slot, mode },
+    }),
+  ]);
+
+  revalidatePath("/presenze");
+}
+
+// Applica la stessa fascia oraria/modalità a più giorni in un colpo solo
+// (es. "tutti i lunedì e giovedì in ufficio la mattina"). Il super admin può
+// farlo anche sul calendario di un altro membro del team.
+export async function createPresenceEntries({
+  userId: targetUserId,
+  dates,
+  slot,
+  mode,
+  replace = [],
+}: {
+  userId?: string;
+  dates: string[];
+  slot: string;
+  mode: string;
+  // Presenze esistenti da rimuovere nella stessa transazione: usato quando si
+  // "modifica" un box esistente cambiandogli fascia oraria (sostituzione, non
+  // aggiunta).
+  replace?: { date: string; slot: string }[];
+}) {
+  const user = await requireUser();
+  const userId = targetUserId ?? user.id;
+  if (userId !== user.id && user.role !== "super_admin") {
+    return { error: "Non autorizzato" };
+  }
+
+  if (dates.length === 0) {
+    return { error: "Seleziona almeno un giorno" };
+  }
+  if (!PRESENCE_SLOTS.includes(slot as (typeof PRESENCE_SLOTS)[number])) {
+    return { error: "Fascia oraria non valida" };
+  }
+  if (!PRESENCE_MODES.includes(mode as (typeof PRESENCE_MODES)[number])) {
+    return { error: "Modalità non valida" };
+  }
+
+  await prisma.$transaction([
+    ...replace.map((item) =>
+      prisma.presenceEntry.deleteMany({
+        where: { userId, date: localDate(item.date), slot: item.slot },
+      })
+    ),
+    ...dates.map((date) =>
+      prisma.presenceEntry.deleteMany({
+        where: {
+          userId,
+          date: localDate(date),
+          slot: { in: conflictingSlots(slot) },
+        },
+      })
+    ),
+    ...dates.map((date) =>
+      prisma.presenceEntry.upsert({
+        where: {
+          userId_date_slot: { userId, date: localDate(date), slot },
+        },
+        update: { mode },
+        create: { userId, date: localDate(date), slot, mode },
+      })
+    ),
+  ]);
+
+  revalidatePath("/presenze");
+}
+
+export async function deletePresenceEntry(entryId: string) {
+  const user = await requireUser();
+  await prisma.presenceEntry.delete({
+    where: { id: entryId, userId: user.id },
+  });
+  revalidatePath("/presenze");
+}
+
+// Elimina più presenze selezionate dal calendario (per data + fascia oraria,
+// così non serve conoscere l'id della riga lato client). Il super admin può
+// farlo anche sul calendario di un altro membro del team.
+export async function deletePresenceEntries({
+  userId: targetUserId,
+  items,
+}: {
+  userId?: string;
+  items: { date: string; slot: string }[];
+}) {
+  const user = await requireUser();
+  const userId = targetUserId ?? user.id;
+  if (userId !== user.id && user.role !== "super_admin") {
+    return { error: "Non autorizzato" };
+  }
+
+  if (items.length === 0) {
+    return { error: "Seleziona almeno un giorno" };
+  }
+
+  await prisma.$transaction(
+    items.map((item) =>
+      prisma.presenceEntry.deleteMany({
+        where: { userId, date: localDate(item.date), slot: item.slot },
+      })
+    )
+  );
+
+  revalidatePath("/presenze");
+}
+
+// --- Clienti (solo Super Admin) ---
+
+export async function createClient(formData: FormData) {
+  await requireSuperAdmin();
+
+  const name = String(formData.get("name") ?? "").trim();
+  const categories = formData.getAll("categories").map(String);
+  if (!name) {
+    return { error: "Il nome del cliente è obbligatorio" };
+  }
+  if (
+    categories.some(
+      (c) => !CLIENT_CATEGORIES.includes(c as (typeof CLIENT_CATEGORIES)[number])
+    )
+  ) {
+    return { error: "Categoria non valida" };
+  }
+
+  try {
+    await prisma.client.create({
+      data: { name, categories: categories.join(",") },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { error: "Esiste già un cliente con questo nome" };
+    }
+    throw err;
+  }
+  revalidatePath("/clienti");
+  revalidatePath("/ore");
+  revalidatePath("/ped");
+}
+
+export async function updateClient(clientId: string, formData: FormData) {
+  await requireSuperAdmin();
+
+  const name = String(formData.get("name") ?? "").trim();
+  const active = String(formData.get("active") ?? "true") === "true";
+  const categories = formData.getAll("categories").map(String);
+
+  if (!name) {
+    return { error: "Il nome del cliente è obbligatorio" };
+  }
+  if (
+    categories.some(
+      (c) => !CLIENT_CATEGORIES.includes(c as (typeof CLIENT_CATEGORIES)[number])
+    )
+  ) {
+    return { error: "Categoria non valida" };
+  }
+
+  try {
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { name, active, categories: categories.join(",") },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { error: "Esiste già un cliente con questo nome" };
+    }
+    throw err;
+  }
+  revalidatePath("/clienti");
+  revalidatePath("/ore");
+  revalidatePath("/ped");
+}
+
+export async function deleteClient(clientId: string) {
+  await requireSuperAdmin();
+
+  const [timeEntryCount, taskCount, pedCount] = await Promise.all([
+    prisma.timeEntry.count({ where: { clientId } }),
+    prisma.task.count({ where: { clientId } }),
+    prisma.pedContent.count({ where: { clientId } }),
+  ]);
+  if (timeEntryCount + taskCount + pedCount > 0) {
+    return {
+      error:
+        "Questo cliente ha ore, task o contenuti PED collegati: disattivalo invece di eliminarlo, per non perdere i dati.",
+    };
+  }
+
+  await prisma.client.delete({ where: { id: clientId } });
+  revalidatePath("/clienti");
+  revalidatePath("/ore");
+}
+
+// --- Log ore su cliente/progetto ---
+
+// Sostituisce interamente le ore loggate per il giorno indicato con quelle
+// inviate dal form (una riga per cliente con ore > 0; tutte a zero = giornata
+// svuotata). Il super admin può farlo anche sul log di un altro membro.
+export async function saveDailyTimeEntries(formData: FormData) {
+  const user = await requireUser();
+
+  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
+  const targetUserId = targetUserIdRaw || user.id;
+  if (targetUserId !== user.id && user.role !== "super_admin") {
+    return { error: "Non autorizzato" };
+  }
+
+  const dateRaw = String(formData.get("date") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+    return { error: "Data non valida" };
+  }
+
+  const clientIds = formData.getAll("clientId").map(String);
+  const hoursRaw = formData.getAll("hours").map(String);
+
+  const day = localDate(dateRaw);
+  const nextDay = new Date(day);
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  const entries = clientIds
+    .map((clientId, i) => ({ clientId, hours: Number(hoursRaw[i]) }))
+    .filter((e) => e.clientId && Number.isFinite(e.hours) && e.hours > 0);
+
+  await prisma.$transaction([
+    prisma.timeEntry.deleteMany({
+      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
+    }),
+    ...entries.map((e) =>
+      prisma.timeEntry.create({
+        data: {
+          userId: targetUserId,
+          clientId: e.clientId,
+          date: day,
+          hours: e.hours,
+          description: "",
+        },
+      })
+    ),
+  ]);
+
+  revalidatePath("/ore");
+  revalidatePath("/");
+}
+
+// --- Task ---
+
+export async function createTask(formData: FormData) {
+  await requireUser();
+
+  const title = String(formData.get("title") ?? "").trim();
+  const clientIdRaw = String(formData.get("clientId") ?? "").trim();
+  const clientId = clientIdRaw && clientIdRaw !== "none" ? clientIdRaw : null;
+  const status = String(formData.get("status") ?? "not_started");
+  const priorityRaw = String(formData.get("priority") ?? "").trim();
+  const priority = priorityRaw || null;
+  const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
+  const assigneeIds = formData.getAll("assigneeIds").map(String);
+
+  if (!title) {
+    return { error: "Il task è obbligatorio" };
+  }
+  if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
+    return { error: "Stato non valido" };
+  }
+  if (priority && !TASK_PRIORITIES.includes(priority as (typeof TASK_PRIORITIES)[number])) {
+    return { error: "Priorità non valida" };
+  }
+  if (dueDateRaw && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw)) {
+    return { error: "Scadenza non valida" };
+  }
+
+  await prisma.task.create({
+    data: {
+      title,
+      clientId,
+      status,
+      priority,
+      // localDate, non new Date(): una stringa data-only verrebbe letta come
+      // mezzanotte UTC e mostrata un giorno prima nei fusi negativi.
+      dueDate: dueDateRaw ? localDate(dueDateRaw) : null,
+      completedAt: status === "done" ? new Date() : null,
+      assignees: {
+        create: assigneeIds.map((userId) => ({ userId })),
+      },
+    },
+  });
+
+  revalidatePath("/task");
+}
+
+async function hasTaskAccess(taskId: string) {
+  const user = await requireUser();
+  if (user.role === "super_admin") return true;
+
+  const isAssignee = await prisma.taskAssignee.findUnique({
+    where: { taskId_userId: { taskId, userId: user.id } },
+  });
+  return Boolean(isAssignee);
+}
+
+export async function updateTaskStatus(
+  taskId: string,
+  status: string
+): Promise<ActionResult> {
+  if (!(await hasTaskAccess(taskId))) {
+    return { error: "Non autorizzato" };
+  }
+
+  if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
+    return { error: "Stato non valido" };
+  }
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { status, completedAt: status === "done" ? new Date() : null },
+  });
+  revalidatePath("/task");
+}
+
+export async function deleteTask(taskId: string): Promise<ActionResult> {
+  if (!(await hasTaskAccess(taskId))) {
+    return { error: "Non autorizzato" };
+  }
+  await prisma.task.delete({ where: { id: taskId } });
+  revalidatePath("/task");
+}
+
+// --- PED (piano editoriale) ---
+
+// Crea o aggiorna un contenuto del piano editoriale (id presente = update).
+// Il PED è collaborativo: ogni membro ha pieni poteri di CRUD.
+export async function savePedContent(formData: FormData): Promise<ActionResult> {
+  await requireUser();
+
+  const id = String(formData.get("id") ?? "").trim() || null;
+  const title = String(formData.get("title") ?? "").trim();
+  const clientId = String(formData.get("clientId") ?? "").trim();
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const status = String(formData.get("status") ?? "idea");
+  const socials = formData.getAll("socials").map(String);
+  const script = String(formData.get("script") ?? "").trim() || null;
+  const assigneeIdRaw = String(formData.get("assigneeId") ?? "").trim();
+  const assigneeId = assigneeIdRaw && assigneeIdRaw !== "none" ? assigneeIdRaw : null;
+
+  if (!title) {
+    return { error: "Il titolo è obbligatorio" };
+  }
+  if (!clientId) {
+    return { error: "Il cliente è obbligatorio" };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+    return { error: "La data di pubblicazione è obbligatoria" };
+  }
+  if (!PED_STATUSES.includes(status as (typeof PED_STATUSES)[number])) {
+    return { error: "Stato non valido" };
+  }
+  if (socials.some((s) => !PED_SOCIALS.includes(s as (typeof PED_SOCIALS)[number]))) {
+    return { error: "Social non valido" };
+  }
+
+  // Il PED esiste solo per i clienti "comunicazione".
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { categories: true },
+  });
+  if (!client || !clientHasPed(client.categories)) {
+    return { error: "Questo cliente non ha un PED attivo" };
+  }
+
+  const data = {
+    title,
+    clientId,
+    date: localDate(dateRaw),
+    status,
+    socials: socials.join(","),
+    script,
+    assigneeId,
+  };
+
+  if (id) {
+    // Se il contenuto cambia cliente va rivalidata anche la pagina PED del
+    // cliente precedente, altrimenti resta stale.
+    const previous = await prisma.pedContent.findUnique({
+      where: { id },
+      select: { clientId: true },
+    });
+    if (!previous) {
+      return { error: "Contenuto non trovato (forse è stato eliminato)" };
+    }
+    await prisma.pedContent.update({ where: { id }, data });
+    if (previous.clientId !== clientId) {
+      revalidatePath(`/ped/${previous.clientId}`);
+    }
+  } else {
+    await prisma.pedContent.create({ data });
+  }
+
+  revalidatePath("/ped");
+  revalidatePath(`/ped/${clientId}`);
+}
+
+export async function deletePedContent(id: string): Promise<ActionResult> {
+  await requireUser();
+
+  const content = await prisma.pedContent.findUnique({
+    where: { id },
+    select: { clientId: true },
+  });
+  if (!content) {
+    return { error: "Contenuto non trovato" };
+  }
+
+  await prisma.pedContent.delete({ where: { id } });
+  revalidatePath("/ped");
+  revalidatePath(`/ped/${content.clientId}`);
+}
+
+// Elimina i task "done" completati da più di TASK_DONE_RETENTION_DAYS giorni.
+// Chiamata in modo lazy dalla pagina /task ad ogni caricamento: nessun cron necessario.
+export async function purgeExpiredDoneTasks() {
+  await requireUser();
+  const cutoff = new Date(
+    Date.now() - TASK_DONE_RETENTION_DAYS * 24 * 60 * 60 * 1000
+  );
+  await prisma.task.deleteMany({
+    where: { status: "done", completedAt: { lt: cutoff } },
+  });
 }
