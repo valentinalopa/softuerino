@@ -32,7 +32,7 @@ export default async function StoricoRichiestePage() {
           Torna a Giorni off
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold">Storico richieste del team</h1>
+          <h1>Storico richieste del team</h1>
           <p className="text-sm text-muted-foreground">
             Tutte le richieste passate di ogni membro del team.
           </p>

@@ -12,7 +12,7 @@ export default async function OrePage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Log ore</h1>
+        <h1>Log ore</h1>
         <p className="text-sm text-muted-foreground">
           Log ore su cliente/progetto, giorno per giorno.
         </p>

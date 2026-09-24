@@ -37,7 +37,7 @@ export default async function CalendarioPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Calendario</h1>
+        <h1>Calendario</h1>
         <p className="text-sm text-muted-foreground">
           Riunioni di team, shooting e altri eventi.
         </p>

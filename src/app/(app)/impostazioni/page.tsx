@@ -8,7 +8,7 @@ export default async function ImpostazioniPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Impostazioni</h1>
+        <h1>Impostazioni</h1>
         <p className="text-sm text-muted-foreground">Preferenze generali dell&apos;applicazione.</p>
       </div>
 

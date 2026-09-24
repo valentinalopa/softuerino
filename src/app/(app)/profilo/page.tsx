@@ -10,7 +10,7 @@ export default async function ProfiloPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Profilo</h1>
+        <h1>Profilo</h1>
         <p className="text-sm text-muted-foreground">
           Gestisci le tue informazioni personali e la sicurezza dell&apos;account.
         </p>

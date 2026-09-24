@@ -52,7 +52,7 @@ export default async function TeamMemberPage({
         </Link>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{member.name}</h1>
+            <h1>{member.name}</h1>
             <RoleBadge role={member.role} />
             <ActiveBadge active={member.active} />
           </div>

@@ -30,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Marchio } from "@/components/brand/Marchio";
 import { cn } from "@/lib/utils";
 
 function getInitials(name: string) {
@@ -55,6 +56,14 @@ const SUPER_ADMIN_LINKS = [
   { href: "/team", label: "Team", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
 ];
+
+// Voce di navigazione — DS Sidebar: 14px, padding 10px, raggio 10px.
+const NAV_ITEM =
+  "flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm transition-colors duration-[120ms] ease-ds";
+const NAV_ITEM_ACTIVE =
+  "bg-sidebar-accent font-semibold text-sidebar-accent-foreground";
+const NAV_ITEM_IDLE =
+  "font-medium text-sidebar-foreground hover:bg-subtle hover:text-foreground";
 
 const STORAGE_KEY = "softuerino:sidebar-collapsed";
 
@@ -107,43 +116,50 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out",
-        collapsed ? "w-[68px]" : "w-60",
+        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-[280ms] ease-ds",
+        collapsed ? "w-[72px]" : "w-[248px]",
         !ready && "transition-none"
       )}
     >
       <div
         className={cn(
-          "flex h-14 shrink-0 items-center gap-2 border-b border-sidebar-border px-4",
-          collapsed && "justify-center px-0"
+          "flex h-[72px] shrink-0 items-center gap-2.5 px-6",
+          collapsed && "flex-col justify-center gap-1 px-0"
         )}
       >
-        {!collapsed && (
-          <span className="flex-1 truncate text-lg font-semibold">
-            Softuerino
-          </span>
-        )}
+        <Link
+          href="/"
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2.5",
+            collapsed && "flex-none"
+          )}
+          title="Dashboard"
+        >
+          <Marchio className={collapsed ? "h-6" : "h-[26px]"} />
+          {!collapsed && (
+            <span className="truncate font-display text-lg leading-7 text-foreground">
+              Softuerino
+            </span>
+          )}
+        </Link>
         <button
           type="button"
           onClick={toggle}
           title={collapsed ? "Espandi" : "Comprimi"}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-[120ms] hover:bg-subtle hover:text-foreground"
         >
           <PanelLeft className="size-4" />
         </button>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-4">
+      <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 pb-4">
         {sections.map((section, index) => (
           <div key={section.label ?? "common"} className="flex flex-col gap-1">
-            {index > 0 && (
-              <div
-                className={cn("mx-3 mb-2 border-t border-sidebar-border", collapsed && "mx-1")}
-                aria-hidden="true"
-              />
+            {index > 0 && collapsed && (
+              <div className="mx-2 mb-2 border-t border-sidebar-border" aria-hidden="true" />
             )}
             {section.label && !collapsed && (
-              <div className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/50">
+              <div className="px-2 pb-1 text-xs leading-4 font-semibold tracking-[0.04em] text-muted-foreground uppercase">
                 {section.label}
               </div>
             )}
@@ -157,14 +173,12 @@ export function AppSidebar({
                   href={link.href}
                   title={collapsed ? link.label : undefined}
                   className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    NAV_ITEM,
+                    active ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
                     collapsed && "justify-center px-0"
                   )}
                 >
-                  <Icon className="size-4 shrink-0" />
+                  <Icon className="size-[18px] shrink-0" strokeWidth={1.5} />
                   {!collapsed && <span className="truncate">{link.label}</span>}
                 </Link>
               );
@@ -176,10 +190,8 @@ export function AppSidebar({
                 {/* Riga unica: link + chevron condividono lo stesso "pill". */}
                 <div
                   className={cn(
-                    "flex items-center rounded-md transition-colors",
-                    pathname === "/ped"
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    "flex items-center rounded-lg transition-colors duration-[120ms] ease-ds",
+                    pathname === "/ped" ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
                     collapsed && "justify-center"
                   )}
                 >
@@ -187,12 +199,11 @@ export function AppSidebar({
                     href="/ped"
                     title={collapsed ? "PED" : undefined}
                     className={cn(
-                      "flex flex-1 items-center gap-3 px-3 py-2 text-sm",
-                      pathname === "/ped" && "font-medium",
+                      "flex flex-1 items-center gap-2.5 px-2.5 py-2.5 text-sm",
                       collapsed && "flex-none justify-center px-0"
                     )}
                   >
-                    <Megaphone className="size-4 shrink-0" />
+                    <Megaphone className="size-[18px] shrink-0" strokeWidth={1.5} />
                     {!collapsed && <span className="truncate">PED</span>}
                   </Link>
                   {!collapsed && pedClients.length > 0 && (
@@ -201,7 +212,7 @@ export function AppSidebar({
                       onClick={() => setPedOpen((prev) => !prev)}
                       aria-label={pedOpen ? "Chiudi elenco PED" : "Apri elenco PED"}
                       aria-expanded={pedOpen}
-                      className="mr-1.5 flex size-6 shrink-0 items-center justify-center rounded-sm text-current/60 transition-colors hover:bg-foreground/10 hover:text-current"
+                      className="mr-1.5 flex size-6 shrink-0 items-center justify-center rounded-md text-current/60 transition-colors hover:bg-foreground/5 hover:text-current"
                     >
                       <ChevronDown
                         className={cn(
@@ -222,10 +233,10 @@ export function AppSidebar({
                         key={client.id}
                         href={href}
                         className={cn(
-                          "ml-6 flex items-center gap-2 truncate rounded-md border-l border-sidebar-border py-1.5 pl-4 pr-2 text-sm transition-colors",
+                          "ml-[19px] flex items-center gap-2 truncate rounded-r-lg border-l border-border py-2 pr-2 pl-4 text-sm transition-colors duration-[120ms] ease-ds",
                           active
-                            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                            ? "border-primary bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                            : "font-medium text-muted-foreground hover:bg-subtle hover:text-foreground"
                         )}
                       >
                         <span className="truncate">{client.name}</span>
@@ -240,29 +251,29 @@ export function AppSidebar({
 
       <div
         className={cn(
-          "border-t border-sidebar-border p-3",
-          collapsed && "px-2"
+          "mx-4 border-t border-sidebar-border py-4",
+          collapsed && "mx-2"
         )}
       >
         <DropdownMenu>
           <DropdownMenuTrigger
             className={cn(
-              "flex w-full items-center gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-sidebar-accent",
+              "flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-[120ms] hover:bg-subtle",
               collapsed && "justify-center"
             )}
             title={collapsed ? currentUser.name : undefined}
           >
             <Avatar size="sm" className="shrink-0">
-              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+              <AvatarFallback>
                 {getInitials(currentUser.name)}
               </AvatarFallback>
             </Avatar>
             {!collapsed && (
               <span className="min-w-0 flex-1 truncate">
-                <span className="block truncate text-sm font-medium">
+                <span className="block truncate text-sm font-semibold text-foreground">
                   {currentUser.name}
                 </span>
-                <span className="block truncate text-xs text-sidebar-foreground/60">
+                <span className="block truncate text-xs text-muted-foreground">
                   {ROLE_LABELS[currentUser.role]}
                 </span>
               </span>

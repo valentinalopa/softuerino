@@ -49,7 +49,7 @@ export default async function PanoramicaPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Panoramica</h1>
+        <h1>Panoramica</h1>
         <p className="text-sm text-muted-foreground">
           Andamento ore per cliente e ferie/permessi/malattia di tutto il team.
         </p>

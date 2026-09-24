@@ -33,7 +33,7 @@ export default async function PresenzePage({
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Presenze</h1>
+          <h1>Presenze</h1>
           <p className="text-sm text-muted-foreground">
             Segna i giorni in cui sei in ufficio o in smartworking.
           </p>

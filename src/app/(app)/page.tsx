@@ -74,7 +74,7 @@ export default async function Home() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1>Dashboard</h1>
         <p className="text-sm text-muted-foreground">
           Ciao {user.name}, ecco il tuo riepilogo.
         </p>

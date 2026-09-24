@@ -34,15 +34,15 @@ export function LoginForm() {
             name="password"
             type={showPassword ? "text" : "password"}
             required
-            className="pr-10"
+            className="pr-11"
           />
           <button
             type="button"
             onClick={() => setShowPassword((prev) => !prev)}
-            className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
+            className="absolute inset-y-0 right-0 flex items-center px-3.5 text-muted-foreground transition-colors hover:text-foreground"
             aria-label={showPassword ? "Nascondi password" : "Mostra password"}
           >
-            {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            {showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
           </button>
         </div>
       </div>

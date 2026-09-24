@@ -35,12 +35,12 @@ function SheetContent({
     <SheetPrimitive.Portal data-slot="sheet-portal">
       <SheetPrimitive.Backdrop
         data-slot="sheet-overlay"
-        className="fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        className="fixed inset-0 isolate z-50 bg-neutral-900/45 duration-150 supports-backdrop-filter:backdrop-blur-[2px] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
       />
       <SheetPrimitive.Popup
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-popover text-sm text-popover-foreground ring-1 ring-foreground/10 duration-200 outline-none",
+          "fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-card text-sm text-card-foreground shadow-lg duration-[280ms] ease-ds outline-none sm:rounded-l-2xl",
           "data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right",
           className
         )}
@@ -53,7 +53,7 @@ function SheetContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-3 right-3"
+                className="absolute top-5 right-5 text-muted-foreground"
                 size="icon-sm"
               />
             }
@@ -71,7 +71,7 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-header"
-      className={cn("flex flex-col gap-2 border-b p-4", className)}
+      className={cn("flex flex-col gap-1.5 border-b border-border-subtle px-6 py-5 pr-14", className)}
       {...props}
     />
   )
@@ -82,7 +82,7 @@ function SheetBody({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-body"
-      className={cn("flex-1 overflow-y-auto p-4", className)}
+      className={cn("flex-1 overflow-y-auto p-6", className)}
       {...props}
     />
   )
@@ -93,7 +93,7 @@ function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="sheet-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2.5 border-t border-border-subtle px-6 py-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -106,7 +106,7 @@ function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
     <SheetPrimitive.Title
       data-slot="sheet-title"
       className={cn(
-        "font-heading text-base leading-none font-medium",
+        "font-heading text-xl leading-7 font-semibold text-foreground",
         className
       )}
       {...props}

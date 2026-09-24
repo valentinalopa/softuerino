@@ -63,7 +63,7 @@ export default async function PedClientPage({
         </Link>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">PED · {client.name}</h1>
+            <h1>PED · {client.name}</h1>
             <ActiveBadge active={client.active} />
           </div>
           <p className="text-sm text-muted-foreground">

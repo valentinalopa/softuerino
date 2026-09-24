@@ -25,7 +25,7 @@ export default async function ClientiPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Clienti</h1>
+          <h1>Clienti</h1>
           <p className="text-sm text-muted-foreground">
             Clienti/progetti su cui il team può loggare ore.
           </p>
