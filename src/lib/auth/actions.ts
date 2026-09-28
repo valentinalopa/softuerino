@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { verifyPasswordTimingSafe } from "@/lib/auth/password";
 import {
@@ -66,6 +67,9 @@ export async function startImpersonationAction(targetUserId: string) {
   }
 
   await setImpersonation(target.id);
+  // Cambia l'utente effettivo: va ridisegnato tutto, layout (sidebar, banner)
+  // compreso, non solo la pagina di destinazione.
+  revalidatePath("/", "layout");
   redirect("/");
 }
 
@@ -77,6 +81,7 @@ export async function stopImpersonationAction() {
   // Nessun controllo di ruolo: chiudere l'impersonificazione è sempre lecito
   // (e deve funzionare anche se nel frattempo è scaduta).
   await setImpersonation(null);
+  revalidatePath("/", "layout");
   // Si torna alla scheda del membro da cui si era partiti.
   redirect(
     context.realUser.role === "super_admin"

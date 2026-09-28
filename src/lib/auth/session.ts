@@ -7,8 +7,6 @@ import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 
 const SESSION_DURATION_DAYS = 30; // placeholder, nessun requisito specifico ricevuto
-// L'impersonificazione si chiude da sola dopo questo tempo.
-export const IMPERSONATION_DURATION_MINUTES = 60;
 
 // Il cookie contiene il token in chiaro; solo il suo hash finisce nel DB, così una
 // fuga del file DB non espone token di sessione direttamente utilizzabili.
@@ -56,8 +54,8 @@ export const getSession = cache(async () => {
 // Chi sta davvero usando l'app (realUser) e per conto di chi la sta vedendo
 // (user). Coincidono, tranne quando un super admin impersona un membro: allora
 // `user` è il membro e tutte le pagine si comportano come per lui.
-// L'impersonificazione vale solo se ancora valida: non scaduta, fatta da un
-// super admin, verso un membro attivo che non sia a sua volta super admin.
+// L'impersonificazione vale solo se fatta da un super admin verso un membro
+// attivo che non sia a sua volta super admin.
 export const getAuthContext = cache(async () => {
   const session = await getSession();
   if (!session || !session.user.active) return null;
@@ -68,16 +66,12 @@ export const getAuthContext = cache(async () => {
     realUser.role === "super_admin" &&
     target !== null &&
     target.active &&
-    target.role !== "super_admin" &&
-    session.impersonationExpiresAt !== null &&
-    session.impersonationExpiresAt > new Date();
+    target.role !== "super_admin";
 
   return {
     realUser,
     user: impersonating ? target : realUser,
-    impersonation: impersonating
-      ? { expiresAt: session.impersonationExpiresAt! }
-      : null,
+    impersonating,
   };
 });
 
@@ -90,7 +84,7 @@ export async function requireWritableUser() {
   if (!context) {
     redirect("/login");
   }
-  return context.impersonation ? null : context.user;
+  return context.impersonating ? null : context.user;
 }
 
 // L'utente "effettivo": durante un'impersonificazione è il membro impersonato.
@@ -120,14 +114,7 @@ export async function setImpersonation(targetUserId: string | null) {
 
   await prisma.session.update({
     where: { token: hashToken(token) },
-    data: targetUserId
-      ? {
-          impersonatedUserId: targetUserId,
-          impersonationExpiresAt: new Date(
-            Date.now() + IMPERSONATION_DURATION_MINUTES * 60 * 1000
-          ),
-        }
-      : { impersonatedUserId: null, impersonationExpiresAt: null },
+    data: { impersonatedUserId: targetUserId },
   });
 }
 

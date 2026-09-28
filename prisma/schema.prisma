@@ -39,10 +39,10 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  // Impersonificazione in sola lettura (solo super admin): finché è attiva e
-  // non scaduta, l'app mostra le pagine come le vede questo utente.
-  impersonatedUserId     String?
-  impersonationExpiresAt DateTime?
+  // Impersonificazione in sola lettura (solo super admin): finché è
+  // valorizzato, l'app mostra le pagine come le vede questo utente. Nessuna
+  // scadenza propria: si chiude con "Torna al tuo profilo" o con il logout.
+  impersonatedUserId String?
 
   user             User  @relation("SessionOwner", fields: [userId], references: [id], onDelete: Cascade)
   impersonatedUser User? @relation("SessionImpersonated", fields: [impersonatedUserId], references: [id], onDelete: SetNull)
