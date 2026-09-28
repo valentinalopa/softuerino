@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -67,6 +67,38 @@ const NAV_ITEM_IDLE =
   "font-medium text-sidebar-foreground hover:bg-subtle hover:text-foreground";
 
 const STORAGE_KEY = "softuerino:sidebar-collapsed";
+// L'evento "storage" arriva solo dalle altre schede: per la scheda corrente
+// ne emettiamo uno nostro quando la preferenza cambia.
+const CHANGE_EVENT = "softuerino:sidebar-collapsed-change";
+
+// Preferenza "sidebar chiusa" letta dal localStorage come store esterno: il
+// server (che non lo vede) parte da aperta, il browser legge subito il valore
+// salvato, senza setState dentro un effect.
+function subscribeCollapsed(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(CHANGE_EVENT, onChange);
+  };
+}
+
+function readCollapsed() {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) === "1";
+  } catch {
+    return false; // storage non disponibile (es. navigazione privata)
+  }
+}
+
+function writeCollapsed(value: boolean) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, value ? "1" : "0");
+  } catch {
+    // Senza storage la preferenza non si ricorda, ma la sidebar funziona.
+  }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
 
 export function AppSidebar({
   currentUser,
@@ -77,20 +109,14 @@ export function AppSidebar({
   teamPendingCount?: number;
 }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "1");
-    setReady(true);
-  }, []);
+  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
+  // La larghezza si anima solo dopo un clic dell'utente: al caricamento la
+  // sidebar compare già nello stato salvato, senza animazione.
+  const [animate, setAnimate] = useState(false);
 
   function toggle() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-      return next;
-    });
+    setAnimate(true);
+    writeCollapsed(!collapsed);
   }
 
   const sections =
@@ -110,7 +136,7 @@ export function AppSidebar({
       className={cn(
         "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-ds-slow ease-ds",
         collapsed ? "w-[72px]" : "w-[248px]",
-        !ready && "transition-none"
+        !animate && "transition-none"
       )}
     >
       <div
