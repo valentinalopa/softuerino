@@ -104,17 +104,39 @@ export async function requireSuperAdmin() {
   return user;
 }
 
-// Avvia l'impersonificazione sulla sessione corrente. Il controllo dei
-// permessi (solo super admin, verso un membro attivo non super admin) sta
-// nella server action che la chiama.
+// Avvia (targetUserId) o chiude (null) l'impersonificazione sulla sessione
+// corrente, annotandola nel registro. Il controllo dei permessi (solo super
+// admin, verso un membro attivo non super admin) sta nella server action che
+// la chiama.
 export async function setImpersonation(targetUserId: string | null) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return;
+  const session = await getSession();
+  if (!session) return;
 
-  await prisma.session.update({
-    where: { token: hashToken(token) },
-    data: { impersonatedUserId: targetUserId },
+  await prisma.$transaction([
+    prisma.session.update({
+      where: { id: session.id },
+      data: { impersonatedUserId: targetUserId },
+    }),
+    // Chiude un'eventuale voce ancora aperta per questa sessione.
+    closeImpersonationLogs(session.id),
+    ...(targetUserId
+      ? [
+          prisma.impersonationLog.create({
+            data: {
+              adminId: session.userId,
+              targetUserId,
+              sessionId: session.id,
+            },
+          }),
+        ]
+      : []),
+  ]);
+}
+
+function closeImpersonationLogs(sessionId: string) {
+  return prisma.impersonationLog.updateMany({
+    where: { sessionId, endedAt: null },
+    data: { endedAt: new Date() },
   });
 }
 
@@ -132,12 +154,21 @@ export async function revokeSessions(
     currentTokenHash = token ? hashToken(token) : undefined;
   }
 
-  await prisma.session.deleteMany({
-    where: {
-      userId,
-      ...(currentTokenHash ? { token: { not: currentTokenHash } } : {}),
-    },
-  });
+  const where = {
+    userId,
+    ...(currentTokenHash ? { token: { not: currentTokenHash } } : {}),
+  };
+  const sessions = await prisma.session.findMany({ where, select: { id: true } });
+  const sessionIds = sessions.map((session) => session.id);
+
+  await prisma.$transaction([
+    // Le impersonificazioni in corso su queste sessioni finiscono con loro.
+    prisma.impersonationLog.updateMany({
+      where: { sessionId: { in: sessionIds }, endedAt: null },
+      data: { endedAt: new Date() },
+    }),
+    prisma.session.deleteMany({ where: { id: { in: sessionIds } } }),
+  ]);
 }
 
 export async function destroySession() {
@@ -145,7 +176,17 @@ export async function destroySession() {
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (token) {
-    await prisma.session.deleteMany({ where: { token: hashToken(token) } });
+    // Il logout chiude anche un'impersonificazione in corso nel registro.
+    const session = await prisma.session.findUnique({
+      where: { token: hashToken(token) },
+      select: { id: true },
+    });
+    if (session) {
+      await prisma.$transaction([
+        closeImpersonationLogs(session.id),
+        prisma.session.delete({ where: { id: session.id } }),
+      ]);
+    }
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);

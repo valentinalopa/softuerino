@@ -21,14 +21,16 @@ model User {
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  sessions        Session[]          @relation("SessionOwner")
-  impersonatedIn  Session[]          @relation("SessionImpersonated")
-  leaveRequests   LeaveRequest[]
-  events          EventParticipant[]
-  createdEvents   CalendarEvent[]
-  presenceEntries PresenceEntry[]
-  timeEntries     TimeEntry[]
-  taskAssignments TaskAssignee[]
+  sessions               Session[]          @relation("SessionOwner")
+  impersonatedIn         Session[]          @relation("SessionImpersonated")
+  impersonationsDone     ImpersonationLog[] @relation("ImpersonationAdmin")
+  impersonationsReceived ImpersonationLog[] @relation("ImpersonationTarget")
+  leaveRequests          LeaveRequest[]
+  events                 EventParticipant[]
+  createdEvents          CalendarEvent[]
+  presenceEntries        PresenceEntry[]
+  timeEntries            TimeEntry[]
+  taskAssignments        TaskAssignee[]
 }
 
 // Sessione di login: token opaco in cookie httpOnly, riga cancellabile per logout/revoca
@@ -46,6 +48,25 @@ model Session {
 
   user             User  @relation("SessionOwner", fields: [userId], references: [id], onDelete: Cascade)
   impersonatedUser User? @relation("SessionImpersonated", fields: [impersonatedUserId], references: [id], onDelete: SetNull)
+}
+
+// Registro delle impersonificazioni: chi ha visto l'app come chi, e per quanto.
+// endedAt resta vuoto finché la sessione è in corso (o se la sessione è
+// scaduta senza uscita esplicita). sessionId non è una relazione: la sessione
+// viene cancellata al logout, il registro deve restare.
+model ImpersonationLog {
+  id           String    @id @default(cuid())
+  adminId      String
+  targetUserId String
+  sessionId    String
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+
+  admin      User @relation("ImpersonationAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  targetUser User @relation("ImpersonationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([startedAt])
 }
 
 // Richiesta di ferie / permesso / malattia
