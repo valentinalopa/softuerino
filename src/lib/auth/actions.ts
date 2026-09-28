@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { verifyPasswordTimingSafe } from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
+import { homePathFor } from "@/lib/constants";
 
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "")
@@ -27,7 +28,7 @@ export async function loginAction(formData: FormData) {
   }
 
   await createSession(user.id);
-  redirect("/");
+  redirect(homePathFor(user.role));
 }
 
 export async function logoutAction() {

@@ -36,6 +36,12 @@ export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   assenza: "Assenza",
 };
 
+// Pagina di atterraggio dopo il login: il super admin parte dalla Panoramica
+// (vista del team), gli altri dalla propria Dashboard.
+export function homePathFor(role: string) {
+  return role === "super_admin" ? "/panoramica" : "/";
+}
+
 export const LEAVE_STATUSES = [
   "pending",
   "approved",

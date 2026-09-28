@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { homePathFor } from "@/lib/constants";
 import {
   Card,
   CardContent,
@@ -17,7 +18,7 @@ export default async function LoginPage({
 }) {
   const session = await getSession();
   if (session) {
-    redirect("/");
+    redirect(homePathFor(session.user.role));
   }
 
   const { error } = await searchParams;

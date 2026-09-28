@@ -20,7 +20,7 @@ import {
   Inbox,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
-import { ROLE_LABELS, type Role } from "@/lib/constants";
+import { ROLE_LABELS, homePathFor, type Role } from "@/lib/constants";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -119,12 +119,12 @@ export function AppSidebar({
         )}
       >
         <Link
-          href="/"
+          href={homePathFor(currentUser.role)}
           className={cn(
             "flex min-w-0 flex-1 items-center gap-2.5",
             collapsed && "flex-none"
           )}
-          title="Dashboard"
+          title={currentUser.role === "super_admin" ? "Panoramica" : "Dashboard"}
         >
           <Marchio className={collapsed ? "h-6" : "h-[26px]"} />
           {!collapsed && (
