@@ -7,10 +7,7 @@ import {
   buildHoursByClientByMonth,
   buildLeaveTotals,
 } from "@/lib/panoramica-utils";
-import { formatRange } from "@/lib/leave-format";
-import { LEAVE_TYPE_LABELS } from "@/lib/constants";
-import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
-import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
+import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
 import { ClientDistributionChart } from "@/components/panoramica/ClientDistributionChart";
@@ -69,7 +66,7 @@ export default async function PanoramicaPage() {
       <div>
         <h1>Panoramica</h1>
         <p className="text-sm text-muted-foreground">
-          Andamento ore per cliente e ferie/permessi/malattia di tutto il team.
+          Andamento ore per cliente e assenze di tutto il team.
         </p>
       </div>
 
@@ -79,17 +76,7 @@ export default async function PanoramicaPage() {
           title={`${teamPendingCount} richiest${teamPendingCount === 1 ? "a" : "e"} da approvare`}
         >
           {teamPending.map((request) => (
-            <NotificationItem key={request.id}>
-              <span>
-                <span className="font-medium">{request.user.name}</span>{" "}
-                <span className="text-muted-foreground">
-                  ·{" "}
-                  {LEAVE_TYPE_LABELS[request.type as keyof typeof LEAVE_TYPE_LABELS] ?? request.type}{" "}
-                  · {formatRange(request.startDate, request.endDate)}
-                </span>
-              </span>
-              <ApproveRejectActions requestId={request.id} />
-            </NotificationItem>
+            <TeamPendingItem key={request.id} request={request} />
           ))}
           <li className="pt-1">
             <Link href="/richieste-team" className="text-xs text-muted-foreground hover:underline">
@@ -125,7 +112,7 @@ export default async function PanoramicaPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Ferie, permessi e malattia ({now.getFullYear()})</CardTitle>
+            <CardTitle>Assenze del team ({now.getFullYear()})</CardTitle>
           </CardHeader>
           <CardContent>
             <LeaveStatsChart totals={leaveTotals} />

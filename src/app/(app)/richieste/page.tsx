@@ -48,8 +48,8 @@ export default async function RichiestePage({
           <h1>Giorni off</h1>
           <p className="text-sm text-muted-foreground">
             {user.employmentType === "partita_iva"
-              ? "Richieste di assenza."
-              : "Richieste di ferie, permesso e malattia."}
+              ? "Richieste di assenza, anche fuori monte."
+              : "Richieste di ferie, permessi, recuperi e malattia."}
           </p>
         </div>
         {/* Richiesta per sé: quelle per conto di altri si registrano dalla
@@ -66,11 +66,16 @@ export default async function RichiestePage({
         >
           {ownPending.map((request) => (
             <NotificationItem key={request.id}>
-              <div className="flex items-center gap-2">
-                <StatusBadge status="pending" />
-                <span>
-                  {LEAVE_TYPE_LABELS[request.type as keyof typeof LEAVE_TYPE_LABELS] ?? request.type}
-                </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <StatusBadge status="pending" />
+                  <span>
+                    {LEAVE_TYPE_LABELS[request.type as keyof typeof LEAVE_TYPE_LABELS] ?? request.type}
+                  </span>
+                </div>
+                {request.note && (
+                  <p className="mt-1 text-xs text-muted-foreground">Nota: {request.note}</p>
+                )}
               </div>
               <span className="text-muted-foreground">
                 {formatRange(request.startDate, request.endDate)}

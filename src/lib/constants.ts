@@ -23,17 +23,37 @@ export const LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE = {
   partita_iva: { assenzeDaysPerYear: 30 },
 } as const;
 
-export const LEAVE_TYPES = ["ferie", "permesso", "malattia", "assenza"] as const;
+export const LEAVE_TYPES = [
+  "ferie",
+  "permesso",
+  "recupero",
+  "malattia",
+  "assenza",
+  "assenza_extra",
+] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
 
-// Tipi richiedibili dai dipendenti; le partite IVA usano solo "assenza".
-export const DIPENDENTE_LEAVE_TYPES = ["ferie", "permesso", "malattia"] as const;
+// Tipi richiedibili per tipo di rapporto. "recupero" (riposo compensativo,
+// es. dopo una trasferta) e "assenza_extra" (assenza di una partita IVA che
+// non vuole scalarla dal monte) non consumano il monte annuale.
+export const DIPENDENTE_LEAVE_TYPES = ["ferie", "permesso", "recupero", "malattia"] as const;
+export const PARTITA_IVA_LEAVE_TYPES = ["assenza", "assenza_extra"] as const;
+
+export function leaveTypesFor(employmentType: string): readonly LeaveType[] {
+  return employmentType === "partita_iva" ? PARTITA_IVA_LEAVE_TYPES : DIPENDENTE_LEAVE_TYPES;
+}
+
+// Il recupero va motivato (es. "trasferta Milano 12/10"): senza una banca ore
+// la nota è l'unica traccia del perché.
+export const NOTE_REQUIRED_LEAVE_TYPES: readonly LeaveType[] = ["recupero"];
 
 export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   ferie: "Ferie",
   permesso: "Permesso",
+  recupero: "Recupero",
   malattia: "Malattia",
   assenza: "Assenza",
+  assenza_extra: "Assenza extra",
 };
 
 // Pagina di atterraggio dopo il login: il super admin parte dalla Panoramica

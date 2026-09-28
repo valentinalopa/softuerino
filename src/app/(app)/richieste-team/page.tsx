@@ -2,12 +2,9 @@ import { Clock3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
-import { formatRange } from "@/lib/leave-format";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
-import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
-import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
-import { LEAVE_TYPE_LABELS } from "@/lib/constants";
+import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { Card, CardContent } from "@/components/ui/card";
 
 type View = "in_corso" | "storico";
@@ -61,17 +58,7 @@ export default async function RichiesteTeamPage({
           title={`${teamPending.length} richiest${teamPending.length === 1 ? "a" : "e"} in attesa di approvazione`}
         >
           {teamPending.map((request) => (
-            <NotificationItem key={request.id}>
-              <span>
-                <span className="font-medium">{request.user.name}</span>{" "}
-                <span className="text-muted-foreground">
-                  ·{" "}
-                  {LEAVE_TYPE_LABELS[request.type as keyof typeof LEAVE_TYPE_LABELS] ?? request.type}{" "}
-                  · {formatRange(request.startDate, request.endDate)}
-                </span>
-              </span>
-              <ApproveRejectActions requestId={request.id} />
-            </NotificationItem>
+            <TeamPendingItem key={request.id} request={request} />
           ))}
         </NotificationCard>
       )}

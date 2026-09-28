@@ -4,19 +4,33 @@ import type {
   PresenceSlot,
 } from "@/lib/constants";
 
+// Assenze a giornata intera (una per giorno del periodo richiesto).
+export const DAY_LEAVE_TYPES = [
+  "ferie",
+  "recupero",
+  "malattia",
+  "assenza",
+  "assenza_extra",
+] as const;
+export type DayLeaveType = (typeof DAY_LEAVE_TYPES)[number];
+
+// Assenze a ore, su un solo giorno: il permesso e il recupero "a ore".
+export type HourlyLeaveType = "permesso" | "recupero";
+
 export type LeaveInfo = {
-  type: "ferie" | "malattia" | "assenza";
+  type: DayLeaveType;
   status: LeaveStatus;
 };
 
-export type PermessoInfo = {
+export type HourlyLeaveInfo = {
+  type: HourlyLeaveType;
   hours: number;
   status: LeaveStatus;
 };
 
 export type DayEntry = {
   leave?: LeaveInfo;
-  permesso?: PermessoInfo;
+  hourly?: HourlyLeaveInfo;
   presences: { slot: PresenceSlot; mode: PresenceMode }[];
 };
 
@@ -70,27 +84,27 @@ export function buildAttendanceMap(params: {
   for (const leave of params.leaveRequests) {
     if (leave.status === "rejected") continue;
 
-    if (leave.type === "permesso") {
+    // A ore: il permesso sempre, il recupero quando ha le ore valorizzate.
+    if (
+      leave.type === "permesso" ||
+      (leave.type === "recupero" && leave.hours !== null)
+    ) {
       const entry = getEntry(leave.userId, dateKey(leave.startDate));
-      entry.permesso = {
+      entry.hourly = {
+        type: leave.type,
         hours: leave.hours ?? 0,
         status: leave.status as LeaveStatus,
       };
       continue;
     }
 
-    if (
-      leave.type !== "ferie" &&
-      leave.type !== "malattia" &&
-      leave.type !== "assenza"
-    )
-      continue;
+    if (!DAY_LEAVE_TYPES.includes(leave.type as DayLeaveType)) continue;
 
     let cursor = leave.startDate;
     while (cursor <= leave.endDate) {
       const entry = getEntry(leave.userId, dateKey(cursor));
       entry.leave = {
-        type: leave.type,
+        type: leave.type as DayLeaveType,
         status: leave.status as LeaveStatus,
       };
       cursor = new Date(

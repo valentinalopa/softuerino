@@ -15,6 +15,9 @@ const config: ChartConfig = {
   permesso: { label: LEAVE_TYPE_LABELS.permesso, color: "var(--chart-2)" },
   malattia: { label: LEAVE_TYPE_LABELS.malattia, color: "var(--chart-3)" },
   assenza: { label: "Assenze (P.IVA)", color: "var(--chart-4)" },
+  recupero: { label: LEAVE_TYPE_LABELS.recupero, color: "var(--chart-5)" },
+  recuperoOre: { label: `${LEAVE_TYPE_LABELS.recupero} (ore)`, color: "var(--chart-5)" },
+  assenzaExtra: { label: "Assenze extra (P.IVA)", color: "var(--chart-4)" },
 };
 
 export function LeaveStatsChart({ totals }: { totals: LeaveTotals }) {
@@ -23,14 +26,18 @@ export function LeaveStatsChart({ totals }: { totals: LeaveTotals }) {
     { key: "permesso", label: LEAVE_TYPE_LABELS.permesso, value: totals.permessoHours, unit: "ore" },
     { key: "malattia", label: LEAVE_TYPE_LABELS.malattia, value: totals.malattiaDays, unit: "giorni" },
     { key: "assenza", label: "Assenze (P.IVA)", value: totals.assenzeDays, unit: "giorni" },
+    // Fuori monte: non scalano il saldo, ma è utile vederne il volume.
+    { key: "recupero", label: LEAVE_TYPE_LABELS.recupero, value: totals.recuperoDays, unit: "giorni" },
+    { key: "recuperoOre", label: `${LEAVE_TYPE_LABELS.recupero} (ore)`, value: totals.recuperoHours, unit: "ore" },
+    { key: "assenzaExtra", label: "Assenze extra (P.IVA)", value: totals.assenzeExtraDays, unit: "giorni" },
   ];
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[260px] w-full">
+    <ChartContainer config={config} className="aspect-auto h-[360px] w-full">
       <BarChart data={data} layout="vertical" margin={{ left: 8 }}>
         <CartesianGrid horizontal={false} />
         <XAxis type="number" tickLine={false} axisLine={false} />
-        <YAxis dataKey="label" type="category" tickLine={false} axisLine={false} width={80} />
+        <YAxis dataKey="label" type="category" tickLine={false} axisLine={false} width={120} />
         <ChartTooltip
           content={
             <ChartTooltipContent

@@ -11,7 +11,9 @@ import {
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   EVENT_TYPES,
-  DIPENDENTE_LEAVE_TYPES,
+  leaveTypesFor,
+  NOTE_REQUIRED_LEAVE_TYPES,
+  type LeaveType,
   PRESENCE_SLOTS,
   PRESENCE_MODES,
   ROLES,
@@ -262,28 +264,32 @@ export async function createLeaveRequest(formData: FormData) {
     return { error: "Membro non trovato" };
   }
 
-  // Dipendenti: ferie/permesso/malattia. Partite IVA: solo "assenza"
-  // (monte unico, nessuna distinzione di tipo).
-  const allowedTypes: readonly string[] =
-    targetUser.employmentType === "partita_iva"
-      ? ["assenza"]
-      : DIPENDENTE_LEAVE_TYPES;
-  if (!allowedTypes.includes(type)) {
+  // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
+  // (monte unico) e assenza extra (fuori monte).
+  if (!leaveTypesFor(targetUser.employmentType).includes(type as LeaveType)) {
     return { error: "Tipo di richiesta non valido" };
   }
   if (!startDateRaw) {
     return { error: "La data è obbligatoria" };
   }
-  const effectiveEndDateRaw = type === "permesso" ? startDateRaw : endDateRaw;
+  if (NOTE_REQUIRED_LEAVE_TYPES.includes(type as LeaveType) && !note) {
+    return { error: "Per il recupero la nota è obbligatoria: indica il motivo (es. la trasferta)" };
+  }
+  // A ore = un solo giorno con un numero di ore: il permesso sempre, il
+  // recupero quando si sceglie "A ore".
+  const isHourly =
+    type === "permesso" ||
+    (type === "recupero" && String(formData.get("unit") ?? "") === "ore");
+  const effectiveEndDateRaw = isHourly ? startDateRaw : endDateRaw;
   if (effectiveEndDateRaw < startDateRaw) {
     return { error: "La data di fine non può precedere quella di inizio" };
   }
 
   let hours: number | null = null;
-  if (type === "permesso") {
+  if (isHourly) {
     const parsed = Number(hoursRaw);
     if (!hoursRaw || Number.isNaN(parsed) || parsed <= 0 || parsed > 24) {
-      return { error: "Indica un numero di ore di permesso valido (massimo 24)" };
+      return { error: "Indica un numero di ore valido (massimo 24)" };
     }
     hours = parsed;
   }

@@ -1,4 +1,4 @@
-import { countedLeaveDays } from "@/lib/leave-balance";
+import { countedLeaveDays } from "@/lib/leave-days";
 
 export type LeaveRequestRow = {
   id: string;
@@ -7,6 +7,7 @@ export type LeaveRequestRow = {
   endDate: Date;
   hours: number | null;
   status: string;
+  note?: string | null;
   createdAt: Date;
   user?: { name: string };
 };
@@ -24,8 +25,9 @@ export function formatRange(start: Date, end: Date) {
 }
 
 export function formatDuration(request: LeaveRequestRow) {
-  if (request.type === "permesso") {
-    return `${request.hours ?? 0} ore`;
+  // A ore (permesso, recupero a ore): hours è valorizzato solo in quel caso.
+  if (request.hours !== null) {
+    return `${request.hours} ore`;
   }
   // Stessa convenzione del saldo (domeniche escluse), così la durata mostrata
   // coincide con i giorni effettivamente scalati.

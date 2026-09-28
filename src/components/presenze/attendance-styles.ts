@@ -4,7 +4,9 @@ import {
   CalendarOff,
   Clock3,
   Home,
+  CalendarMinus,
   Palmtree,
+  RotateCcw,
   Sunrise,
   Sunset,
   Thermometer,
@@ -26,12 +28,24 @@ export const LEAVE_STYLES = {
     title: "Malattia",
     icon: Thermometer,
   },
+  // Riposo compensativo (es. dopo una trasferta): non scala il monte.
+  recupero: {
+    chip: TONE_CHIP.teal,
+    title: "Recupero",
+    icon: RotateCcw,
+  },
   // Monte unico delle partite IVA (nessuna distinzione ferie/malattia).
   assenza: {
     // Stesso significato delle ferie, per le partite IVA.
     chip: TONE_CHIP.success,
     title: "Assenza",
     icon: CalendarOff,
+  },
+  // Assenza di una partita IVA fuori dal monte.
+  assenza_extra: {
+    chip: TONE_CHIP.neutral,
+    title: "Assenza extra",
+    icon: CalendarMinus,
   },
 } as const;
 
@@ -53,7 +67,7 @@ export const MODE_STYLES = {
 // "Giornata intera" non genera un blocco orario a sé, il luogo basta.
 export const TIME_STYLES = {
   mattina: {
-    chip: TONE_CHIP.teal,
+    chip: TONE_CHIP.neutral,
     title: "Mattina",
     icon: Sunrise,
   },
@@ -64,8 +78,11 @@ export const TIME_STYLES = {
   },
 } as const;
 
-export const PERMESSO_CHIP = TONE_CHIP.warning;
-export const PERMESSO_ICON = Clock3;
+// Assenze a ore (un solo giorno): permesso e recupero a ore.
+export const HOURLY_STYLES = {
+  permesso: { chip: TONE_CHIP.warning, title: "Permesso", icon: Clock3 },
+  recupero: { chip: TONE_CHIP.teal, title: "Recupero", icon: RotateCcw },
+} as const;
 
 export type DayCategory = {
   key: string;
@@ -82,9 +99,13 @@ const CATEGORY_ORDER = [
   "pomeriggio",
   "ferie",
   "ferie-pending",
+  "recupero",
+  "recupero-pending",
   "malattia",
   "assenza",
   "assenza-pending",
+  "assenza_extra",
+  "assenza_extra-pending",
   "permesso",
   "permesso-pending",
 ];
@@ -141,11 +162,14 @@ export function buildDayCategories(
       }
     }
 
-    if (entry.permesso) {
-      const pending = entry.permesso.status === "pending";
-      const key = pending ? "permesso-pending" : "permesso";
-      const label = pending ? "Permesso (in attesa)" : "Permesso";
-      add(key, label, pending ? NEUTRAL_CHIP : PERMESSO_CHIP, PERMESSO_ICON, person);
+    if (entry.hourly) {
+      // Stesso blocco del tipo a giornata: "Recupero" raccoglie chi recupera
+      // tutto il giorno e chi solo qualche ora.
+      const style = HOURLY_STYLES[entry.hourly.type];
+      const pending = entry.hourly.status === "pending";
+      const key = pending ? `${entry.hourly.type}-pending` : entry.hourly.type;
+      const label = pending ? `${style.title} (in attesa)` : style.title;
+      add(key, label, pending ? NEUTRAL_CHIP : style.chip, style.icon, person);
     }
   }
 

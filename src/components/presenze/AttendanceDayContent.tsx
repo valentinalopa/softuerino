@@ -1,16 +1,15 @@
-import { Clock3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   PRESENCE_SLOT_LABELS,
   type PresenceMode,
   type PresenceSlot,
 } from "@/lib/constants";
-import type { DayEntry } from "@/lib/attendance-utils";
+import type { DayEntry, HourlyLeaveInfo } from "@/lib/attendance-utils";
 import {
   LEAVE_STYLES,
   MODE_STYLES,
   NEUTRAL_CHIP,
-  PERMESSO_CHIP,
+  HOURLY_STYLES,
 } from "./attendance-styles";
 
 export function AttendanceDayContent({
@@ -79,17 +78,7 @@ export function AttendanceDayContent({
           }
         />
       ))}
-      {entry.permesso && (
-        <div
-          className={cn(
-            "flex items-center justify-center gap-1 rounded-sm border px-1.5 py-1 text-2xs font-medium",
-            entry.permesso.status === "pending" ? NEUTRAL_CHIP : PERMESSO_CHIP
-          )}
-        >
-          <Clock3 className="size-3" />
-          Permesso {entry.permesso.hours}h
-        </div>
-      )}
+      {entry.hourly && <HourlyLeaveChip hourly={entry.hourly} />}
     </div>
   );
 }
@@ -146,6 +135,22 @@ function PresenceBlock({
       )}
     >
       {content}
+    </div>
+  );
+}
+
+function HourlyLeaveChip({ hourly }: { hourly: HourlyLeaveInfo }) {
+  const style = HOURLY_STYLES[hourly.type];
+  const Icon = style.icon;
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-center gap-1 rounded-sm border px-1.5 py-1 text-2xs font-medium",
+        hourly.status === "pending" ? NEUTRAL_CHIP : style.chip
+      )}
+    >
+      <Icon className="size-3" />
+      {style.title} {hourly.hours}h
     </div>
   );
 }

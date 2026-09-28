@@ -4,11 +4,13 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { createLeaveRequest } from "@/lib/actions";
 import {
-  DIPENDENTE_LEAVE_TYPES,
   LEAVE_TYPE_LABELS,
+  NOTE_REQUIRED_LEAVE_TYPES,
+  leaveTypesFor,
   type EmploymentType,
   type LeaveType,
 } from "@/lib/constants";
+import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -37,12 +39,16 @@ export function NewLeaveRequestDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [type, setType] = useState<LeaveType>("ferie");
+  // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
+  // (scala il monte unico) e assenza extra (fuori monte).
+  const types = leaveTypesFor(employmentType);
+  const [type, setType] = useState<LeaveType>(types[0]);
+  // Solo per il recupero: a giorni (periodo) o a ore (un giorno).
+  const [unit, setUnit] = useState<"giorni" | "ore">("giorni");
 
-  // Le partite IVA non distinguono ferie/permesso/malattia: un solo tipo
-  // "assenza" che scala l'unico monte di 30 giorni.
-  const isAssenze = employmentType === "partita_iva";
-  const isPermesso = !isAssenze && type === "permesso";
+  const isHourly = type === "permesso" || (type === "recupero" && unit === "ore");
+  const noteRequired = NOTE_REQUIRED_LEAVE_TYPES.includes(type);
+  const outsideAllowance = type === "recupero" || type === "assenza_extra";
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -68,7 +74,8 @@ export function NewLeaveRequestDialog({
         setOpen(next);
         if (next) {
           setError(null);
-          setType("ferie");
+          setType(types[0]);
+          setUnit("giorni");
         }
       }}
     >
@@ -91,30 +98,45 @@ export function NewLeaveRequestDialog({
                 </p>
               </>
             )}
-            {isAssenze ? (
-              <input type="hidden" name="type" value="assenza" />
-            ) : (
+            <div className="flex flex-col gap-1.5">
+              <Label>Tipo</Label>
+              <NativeSelectField
+                fullWidth
+                name="type"
+                defaultValue={types[0]}
+                onValueChange={(value) => setType(value as LeaveType)}
+                items={types.map((leaveType) => ({
+                  value: leaveType,
+                  label: LEAVE_TYPE_LABELS[leaveType],
+                }))}
+              />
+              {outsideAllowance && (
+                <p className="text-xs text-muted-foreground">
+                  Non scala dal monte annuale.
+                </p>
+              )}
+            </div>
+
+            {type === "recupero" && (
               <div className="flex flex-col gap-1.5">
-                <Label>Tipo</Label>
-                <NativeSelectField
-                  fullWidth
-                  name="type"
-                  defaultValue="ferie"
-                  onValueChange={(value) => setType(value as LeaveType)}
-                  items={DIPENDENTE_LEAVE_TYPES.map((leaveType) => ({
-                    value: leaveType,
-                    label: LEAVE_TYPE_LABELS[leaveType],
-                  }))}
+                <input type="hidden" name="unit" value={unit} />
+                <SegmentedButtonTabs
+                  items={[
+                    { key: "giorni", label: "A giorni" },
+                    { key: "ore", label: "A ore" },
+                  ]}
+                  value={unit}
+                  onChange={setUnit}
                 />
               </div>
             )}
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-request-startDate">{isPermesso ? "Data" : "Dal"}</Label>
+              <Label htmlFor="new-request-startDate">{isHourly ? "Data" : "Dal"}</Label>
               <DateField id="new-request-startDate" name="startDate" className="w-full" />
             </div>
 
-            {isPermesso ? (
+            {isHourly ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="new-request-hours">Ore</Label>
                 <Input
@@ -134,8 +156,15 @@ export function NewLeaveRequestDialog({
             )}
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-request-note">Nota</Label>
-              <Input id="new-request-note" name="note" />
+              <Label htmlFor="new-request-note">
+                {noteRequired ? "Nota (obbligatoria)" : "Nota"}
+              </Label>
+              <Input
+                id="new-request-note"
+                name="note"
+                required={noteRequired}
+                placeholder={noteRequired ? "Es. trasferta Milano 12/10" : undefined}
+              />
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
