@@ -14,10 +14,7 @@ import {
   TASK_STATUSES,
   TASK_PRIORITIES,
   TASK_DONE_RETENTION_DAYS,
-  PED_STATUSES,
-  PED_SOCIALS,
   CLIENT_CATEGORIES,
-  clientHasPed,
 } from "@/lib/constants";
 
 // Costruisce una Date a mezzanotte locale da una stringa "yyyy-MM-dd", evitando che
@@ -594,7 +591,6 @@ export async function createClient(formData: FormData) {
   }
   revalidatePath("/clienti");
   revalidatePath("/ore");
-  revalidatePath("/ped");
 }
 
 export async function updateClient(clientId: string, formData: FormData) {
@@ -628,21 +624,19 @@ export async function updateClient(clientId: string, formData: FormData) {
   }
   revalidatePath("/clienti");
   revalidatePath("/ore");
-  revalidatePath("/ped");
 }
 
 export async function deleteClient(clientId: string) {
   await requireSuperAdmin();
 
-  const [timeEntryCount, taskCount, pedCount] = await Promise.all([
+  const [timeEntryCount, taskCount] = await Promise.all([
     prisma.timeEntry.count({ where: { clientId } }),
     prisma.task.count({ where: { clientId } }),
-    prisma.pedContent.count({ where: { clientId } }),
   ]);
-  if (timeEntryCount + taskCount + pedCount > 0) {
+  if (timeEntryCount + taskCount > 0) {
     return {
       error:
-        "Questo cliente ha ore, task o contenuti PED collegati: disattivalo invece di eliminarlo, per non perdere i dati.",
+        "Questo cliente ha ore o task collegati: disattivalo invece di eliminarlo, per non perdere i dati.",
     };
   }
 
@@ -783,96 +777,6 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
   }
   await prisma.task.delete({ where: { id: taskId } });
   revalidatePath("/task");
-}
-
-// --- PED (piano editoriale) ---
-
-// Crea o aggiorna un contenuto del piano editoriale (id presente = update).
-// Il PED è collaborativo: ogni membro ha pieni poteri di CRUD.
-export async function savePedContent(formData: FormData): Promise<ActionResult> {
-  await requireUser();
-
-  const id = String(formData.get("id") ?? "").trim() || null;
-  const title = String(formData.get("title") ?? "").trim();
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  const dateRaw = String(formData.get("date") ?? "").trim();
-  const status = String(formData.get("status") ?? "idea");
-  const socials = formData.getAll("socials").map(String);
-  const script = String(formData.get("script") ?? "").trim() || null;
-  const assigneeIdRaw = String(formData.get("assigneeId") ?? "").trim();
-  const assigneeId = assigneeIdRaw && assigneeIdRaw !== "none" ? assigneeIdRaw : null;
-
-  if (!title) {
-    return { error: "Il titolo è obbligatorio" };
-  }
-  if (!clientId) {
-    return { error: "Il cliente è obbligatorio" };
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-    return { error: "La data di pubblicazione è obbligatoria" };
-  }
-  if (!PED_STATUSES.includes(status as (typeof PED_STATUSES)[number])) {
-    return { error: "Stato non valido" };
-  }
-  if (socials.some((s) => !PED_SOCIALS.includes(s as (typeof PED_SOCIALS)[number]))) {
-    return { error: "Social non valido" };
-  }
-
-  // Il PED esiste solo per i clienti "comunicazione".
-  const client = await prisma.client.findUnique({
-    where: { id: clientId },
-    select: { categories: true },
-  });
-  if (!client || !clientHasPed(client.categories)) {
-    return { error: "Questo cliente non ha un PED attivo" };
-  }
-
-  const data = {
-    title,
-    clientId,
-    date: localDate(dateRaw),
-    status,
-    socials: socials.join(","),
-    script,
-    assigneeId,
-  };
-
-  if (id) {
-    // Se il contenuto cambia cliente va rivalidata anche la pagina PED del
-    // cliente precedente, altrimenti resta stale.
-    const previous = await prisma.pedContent.findUnique({
-      where: { id },
-      select: { clientId: true },
-    });
-    if (!previous) {
-      return { error: "Contenuto non trovato (forse è stato eliminato)" };
-    }
-    await prisma.pedContent.update({ where: { id }, data });
-    if (previous.clientId !== clientId) {
-      revalidatePath(`/ped/${previous.clientId}`);
-    }
-  } else {
-    await prisma.pedContent.create({ data });
-  }
-
-  revalidatePath("/ped");
-  revalidatePath(`/ped/${clientId}`);
-}
-
-export async function deletePedContent(id: string): Promise<ActionResult> {
-  await requireUser();
-
-  const content = await prisma.pedContent.findUnique({
-    where: { id },
-    select: { clientId: true },
-  });
-  if (!content) {
-    return { error: "Contenuto non trovato" };
-  }
-
-  await prisma.pedContent.delete({ where: { id } });
-  revalidatePath("/ped");
-  revalidatePath(`/ped/${content.clientId}`);
 }
 
 // Elimina i task "done" completati da più di TASK_DONE_RETENTION_DAYS giorni.

@@ -223,8 +223,7 @@ async function main() {
     });
   }
 
-  // Categorie demo: senza almeno un cliente "comunicazione" l'area PED e le
-  // sottovoci in sidebar risulterebbero vuote su un database fresco.
+  // Categorie demo.
   const CLIENTS: { name: string; categories: string }[] = [
     { name: "Pininfarina", categories: "produzione" },
     { name: "Loomoon Games", categories: "it_design" },

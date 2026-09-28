@@ -111,7 +111,7 @@ export const TASK_DONE_RETENTION_DAYS = 30;
 // --- Clienti ---
 
 // Categorie di servizio del cliente, combinabili (un cliente può essere
-// "incrociato"). "comunicazione" abilita il PED.
+// "incrociato").
 export const CLIENT_CATEGORIES = [
   "comunicazione",
   "it_design",
@@ -135,39 +135,3 @@ export function parseClientCategories(csv: string): ClientCategory[] {
         ) as ClientCategory[])
     : [];
 }
-
-export function clientHasPed(categoriesCsv: string) {
-  return parseClientCategories(categoriesCsv).includes("comunicazione");
-}
-
-// --- PED (piano editoriale) ---
-
-export const PED_STATUSES = [
-  "idea",
-  "in_lavorazione",
-  "programmato",
-  "pubblicato",
-] as const;
-export type PedStatus = (typeof PED_STATUSES)[number];
-
-export const PED_STATUS_LABELS: Record<PedStatus, string> = {
-  idea: "Idea",
-  in_lavorazione: "In lavorazione",
-  programmato: "Programmato",
-  pubblicato: "Pubblicato",
-};
-
-export const PED_SOCIALS = [
-  "instagram",
-  "tiktok",
-  "facebook",
-  "linkedin",
-] as const;
-export type PedSocial = (typeof PED_SOCIALS)[number];
-
-export const PED_SOCIAL_LABELS: Record<PedSocial, string> = {
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  facebook: "Facebook",
-  linkedin: "LinkedIn",
-};

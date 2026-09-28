@@ -72,9 +72,6 @@ export function NewClientDialog() {
                   label: CLIENT_CATEGORY_LABELS[category],
                 }))}
               />
-              <p className="text-xs text-muted-foreground">
-                &quot;Comunicazione&quot; abilita il PED del cliente.
-              </p>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </SheetBody>

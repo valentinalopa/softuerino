@@ -17,8 +17,6 @@ import {
   UserRound,
   Settings,
   ListTodo,
-  Megaphone,
-  ChevronDown,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
@@ -69,24 +67,12 @@ const STORAGE_KEY = "softuerino:sidebar-collapsed";
 
 export function AppSidebar({
   currentUser,
-  pedClients = [],
 }: {
   currentUser: { name: string; email: string; role: Role };
-  // Clienti "comunicazione": sottovoci del gruppo PED.
-  pedClients?: { id: string; name: string }[];
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
-  // Il gruppo PED parte aperto quando si è già in area PED e si apre da solo
-  // quando ci si naviga (pattern React "adjust state during render"); non si
-  // chiude mai in automatico, quello resta un gesto dell'utente.
-  const [pedOpen, setPedOpen] = useState(() => pathname.startsWith("/ped"));
-  const [lastPathname, setLastPathname] = useState(pathname);
-  if (pathname !== lastPathname) {
-    setLastPathname(pathname);
-    if (pathname.startsWith("/ped")) setPedOpen(true);
-  }
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "1");
@@ -183,68 +169,6 @@ export function AppSidebar({
                 </Link>
               );
             })}
-            {/* Gruppo PED: voce principale (PED supremo) + sottovoci cliente,
-                come la sidebar Notion a cui il team è abituato. */}
-            {section.label === "Operatività" && (
-              <>
-                {/* Riga unica: link + chevron condividono lo stesso "pill". */}
-                <div
-                  className={cn(
-                    "flex items-center rounded-lg transition-colors duration-[120ms] ease-ds",
-                    pathname === "/ped" ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
-                    collapsed && "justify-center"
-                  )}
-                >
-                  <Link
-                    href="/ped"
-                    title={collapsed ? "PED" : undefined}
-                    className={cn(
-                      "flex flex-1 items-center gap-2.5 px-2.5 py-2.5 text-sm",
-                      collapsed && "flex-none justify-center px-0"
-                    )}
-                  >
-                    <Megaphone className="size-[18px] shrink-0" strokeWidth={1.5} />
-                    {!collapsed && <span className="truncate">PED</span>}
-                  </Link>
-                  {!collapsed && pedClients.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setPedOpen((prev) => !prev)}
-                      aria-label={pedOpen ? "Chiudi elenco PED" : "Apri elenco PED"}
-                      aria-expanded={pedOpen}
-                      className="mr-1.5 flex size-6 shrink-0 items-center justify-center rounded-md text-current/60 transition-colors hover:bg-foreground/5 hover:text-current"
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "size-4 transition-transform",
-                          !pedOpen && "-rotate-90"
-                        )}
-                      />
-                    </button>
-                  )}
-                </div>
-                {!collapsed &&
-                  pedOpen &&
-                  pedClients.map((client) => {
-                    const href = `/ped/${client.id}`;
-                    const active = pathname.startsWith(href);
-                    return (
-                      <Link
-                        key={client.id}
-                        href={href}
-                        className={cn(
-                          "ml-[19px] flex items-center gap-2 truncate rounded-r-lg border-l border-border py-2 pr-2 pl-4 text-sm transition-colors duration-[120ms] ease-ds",
-                          active
-                            ? "border-primary bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-                            : "font-medium text-muted-foreground hover:bg-subtle hover:text-foreground"
-                        )}
-                      >
-                        <span className="truncate">{client.name}</span>
-                      </Link>
-                    );
-                  })}
-              </>
-            )}
           </div>
         ))}
       </nav>
