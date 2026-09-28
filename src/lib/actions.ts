@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser, requireSuperAdmin, revokeSessions } from "@/lib/auth/session";
+import {
+  requireUser,
+  requireWritableUser,
+  requireSuperAdmin,
+  revokeSessions,
+} from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   EVENT_TYPES,
@@ -36,6 +41,11 @@ function isUniqueViolation(err: unknown) {
     (err as { code?: unknown }).code === "P2002"
   );
 }
+
+// Risposta delle azioni di scrittura durante un'impersonificazione.
+const READ_ONLY_ERROR = {
+  error: "Stai vedendo l'app come un altro membro: in questa modalità non puoi modificare nulla",
+};
 
 // --- Team (solo Super Admin) ---
 
@@ -157,7 +167,8 @@ export async function deleteUser(userId: string) {
 // --- Profilo (utente corrente) ---
 
 export async function updateOwnProfile(formData: FormData) {
-  const currentUser = await requireUser();
+  const currentUser = await requireWritableUser();
+  if (!currentUser) return READ_ONLY_ERROR;
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")
@@ -182,7 +193,8 @@ export async function updateOwnProfile(formData: FormData) {
 }
 
 export async function changeOwnPassword(formData: FormData) {
-  const currentUser = await requireUser();
+  const currentUser = await requireWritableUser();
+  if (!currentUser) return READ_ONLY_ERROR;
 
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
@@ -221,7 +233,8 @@ export async function changeOwnPassword(formData: FormData) {
 // --- Ferie / permesso / malattia ---
 
 export async function createLeaveRequest(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const type = String(formData.get("type") ?? "");
   const startDateRaw = String(formData.get("startDate") ?? "");
@@ -411,7 +424,8 @@ function revalidateLeavePaths(userId: string) {
 // --- Calendario eventi (riunioni / shooting / altro) ---
 
 export async function createEvent(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const title = String(formData.get("title") ?? "").trim();
   const type = String(formData.get("type") ?? "");
@@ -457,7 +471,8 @@ export async function createEvent(formData: FormData) {
 }
 
 export async function deleteEvent(eventId: string) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   // Può eliminare: super admin, chi ha creato l'evento, o un partecipante.
   if (user.role !== "super_admin") {
@@ -492,7 +507,8 @@ function conflictingSlots(slot: string) {
 }
 
 export async function createPresenceEntry(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const date = String(formData.get("date") ?? "");
   const slot = String(formData.get("slot") ?? "");
@@ -547,7 +563,8 @@ export async function createPresenceEntries({
   // aggiunta).
   replace?: { date: string; slot: string }[];
 }) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   const userId = targetUserId ?? user.id;
   if (userId !== user.id && user.role !== "super_admin") {
     return { error: "Non autorizzato" };
@@ -593,7 +610,8 @@ export async function createPresenceEntries({
 }
 
 export async function deletePresenceEntry(entryId: string) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   await prisma.presenceEntry.delete({
     where: { id: entryId, userId: user.id },
   });
@@ -610,7 +628,8 @@ export async function deletePresenceEntries({
   userId?: string;
   items: { date: string; slot: string }[];
 }) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   const userId = targetUserId ?? user.id;
   if (userId !== user.id && user.role !== "super_admin") {
     return { error: "Non autorizzato" };
@@ -721,7 +740,8 @@ export async function deleteClient(clientId: string) {
 // inviate dal form (una riga per cliente con ore > 0; tutte a zero = giornata
 // svuotata). Il super admin può farlo anche sul log di un altro membro.
 export async function saveDailyTimeEntries(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
   const targetUserId = targetUserIdRaw || user.id;
@@ -781,7 +801,7 @@ export async function saveDailyTimeEntries(formData: FormData) {
 // --- Task ---
 
 export async function createTask(formData: FormData) {
-  await requireUser();
+  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
 
   const title = String(formData.get("title") ?? "").trim();
   const clientIdRaw = String(formData.get("clientId") ?? "").trim();
@@ -838,6 +858,7 @@ export async function updateTaskStatus(
   taskId: string,
   status: string
 ): Promise<ActionResult> {
+  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
   if (!(await hasTaskAccess(taskId))) {
     return { error: "Non autorizzato" };
   }
@@ -854,6 +875,7 @@ export async function updateTaskStatus(
 }
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
+  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
   if (!(await hasTaskAccess(taskId))) {
     return { error: "Non autorizzato" };
   }

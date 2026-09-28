@@ -81,6 +81,18 @@ export const getAuthContext = cache(async () => {
   };
 });
 
+// Per le azioni di scrittura: durante un'impersonificazione l'app è in sola
+// lettura, quindi restituisce null e l'azione deve rifiutarsi. Va usata in
+// ogni server action che modifica dati (le azioni solo super admin sono già
+// bloccate da requireSuperAdmin, perché l'utente effettivo è un membro).
+export async function requireWritableUser() {
+  const context = await getAuthContext();
+  if (!context) {
+    redirect("/login");
+  }
+  return context.impersonation ? null : context.user;
+}
+
 // L'utente "effettivo": durante un'impersonificazione è il membro impersonato.
 export async function requireUser() {
   const context = await getAuthContext();
