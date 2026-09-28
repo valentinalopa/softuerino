@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import {
@@ -16,6 +18,7 @@ import { AttendanceTeamMonthCalendar } from "@/components/presenze/AttendanceTea
 import { MonthNav } from "@/components/presenze/MonthNav";
 import { NewPresenceDialog } from "@/components/presenze/NewPresenceDialog";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
+import { buttonVariants } from "@/components/ui/button";
 
 type AttendanceView = "individuale" | "generale";
 
@@ -38,7 +41,13 @@ export default async function PresenzePage({
             Segna i giorni in cui sei in ufficio o in smartworking.
           </p>
         </div>
-        <NewPresenceDialog />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/calendario" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+            <CalendarDays />
+            Vedi calendario eventi
+          </Link>
+          <NewPresenceDialog />
+        </div>
       </div>
 
       <div className="space-y-3">

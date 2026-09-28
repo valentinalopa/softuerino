@@ -22,12 +22,15 @@ export function DateTimeField({
   defaultValue,
   placeholder = "Seleziona data",
   className,
+  onValueChange,
 }: {
   name: string;
   id?: string;
   defaultValue?: string;
   placeholder?: string;
   className?: string;
+  // Valore "yyyy-MM-ddTHH:mm" ad ogni modifica (vuoto finché manca la data).
+  onValueChange?: (value: string) => void;
 }) {
   const [defaultDatePart, defaultTimePart] = defaultValue
     ? defaultValue.split("T")
@@ -42,6 +45,10 @@ export function DateTimeField({
   const [open, setOpen] = useState(false);
 
   const isoValue = date ? `${format(date, "yyyy-MM-dd")}T${time}` : "";
+
+  function toIso(nextDate: Date | undefined, nextTime: string) {
+    return nextDate ? `${format(nextDate, "yyyy-MM-dd")}T${nextTime}` : "";
+  }
 
   return (
     <>
@@ -76,11 +83,18 @@ export function DateTimeField({
               onSelect={(next) => {
                 setDate(next);
                 setOpen(false);
+                onValueChange?.(toIso(next, time));
               }}
             />
           </PopoverContent>
         </Popover>
-        <TimeField value={time} onChange={setTime} />
+        <TimeField
+          value={time}
+          onChange={(next) => {
+            setTime(next);
+            onValueChange?.(toIso(date, next));
+          }}
+        />
       </div>
     </>
   );

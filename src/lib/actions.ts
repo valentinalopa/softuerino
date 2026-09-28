@@ -9,6 +9,7 @@ import {
   revokeSessions,
 } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { absenceConflict } from "@/lib/absence-conflicts";
 import {
   EVENT_TYPES,
   leaveTypesFor,
@@ -455,6 +456,34 @@ export async function createEvent(formData: FormData) {
   }
   if (endAt < startAt) {
     return { error: "La fine non può precedere l'inizio" };
+  }
+
+  // Chi è assente (giornata intera, già approvata/registrata) nelle date
+  // dell'evento non può essere invitato: il form lo impedisce, qui lo si garantisce.
+  if (participantIds.length > 0) {
+    const [absences, participants] = await Promise.all([
+      prisma.leaveRequest.findMany({
+        where: {
+          userId: { in: participantIds },
+          status: { not: "rejected" },
+          startDate: { lte: endAt },
+          endDate: { gte: new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()) },
+        },
+        select: { userId: true, type: true, status: true, startDate: true, endDate: true, hours: true },
+      }),
+      prisma.user.findMany({
+        where: { id: { in: participantIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+    for (const participant of participants) {
+      const conflict = absenceConflict(absences, participant.id, startAt, endAt);
+      if (conflict?.kind === "blocked") {
+        return {
+          error: `${participant.name} è assente in quelle date (${conflict.reason}). Rimuovi questa persona dai partecipanti`,
+        };
+      }
+    }
   }
 
   await prisma.calendarEvent.create({

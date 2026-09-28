@@ -8,6 +8,7 @@ import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
 import { DayView } from "./DayView";
 import { EventDetails } from "./EventDetails";
+import { DayAbsences, type CalendarAbsence } from "./DayAbsences";
 import type { CalendarEventData } from "./types";
 import { dateKey } from "@/lib/attendance-utils";
 import {
@@ -31,11 +32,14 @@ const VIEW_LABELS: Record<ViewMode, string> = {
 
 export function CalendarView({
   events,
+  absences,
   users,
   currentUserId,
   isSuperAdmin,
 }: {
   events: CalendarEventData[];
+  // Assenze del team (non rifiutate), mostrate nel dettaglio del giorno.
+  absences: CalendarAbsence[];
   users: { id: string; name: string }[];
   currentUserId: string;
   isSuperAdmin: boolean;
@@ -106,7 +110,11 @@ export function CalendarView({
             value={view}
             onChange={setView}
           />
-          <NewEventDialog users={users} defaultStart={toDateTimeLocal(current)} />
+          <NewEventDialog
+            users={users}
+            absences={absences}
+            defaultStart={toDateTimeLocal(current)}
+          />
         </div>
       </div>
 
@@ -127,6 +135,7 @@ export function CalendarView({
               onSelectEvent={setSelected}
             />
           )}
+          {view === "day" && <DayAbsences day={current} absences={absences} />}
           {view === "day" && (
             <DayView
               current={current}
