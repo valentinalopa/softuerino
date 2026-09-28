@@ -21,7 +21,8 @@ model User {
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  sessions        Session[]
+  sessions        Session[]          @relation("SessionOwner")
+  impersonatedIn  Session[]          @relation("SessionImpersonated")
   leaveRequests   LeaveRequest[]
   events          EventParticipant[]
   createdEvents   CalendarEvent[]
@@ -38,7 +39,13 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Impersonificazione in sola lettura (solo super admin): finché è attiva e
+  // non scaduta, l'app mostra le pagine come le vede questo utente.
+  impersonatedUserId     String?
+  impersonationExpiresAt DateTime?
+
+  user             User  @relation("SessionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedUser User? @relation("SessionImpersonated", fields: [impersonatedUserId], references: [id], onDelete: SetNull)
 }
 
 // Richiesta di ferie / permesso / malattia
