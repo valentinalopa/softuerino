@@ -316,6 +316,7 @@ export async function createLeaveRequest(formData: FormData) {
   });
 
   revalidatePath("/richieste");
+  revalidatePath("/richieste-team");
   revalidatePath("/");
 }
 
@@ -400,7 +401,7 @@ export async function revertLeaveToPending(requestId: string): Promise<ActionRes
 
 function revalidateLeavePaths(userId: string) {
   revalidatePath("/richieste");
-  revalidatePath("/richieste/storico");
+  revalidatePath("/richieste-team");
   revalidatePath(`/team/${userId}`);
   revalidatePath("/");
 }

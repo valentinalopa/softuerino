@@ -17,6 +17,7 @@ import {
   UserRound,
   Settings,
   ListTodo,
+  Inbox,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
@@ -51,6 +52,7 @@ const OPERATIVITA_LINKS = [
 
 const SUPER_ADMIN_LINKS = [
   { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
+  { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
   { href: "/team", label: "Team", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
 ];
@@ -67,8 +69,11 @@ const STORAGE_KEY = "softuerino:sidebar-collapsed";
 
 export function AppSidebar({
   currentUser,
+  teamPendingCount = 0,
 }: {
   currentUser: { name: string; email: string; role: Role };
+  // Richieste del team in attesa di approvazione (solo super admin).
+  teamPendingCount?: number;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -150,9 +155,14 @@ export function AppSidebar({
               </div>
             )}
             {section.links.map((link) => {
+              // Confronto per segmento: "/richieste" non deve accendersi su
+              // "/richieste-team".
               const active =
-                link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+                link.href === "/"
+                  ? pathname === "/"
+                  : pathname === link.href || pathname.startsWith(`${link.href}/`);
               const Icon = link.icon;
+              const badge = link.href === "/richieste-team" ? teamPendingCount : 0;
               return (
                 <Link
                   key={link.href}
@@ -164,8 +174,24 @@ export function AppSidebar({
                     collapsed && "justify-center px-0"
                   )}
                 >
-                  <Icon className="size-[18px] shrink-0" strokeWidth={1.5} />
+                  <span className="relative flex shrink-0">
+                    <Icon className="size-[18px]" strokeWidth={1.5} />
+                    {collapsed && badge > 0 && (
+                      <span
+                        className="absolute -top-1 -right-1 size-2 rounded-full bg-amber-500"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
                   {!collapsed && <span className="truncate">{link.label}</span>}
+                  {!collapsed && badge > 0 && (
+                    <span
+                      className="ml-auto rounded-full bg-amber-500/15 px-1.5 text-xs leading-5 font-semibold text-amber-700 dark:text-amber-300"
+                      aria-label={`${badge} in attesa`}
+                    >
+                      {badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
