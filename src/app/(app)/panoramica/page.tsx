@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Clock3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin } from "@/lib/auth/session";
 import {
@@ -5,22 +7,25 @@ import {
   buildHoursByClientByMonth,
   buildLeaveTotals,
 } from "@/lib/panoramica-utils";
+import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
 import { ClientDistributionChart } from "@/components/panoramica/ClientDistributionChart";
 import { LeaveStatsChart } from "@/components/panoramica/LeaveStatsChart";
 
 const MONTHS_BACK = 12;
+// Quante richieste da approvare mostrare in cima: il resto è in /richieste-team.
+const PENDING_PREVIEW = 5;
 
 export default async function PanoramicaPage() {
-  await requireSuperAdmin();
+  const user = await requireSuperAdmin();
 
   const now = new Date();
   const windowStart = new Date(now.getFullYear(), now.getMonth() - (MONTHS_BACK - 1), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);
   const yearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
 
-  const [timeEntries, leaveRequests] = await Promise.all([
+  const [timeEntries, leaveRequests, teamPending, teamPendingCount] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { date: { gte: windowStart } },
       select: {
@@ -32,6 +37,16 @@ export default async function PanoramicaPage() {
     }),
     prisma.leaveRequest.findMany({
       where: { startDate: { lte: yearEnd }, endDate: { gte: yearStart } },
+    }),
+    // Stesso criterio di /richieste-team: le richieste degli altri membri.
+    prisma.leaveRequest.findMany({
+      where: { userId: { not: user.id }, status: "pending" },
+      include: { user: { select: { name: true } } },
+      orderBy: { startDate: "asc" },
+      take: PENDING_PREVIEW,
+    }),
+    prisma.leaveRequest.count({
+      where: { userId: { not: user.id }, status: "pending" },
     }),
   ]);
 
@@ -49,11 +64,29 @@ export default async function PanoramicaPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Panoramica</h1>
+        <h1>Panoramica</h1>
         <p className="text-sm text-muted-foreground">
-          Andamento ore per cliente e ferie/permessi/malattia di tutto il team.
+          Andamento ore per cliente e assenze di tutto il team.
         </p>
       </div>
+
+      {teamPendingCount > 0 && (
+        <NotificationCard
+          icon={Clock3}
+          title={`${teamPendingCount} richiest${teamPendingCount === 1 ? "a" : "e"} da approvare`}
+        >
+          {teamPending.map((request) => (
+            <TeamPendingItem key={request.id} request={request} />
+          ))}
+          <li className="pt-1">
+            <Link href="/richieste-team" className="text-xs text-muted-foreground hover:underline">
+              {teamPendingCount > PENDING_PREVIEW
+                ? `Vedi tutte (${teamPendingCount})`
+                : "Vai a Richieste del team"}
+            </Link>
+          </li>
+        </NotificationCard>
+      )}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
@@ -79,7 +112,7 @@ export default async function PanoramicaPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Ferie, permessi e malattia ({now.getFullYear()})</CardTitle>
+            <CardTitle>Assenze del team ({now.getFullYear()})</CardTitle>
           </CardHeader>
           <CardContent>
             <LeaveStatsChart totals={leaveTotals} />

@@ -5,6 +5,7 @@ import { changeOwnPassword } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TONE_TEXT } from "@/lib/tones";
 
 export function PasswordForm() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -46,7 +47,7 @@ export function PasswordForm() {
         <Input id="confirm-password" name="confirmPassword" type="password" required minLength={8} />
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {success && <p className="text-sm text-emerald-600 dark:text-emerald-400">Password aggiornata.</p>}
+      {success && <p className={`text-sm ${TONE_TEXT.success}`}>Password aggiornata.</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Aggiornamento..." : "Aggiorna password"}
       </Button>

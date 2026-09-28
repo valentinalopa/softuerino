@@ -21,14 +21,16 @@ model User {
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  sessions        Session[]
-  leaveRequests   LeaveRequest[]
-  events          EventParticipant[]
-  createdEvents   CalendarEvent[]
-  presenceEntries PresenceEntry[]
-  timeEntries     TimeEntry[]
-  taskAssignments TaskAssignee[]
-  pedAssignments  PedContent[]
+  sessions               Session[]          @relation("SessionOwner")
+  impersonatedIn         Session[]          @relation("SessionImpersonated")
+  impersonationsDone     ImpersonationLog[] @relation("ImpersonationAdmin")
+  impersonationsReceived ImpersonationLog[] @relation("ImpersonationTarget")
+  leaveRequests          LeaveRequest[]
+  events                 EventParticipant[]
+  createdEvents          CalendarEvent[]
+  presenceEntries        PresenceEntry[]
+  timeEntries            TimeEntry[]
+  taskAssignments        TaskAssignee[]
 }
 
 // Sessione di login: token opaco in cookie httpOnly, riga cancellabile per logout/revoca
@@ -39,7 +41,32 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Impersonificazione in sola lettura (solo super admin): finché è
+  // valorizzato, l'app mostra le pagine come le vede questo utente. Nessuna
+  // scadenza propria: si chiude con "Torna al tuo profilo" o con il logout.
+  impersonatedUserId String?
+
+  user             User  @relation("SessionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedUser User? @relation("SessionImpersonated", fields: [impersonatedUserId], references: [id], onDelete: SetNull)
+}
+
+// Registro delle impersonificazioni: chi ha visto l'app come chi, e per quanto.
+// endedAt resta vuoto finché la sessione è in corso (o se la sessione è
+// scaduta senza uscita esplicita). sessionId non è una relazione: la sessione
+// viene cancellata al logout, il registro deve restare.
+model ImpersonationLog {
+  id           String    @id @default(cuid())
+  adminId      String
+  targetUserId String
+  sessionId    String
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+
+  admin      User @relation("ImpersonationAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  targetUser User @relation("ImpersonationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([startedAt])
 }
 
 // Richiesta di ferie / permesso / malattia
@@ -107,32 +134,11 @@ model Client {
   id         String   @id @default(cuid())
   name       String   @unique
   active     Boolean  @default(true)
-  categories String   @default("") // CSV di categorie: comunicazione | it_design | produzione ("comunicazione" abilita il PED)
+  categories String   @default("") // CSV di categorie: comunicazione | it_design | produzione
   createdAt  DateTime @default(now())
 
   timeEntries TimeEntry[]
   tasks       Task[]
-  pedContents PedContent[]
-}
-
-// Contenuto del piano editoriale (PED) di un cliente: post/clip pianificati
-// sul calendario, con stato di produzione e social di destinazione.
-model PedContent {
-  id         String   @id @default(cuid())
-  clientId   String
-  title      String
-  date       DateTime // giorno di pubblicazione previsto
-  status     String   @default("idea") // idea | in_lavorazione | programmato | pubblicato
-  socials    String // CSV di social (es. "instagram,tiktok"): SQLite non ha array
-  script     String? // testo/idea/script del contenuto
-  assigneeId String? // responsabile (opzionale)
-  createdAt  DateTime @default(now())
-
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  assignee User?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
-
-  @@index([clientId, date])
-  @@index([date])
 }
 
 // Log ore lavorate su un cliente/progetto

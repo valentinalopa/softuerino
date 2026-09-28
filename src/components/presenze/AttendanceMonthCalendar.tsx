@@ -172,7 +172,7 @@ export function AttendanceMonthCalendar({
         />
 
         {editable && selected.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-2.5 py-1.5 ring-1 ring-foreground/10">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-surface-border bg-card px-2.5 py-1.5">
             <span className="text-sm font-medium">
               {selected.size}{" "}
               {selected.size === 1 ? "elemento selezionato" : "elementi selezionati"}
@@ -252,7 +252,7 @@ export function AttendanceMonthCalendar({
         <p className="text-right text-sm text-destructive">{error}</p>
       )}
 
-      <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+      <div className="overflow-hidden surface">
         <div className="grid grid-cols-7 border-b bg-muted/40 text-xs font-medium text-muted-foreground">
           {WEEKDAY_LABELS.map((d) => (
             <div key={d} className="px-2 py-2 text-center">

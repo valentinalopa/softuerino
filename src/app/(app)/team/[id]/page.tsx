@@ -11,6 +11,7 @@ import { EditTeamMemberForm } from "@/components/team/EditTeamMemberForm";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
+import { StartImpersonationButton } from "@/components/impersonation/StartImpersonationButton";
 import { OreLogSection, type OreLogParams } from "@/components/ore/OreLogSection";
 import { AttendanceSection } from "@/components/presenze/AttendanceSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,13 +51,19 @@ export default async function TeamMemberPage({
           <ArrowLeft />
           Torna al Team
         </Link>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{member.name}</h1>
-            <RoleBadge role={member.role} />
-            <ActiveBadge active={member.active} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1>{member.name}</h1>
+              <RoleBadge role={member.role} />
+              <ActiveBadge active={member.active} />
+            </div>
+            <p className="text-sm text-muted-foreground">{member.email}</p>
           </div>
-          <p className="text-sm text-muted-foreground">{member.email}</p>
+          {/* "Vedi come": solo verso membri attivi, mai verso un super admin. */}
+          {member.active && member.role !== "super_admin" && (
+            <StartImpersonationButton userId={member.id} userName={member.name} />
+          )}
         </div>
       </div>
 
@@ -163,7 +170,7 @@ async function RichiesteTab({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">Richieste e assenze</h2>
+        <h2>Richieste e assenze</h2>
         <NewLeaveRequestDialog
           employmentType={employmentType}
           targetUserId={memberId}

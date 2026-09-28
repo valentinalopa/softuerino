@@ -2,11 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser, requireSuperAdmin, revokeSessions } from "@/lib/auth/session";
+import {
+  requireUser,
+  requireWritableUser,
+  requireSuperAdmin,
+  revokeSessions,
+} from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { absenceConflict } from "@/lib/absence-conflicts";
 import {
   EVENT_TYPES,
-  DIPENDENTE_LEAVE_TYPES,
+  leaveTypesFor,
+  NOTE_REQUIRED_LEAVE_TYPES,
+  type LeaveType,
   PRESENCE_SLOTS,
   PRESENCE_MODES,
   ROLES,
@@ -14,10 +22,7 @@ import {
   TASK_STATUSES,
   TASK_PRIORITIES,
   TASK_DONE_RETENTION_DAYS,
-  PED_STATUSES,
-  PED_SOCIALS,
   CLIENT_CATEGORIES,
-  clientHasPed,
 } from "@/lib/constants";
 
 // Costruisce una Date a mezzanotte locale da una stringa "yyyy-MM-dd", evitando che
@@ -39,6 +44,11 @@ function isUniqueViolation(err: unknown) {
     (err as { code?: unknown }).code === "P2002"
   );
 }
+
+// Risposta delle azioni di scrittura durante un'impersonificazione.
+const READ_ONLY_ERROR = {
+  error: "Stai vedendo l'app come un altro membro: in questa modalità non puoi modificare nulla",
+};
 
 // --- Team (solo Super Admin) ---
 
@@ -160,7 +170,8 @@ export async function deleteUser(userId: string) {
 // --- Profilo (utente corrente) ---
 
 export async function updateOwnProfile(formData: FormData) {
-  const currentUser = await requireUser();
+  const currentUser = await requireWritableUser();
+  if (!currentUser) return READ_ONLY_ERROR;
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")
@@ -185,7 +196,8 @@ export async function updateOwnProfile(formData: FormData) {
 }
 
 export async function changeOwnPassword(formData: FormData) {
-  const currentUser = await requireUser();
+  const currentUser = await requireWritableUser();
+  if (!currentUser) return READ_ONLY_ERROR;
 
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
@@ -224,7 +236,8 @@ export async function changeOwnPassword(formData: FormData) {
 // --- Ferie / permesso / malattia ---
 
 export async function createLeaveRequest(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const type = String(formData.get("type") ?? "");
   const startDateRaw = String(formData.get("startDate") ?? "");
@@ -252,28 +265,32 @@ export async function createLeaveRequest(formData: FormData) {
     return { error: "Membro non trovato" };
   }
 
-  // Dipendenti: ferie/permesso/malattia. Partite IVA: solo "assenza"
-  // (monte unico, nessuna distinzione di tipo).
-  const allowedTypes: readonly string[] =
-    targetUser.employmentType === "partita_iva"
-      ? ["assenza"]
-      : DIPENDENTE_LEAVE_TYPES;
-  if (!allowedTypes.includes(type)) {
+  // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
+  // (monte unico) e assenza extra (fuori monte).
+  if (!leaveTypesFor(targetUser.employmentType).includes(type as LeaveType)) {
     return { error: "Tipo di richiesta non valido" };
   }
   if (!startDateRaw) {
     return { error: "La data è obbligatoria" };
   }
-  const effectiveEndDateRaw = type === "permesso" ? startDateRaw : endDateRaw;
+  if (NOTE_REQUIRED_LEAVE_TYPES.includes(type as LeaveType) && !note) {
+    return { error: "Per il recupero la nota è obbligatoria: indica il motivo (es. la trasferta)" };
+  }
+  // A ore = un solo giorno con un numero di ore: il permesso sempre, il
+  // recupero quando si sceglie "A ore".
+  const isHourly =
+    type === "permesso" ||
+    (type === "recupero" && String(formData.get("unit") ?? "") === "ore");
+  const effectiveEndDateRaw = isHourly ? startDateRaw : endDateRaw;
   if (effectiveEndDateRaw < startDateRaw) {
     return { error: "La data di fine non può precedere quella di inizio" };
   }
 
   let hours: number | null = null;
-  if (type === "permesso") {
+  if (isHourly) {
     const parsed = Number(hoursRaw);
     if (!hoursRaw || Number.isNaN(parsed) || parsed <= 0 || parsed > 24) {
-      return { error: "Indica un numero di ore di permesso valido (massimo 24)" };
+      return { error: "Indica un numero di ore valido (massimo 24)" };
     }
     hours = parsed;
   }
@@ -319,6 +336,8 @@ export async function createLeaveRequest(formData: FormData) {
   });
 
   revalidatePath("/richieste");
+  revalidatePath("/richieste-team");
+  revalidatePath("/panoramica");
   revalidatePath("/");
 }
 
@@ -328,23 +347,92 @@ export async function updateLeaveStatus(
 ): Promise<ActionResult> {
   await requireSuperAdmin();
 
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: { type: true, userId: true },
+  });
+  if (!request) {
+    return { error: "Richiesta non trovata" };
+  }
+
+  // La malattia non si "approva": una malattia riportata in attesa e poi
+  // confermata torna "registrata", come quando nasce.
+  const nextStatus =
+    status === "approved" && request.type === "malattia" ? "registrata" : status;
+
   // updateMany invece di update: se la richiesta non è più pending (es. già
   // gestita da un altro admin) non deve esplodere con P2025, solo non fare nulla.
   const updated = await prisma.leaveRequest.updateMany({
     where: { id: requestId, status: "pending" },
-    data: { status },
+    data: { status: nextStatus },
   });
   if (updated.count === 0) {
     return { error: "Richiesta già gestita o non più in attesa" };
   }
+  revalidateLeavePaths(request.userId);
+}
+
+// Il super admin può sempre riportare in attesa una richiesta già decisa
+// (approvata, rifiutata o malattia registrata) per ridecidere. Il dipendente
+// non può fare nulla sulla richiesta.
+export async function revertLeaveToPending(requestId: string): Promise<ActionResult> {
+  await requireSuperAdmin();
+
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: { userId: true, status: true, startDate: true, endDate: true },
+  });
+  if (!request) {
+    return { error: "Richiesta non trovata" };
+  }
+  if (request.status === "pending") {
+    return { error: "La richiesta è già in attesa" };
+  }
+
+  // Una richiesta rifiutata non occupa le date: nel frattempo il membro può
+  // averne fatta un'altra sugli stessi giorni. Riportarla in attesa creerebbe
+  // una sovrapposizione, quindi la blocchiamo.
+  if (request.status === "rejected") {
+    const overlapping = await prisma.leaveRequest.findFirst({
+      where: {
+        id: { not: requestId },
+        userId: request.userId,
+        status: { not: "rejected" },
+        startDate: { lte: request.endDate },
+        endDate: { gte: request.startDate },
+      },
+    });
+    if (overlapping) {
+      return {
+        error:
+          "Il membro ha già un'altra richiesta su queste date: non è possibile riportarla in attesa",
+      };
+    }
+  }
+
+  const updated = await prisma.leaveRequest.updateMany({
+    where: { id: requestId, status: { not: "pending" } },
+    data: { status: "pending" },
+  });
+  if (updated.count === 0) {
+    return { error: "La richiesta è già in attesa" };
+  }
+  revalidateLeavePaths(request.userId);
+}
+
+function revalidateLeavePaths(userId: string) {
   revalidatePath("/richieste");
+  revalidatePath("/panoramica");
+  revalidatePath("/richieste-team");
+  revalidatePath(`/team/${userId}`);
   revalidatePath("/");
 }
 
 // --- Calendario eventi (riunioni / shooting / altro) ---
 
 export async function createEvent(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const title = String(formData.get("title") ?? "").trim();
   const type = String(formData.get("type") ?? "");
@@ -370,6 +458,34 @@ export async function createEvent(formData: FormData) {
     return { error: "La fine non può precedere l'inizio" };
   }
 
+  // Chi è assente (giornata intera, già approvata/registrata) nelle date
+  // dell'evento non può essere invitato: il form lo impedisce, qui lo si garantisce.
+  if (participantIds.length > 0) {
+    const [absences, participants] = await Promise.all([
+      prisma.leaveRequest.findMany({
+        where: {
+          userId: { in: participantIds },
+          status: { not: "rejected" },
+          startDate: { lte: endAt },
+          endDate: { gte: new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()) },
+        },
+        select: { userId: true, type: true, status: true, startDate: true, endDate: true, hours: true },
+      }),
+      prisma.user.findMany({
+        where: { id: { in: participantIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+    for (const participant of participants) {
+      const conflict = absenceConflict(absences, participant.id, startAt, endAt);
+      if (conflict?.kind === "blocked") {
+        return {
+          error: `${participant.name} è assente in quelle date (${conflict.reason}). Rimuovi questa persona dai partecipanti`,
+        };
+      }
+    }
+  }
+
   await prisma.calendarEvent.create({
     data: {
       title,
@@ -390,7 +506,8 @@ export async function createEvent(formData: FormData) {
 }
 
 export async function deleteEvent(eventId: string) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   // Può eliminare: super admin, chi ha creato l'evento, o un partecipante.
   if (user.role !== "super_admin") {
@@ -425,7 +542,8 @@ function conflictingSlots(slot: string) {
 }
 
 export async function createPresenceEntry(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const date = String(formData.get("date") ?? "");
   const slot = String(formData.get("slot") ?? "");
@@ -480,7 +598,8 @@ export async function createPresenceEntries({
   // aggiunta).
   replace?: { date: string; slot: string }[];
 }) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   const userId = targetUserId ?? user.id;
   if (userId !== user.id && user.role !== "super_admin") {
     return { error: "Non autorizzato" };
@@ -526,7 +645,8 @@ export async function createPresenceEntries({
 }
 
 export async function deletePresenceEntry(entryId: string) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   await prisma.presenceEntry.delete({
     where: { id: entryId, userId: user.id },
   });
@@ -543,7 +663,8 @@ export async function deletePresenceEntries({
   userId?: string;
   items: { date: string; slot: string }[];
 }) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   const userId = targetUserId ?? user.id;
   if (userId !== user.id && user.role !== "super_admin") {
     return { error: "Non autorizzato" };
@@ -594,7 +715,6 @@ export async function createClient(formData: FormData) {
   }
   revalidatePath("/clienti");
   revalidatePath("/ore");
-  revalidatePath("/ped");
 }
 
 export async function updateClient(clientId: string, formData: FormData) {
@@ -628,21 +748,19 @@ export async function updateClient(clientId: string, formData: FormData) {
   }
   revalidatePath("/clienti");
   revalidatePath("/ore");
-  revalidatePath("/ped");
 }
 
 export async function deleteClient(clientId: string) {
   await requireSuperAdmin();
 
-  const [timeEntryCount, taskCount, pedCount] = await Promise.all([
+  const [timeEntryCount, taskCount] = await Promise.all([
     prisma.timeEntry.count({ where: { clientId } }),
     prisma.task.count({ where: { clientId } }),
-    prisma.pedContent.count({ where: { clientId } }),
   ]);
-  if (timeEntryCount + taskCount + pedCount > 0) {
+  if (timeEntryCount + taskCount > 0) {
     return {
       error:
-        "Questo cliente ha ore, task o contenuti PED collegati: disattivalo invece di eliminarlo, per non perdere i dati.",
+        "Questo cliente ha ore o task collegati: disattivalo invece di eliminarlo, per non perdere i dati.",
     };
   }
 
@@ -657,7 +775,8 @@ export async function deleteClient(clientId: string) {
 // inviate dal form (una riga per cliente con ore > 0; tutte a zero = giornata
 // svuotata). Il super admin può farlo anche sul log di un altro membro.
 export async function saveDailyTimeEntries(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
   const targetUserId = targetUserIdRaw || user.id;
@@ -681,6 +800,17 @@ export async function saveDailyTimeEntries(formData: FormData) {
     .map((clientId, i) => ({ clientId, hours: Number(hoursRaw[i]) }))
     .filter((e) => e.clientId && Number.isFinite(e.hours) && e.hours > 0);
 
+  // Una giornata già registrata la corregge solo il super admin (dalla scheda
+  // membro): il form la nasconde, ma il vincolo va garantito anche qui.
+  if (user.role !== "super_admin") {
+    const alreadyLogged = await prisma.timeEntry.count({
+      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
+    });
+    if (alreadyLogged > 0) {
+      return { error: "Questa giornata è già registrata" };
+    }
+  }
+
   await prisma.$transaction([
     prisma.timeEntry.deleteMany({
       where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
@@ -699,13 +829,14 @@ export async function saveDailyTimeEntries(formData: FormData) {
   ]);
 
   revalidatePath("/ore");
+  revalidatePath(`/team/${targetUserId}`);
   revalidatePath("/");
 }
 
 // --- Task ---
 
 export async function createTask(formData: FormData) {
-  await requireUser();
+  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
 
   const title = String(formData.get("title") ?? "").trim();
   const clientIdRaw = String(formData.get("clientId") ?? "").trim();
@@ -762,6 +893,7 @@ export async function updateTaskStatus(
   taskId: string,
   status: string
 ): Promise<ActionResult> {
+  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
   if (!(await hasTaskAccess(taskId))) {
     return { error: "Non autorizzato" };
   }
@@ -778,101 +910,12 @@ export async function updateTaskStatus(
 }
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
+  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
   if (!(await hasTaskAccess(taskId))) {
     return { error: "Non autorizzato" };
   }
   await prisma.task.delete({ where: { id: taskId } });
   revalidatePath("/task");
-}
-
-// --- PED (piano editoriale) ---
-
-// Crea o aggiorna un contenuto del piano editoriale (id presente = update).
-// Il PED è collaborativo: ogni membro ha pieni poteri di CRUD.
-export async function savePedContent(formData: FormData): Promise<ActionResult> {
-  await requireUser();
-
-  const id = String(formData.get("id") ?? "").trim() || null;
-  const title = String(formData.get("title") ?? "").trim();
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  const dateRaw = String(formData.get("date") ?? "").trim();
-  const status = String(formData.get("status") ?? "idea");
-  const socials = formData.getAll("socials").map(String);
-  const script = String(formData.get("script") ?? "").trim() || null;
-  const assigneeIdRaw = String(formData.get("assigneeId") ?? "").trim();
-  const assigneeId = assigneeIdRaw && assigneeIdRaw !== "none" ? assigneeIdRaw : null;
-
-  if (!title) {
-    return { error: "Il titolo è obbligatorio" };
-  }
-  if (!clientId) {
-    return { error: "Il cliente è obbligatorio" };
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-    return { error: "La data di pubblicazione è obbligatoria" };
-  }
-  if (!PED_STATUSES.includes(status as (typeof PED_STATUSES)[number])) {
-    return { error: "Stato non valido" };
-  }
-  if (socials.some((s) => !PED_SOCIALS.includes(s as (typeof PED_SOCIALS)[number]))) {
-    return { error: "Social non valido" };
-  }
-
-  // Il PED esiste solo per i clienti "comunicazione".
-  const client = await prisma.client.findUnique({
-    where: { id: clientId },
-    select: { categories: true },
-  });
-  if (!client || !clientHasPed(client.categories)) {
-    return { error: "Questo cliente non ha un PED attivo" };
-  }
-
-  const data = {
-    title,
-    clientId,
-    date: localDate(dateRaw),
-    status,
-    socials: socials.join(","),
-    script,
-    assigneeId,
-  };
-
-  if (id) {
-    // Se il contenuto cambia cliente va rivalidata anche la pagina PED del
-    // cliente precedente, altrimenti resta stale.
-    const previous = await prisma.pedContent.findUnique({
-      where: { id },
-      select: { clientId: true },
-    });
-    if (!previous) {
-      return { error: "Contenuto non trovato (forse è stato eliminato)" };
-    }
-    await prisma.pedContent.update({ where: { id }, data });
-    if (previous.clientId !== clientId) {
-      revalidatePath(`/ped/${previous.clientId}`);
-    }
-  } else {
-    await prisma.pedContent.create({ data });
-  }
-
-  revalidatePath("/ped");
-  revalidatePath(`/ped/${clientId}`);
-}
-
-export async function deletePedContent(id: string): Promise<ActionResult> {
-  await requireUser();
-
-  const content = await prisma.pedContent.findUnique({
-    where: { id },
-    select: { clientId: true },
-  });
-  if (!content) {
-    return { error: "Contenuto non trovato" };
-  }
-
-  await prisma.pedContent.delete({ where: { id } });
-  revalidatePath("/ped");
-  revalidatePath(`/ped/${content.clientId}`);
 }
 
 // Elimina i task "done" completati da più di TASK_DONE_RETENTION_DAYS giorni.

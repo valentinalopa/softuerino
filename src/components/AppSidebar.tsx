@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -17,11 +17,10 @@ import {
   UserRound,
   Settings,
   ListTodo,
-  Megaphone,
-  ChevronDown,
+  Inbox,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
-import { ROLE_LABELS, type Role } from "@/lib/constants";
+import { ROLE_LABELS, homePathFor, type Role } from "@/lib/constants";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -30,7 +29,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Marchio } from "@/components/brand/Marchio";
 import { cn } from "@/lib/utils";
+import { TONE_DOT, TONE_SOFT } from "@/lib/tones";
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -52,44 +53,70 @@ const OPERATIVITA_LINKS = [
 
 const SUPER_ADMIN_LINKS = [
   { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
+  { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
   { href: "/team", label: "Team", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
 ];
 
+// Voce di navigazione — DS Sidebar: 14px, padding 10px, raggio 10px.
+const NAV_ITEM =
+  "flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm transition-colors duration-ds ease-ds";
+const NAV_ITEM_ACTIVE =
+  "bg-sidebar-accent font-semibold text-sidebar-accent-foreground";
+const NAV_ITEM_IDLE =
+  "font-medium text-sidebar-foreground hover:bg-subtle hover:text-foreground";
+
 const STORAGE_KEY = "softuerino:sidebar-collapsed";
+// L'evento "storage" arriva solo dalle altre schede: per la scheda corrente
+// ne emettiamo uno nostro quando la preferenza cambia.
+const CHANGE_EVENT = "softuerino:sidebar-collapsed-change";
+
+// Preferenza "sidebar chiusa" letta dal localStorage come store esterno: il
+// server (che non lo vede) parte da aperta, il browser legge subito il valore
+// salvato, senza setState dentro un effect.
+function subscribeCollapsed(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(CHANGE_EVENT, onChange);
+  };
+}
+
+function readCollapsed() {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) === "1";
+  } catch {
+    return false; // storage non disponibile (es. navigazione privata)
+  }
+}
+
+function writeCollapsed(value: boolean) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, value ? "1" : "0");
+  } catch {
+    // Senza storage la preferenza non si ricorda, ma la sidebar funziona.
+  }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
 
 export function AppSidebar({
   currentUser,
-  pedClients = [],
+  teamPendingCount = 0,
 }: {
   currentUser: { name: string; email: string; role: Role };
-  // Clienti "comunicazione": sottovoci del gruppo PED.
-  pedClients?: { id: string; name: string }[];
+  // Richieste del team in attesa di approvazione (solo super admin).
+  teamPendingCount?: number;
 }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [ready, setReady] = useState(false);
-  // Il gruppo PED parte aperto quando si è già in area PED e si apre da solo
-  // quando ci si naviga (pattern React "adjust state during render"); non si
-  // chiude mai in automatico, quello resta un gesto dell'utente.
-  const [pedOpen, setPedOpen] = useState(() => pathname.startsWith("/ped"));
-  const [lastPathname, setLastPathname] = useState(pathname);
-  if (pathname !== lastPathname) {
-    setLastPathname(pathname);
-    if (pathname.startsWith("/ped")) setPedOpen(true);
-  }
-
-  useEffect(() => {
-    setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "1");
-    setReady(true);
-  }, []);
+  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
+  // La larghezza si anima solo dopo un clic dell'utente: al caricamento la
+  // sidebar compare già nello stato salvato, senza animazione.
+  const [animate, setAnimate] = useState(false);
 
   function toggle() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-      return next;
-    });
+    setAnimate(true);
+    writeCollapsed(!collapsed);
   }
 
   const sections =
@@ -107,162 +134,123 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out",
-        collapsed ? "w-[68px]" : "w-60",
-        !ready && "transition-none"
+        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-ds-slow ease-ds",
+        collapsed ? "w-[72px]" : "w-[248px]",
+        !animate && "transition-none"
       )}
     >
       <div
         className={cn(
-          "flex h-14 shrink-0 items-center gap-2 border-b border-sidebar-border px-4",
-          collapsed && "justify-center px-0"
+          "flex h-[72px] shrink-0 items-center gap-2.5 px-6",
+          collapsed && "flex-col justify-center gap-1 px-0"
         )}
       >
-        {!collapsed && (
-          <span className="flex-1 truncate text-lg font-semibold">
-            Softuerino
-          </span>
-        )}
+        <Link
+          href={homePathFor(currentUser.role)}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2.5",
+            collapsed && "flex-none"
+          )}
+          title={currentUser.role === "super_admin" ? "Panoramica" : "Dashboard"}
+        >
+          <Marchio className={collapsed ? "h-6" : "h-[26px]"} />
+          {!collapsed && (
+            <span className="truncate font-heading text-lg leading-7 font-semibold text-foreground">
+              Softuerino
+            </span>
+          )}
+        </Link>
         <button
           type="button"
           onClick={toggle}
           title={collapsed ? "Espandi" : "Comprimi"}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-ds hover:bg-subtle hover:text-foreground"
         >
           <PanelLeft className="size-4" />
         </button>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-4">
+      <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 pb-4">
         {sections.map((section, index) => (
           <div key={section.label ?? "common"} className="flex flex-col gap-1">
-            {index > 0 && (
-              <div
-                className={cn("mx-3 mb-2 border-t border-sidebar-border", collapsed && "mx-1")}
-                aria-hidden="true"
-              />
+            {index > 0 && collapsed && (
+              <div className="mx-2 mb-2 border-t border-sidebar-border" aria-hidden="true" />
             )}
             {section.label && !collapsed && (
-              <div className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/50">
+              <div className="px-2 pb-1 text-xs leading-4 font-semibold tracking-label text-muted-foreground uppercase">
                 {section.label}
               </div>
             )}
             {section.links.map((link) => {
+              // Confronto per segmento: "/richieste" non deve accendersi su
+              // "/richieste-team".
               const active =
-                link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+                link.href === "/"
+                  ? pathname === "/"
+                  : pathname === link.href || pathname.startsWith(`${link.href}/`);
               const Icon = link.icon;
+              const badge = link.href === "/richieste-team" ? teamPendingCount : 0;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
                   title={collapsed ? link.label : undefined}
                   className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    NAV_ITEM,
+                    active ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
                     collapsed && "justify-center px-0"
                   )}
                 >
-                  <Icon className="size-4 shrink-0" />
+                  <span className="relative flex shrink-0">
+                    <Icon className="size-4.5" strokeWidth={1.5} />
+                    {collapsed && badge > 0 && (
+                      <span
+                        className={`absolute -top-1 -right-1 size-2 rounded-full ${TONE_DOT.warning}`}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
                   {!collapsed && <span className="truncate">{link.label}</span>}
+                  {!collapsed && badge > 0 && (
+                    <span
+                      className={`ml-auto rounded-full px-1.5 text-xs leading-5 font-semibold ${TONE_SOFT.warning}`}
+                      aria-label={`${badge} in attesa`}
+                    >
+                      {badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
-            {/* Gruppo PED: voce principale (PED supremo) + sottovoci cliente,
-                come la sidebar Notion a cui il team è abituato. */}
-            {section.label === "Operatività" && (
-              <>
-                {/* Riga unica: link + chevron condividono lo stesso "pill". */}
-                <div
-                  className={cn(
-                    "flex items-center rounded-md transition-colors",
-                    pathname === "/ped"
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    collapsed && "justify-center"
-                  )}
-                >
-                  <Link
-                    href="/ped"
-                    title={collapsed ? "PED" : undefined}
-                    className={cn(
-                      "flex flex-1 items-center gap-3 px-3 py-2 text-sm",
-                      pathname === "/ped" && "font-medium",
-                      collapsed && "flex-none justify-center px-0"
-                    )}
-                  >
-                    <Megaphone className="size-4 shrink-0" />
-                    {!collapsed && <span className="truncate">PED</span>}
-                  </Link>
-                  {!collapsed && pedClients.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setPedOpen((prev) => !prev)}
-                      aria-label={pedOpen ? "Chiudi elenco PED" : "Apri elenco PED"}
-                      aria-expanded={pedOpen}
-                      className="mr-1.5 flex size-6 shrink-0 items-center justify-center rounded-sm text-current/60 transition-colors hover:bg-foreground/10 hover:text-current"
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "size-4 transition-transform",
-                          !pedOpen && "-rotate-90"
-                        )}
-                      />
-                    </button>
-                  )}
-                </div>
-                {!collapsed &&
-                  pedOpen &&
-                  pedClients.map((client) => {
-                    const href = `/ped/${client.id}`;
-                    const active = pathname.startsWith(href);
-                    return (
-                      <Link
-                        key={client.id}
-                        href={href}
-                        className={cn(
-                          "ml-6 flex items-center gap-2 truncate rounded-md border-l border-sidebar-border py-1.5 pl-4 pr-2 text-sm transition-colors",
-                          active
-                            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                        )}
-                      >
-                        <span className="truncate">{client.name}</span>
-                      </Link>
-                    );
-                  })}
-              </>
-            )}
           </div>
         ))}
       </nav>
 
       <div
         className={cn(
-          "border-t border-sidebar-border p-3",
-          collapsed && "px-2"
+          "mx-4 border-t border-sidebar-border py-4",
+          collapsed && "mx-2"
         )}
       >
         <DropdownMenu>
           <DropdownMenuTrigger
             className={cn(
-              "flex w-full items-center gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-sidebar-accent",
+              "flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-ds hover:bg-subtle",
               collapsed && "justify-center"
             )}
             title={collapsed ? currentUser.name : undefined}
           >
             <Avatar size="sm" className="shrink-0">
-              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+              <AvatarFallback>
                 {getInitials(currentUser.name)}
               </AvatarFallback>
             </Avatar>
             {!collapsed && (
               <span className="min-w-0 flex-1 truncate">
-                <span className="block truncate text-sm font-medium">
+                <span className="block truncate text-sm font-semibold text-foreground">
                   {currentUser.name}
                 </span>
-                <span className="block truncate text-xs text-sidebar-foreground/60">
+                <span className="block truncate text-xs text-muted-foreground">
                   {ROLE_LABELS[currentUser.role]}
                 </span>
               </span>

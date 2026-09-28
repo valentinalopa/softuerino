@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
+import Link from "next/link";
+import { Users } from "lucide-react";
 import { CalendarView } from "@/components/calendar/CalendarView";
+import { buttonVariants } from "@/components/ui/button";
 
 export default async function CalendarioPage() {
   const user = await requireUser();
@@ -9,7 +12,7 @@ export default async function CalendarioPage() {
   // caricherebbe per sempre tutti gli eventi mai creati.
   const eventsFrom = new Date(new Date().getFullYear() - 1, 0, 1);
 
-  const [calendarUsers, calendarEvents] = await Promise.all([
+  const [calendarUsers, calendarEvents, leaveRequests] = await Promise.all([
     prisma.user.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -32,19 +35,51 @@ export default async function CalendarioPage() {
       },
       orderBy: { startAt: "asc" },
     }),
+    // Stesse assenze che si vedono in Presenze → Tutto il team.
+    prisma.leaveRequest.findMany({
+      where: {
+        status: { not: "rejected" },
+        endDate: { gte: eventsFrom },
+        user: { active: true },
+      },
+      select: {
+        id: true,
+        userId: true,
+        type: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        hours: true,
+        user: { select: { name: true } },
+      },
+      orderBy: { startDate: "asc" },
+    }),
   ]);
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Calendario</h1>
-        <p className="text-sm text-muted-foreground">
-          Riunioni di team, shooting e altri eventi.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1>Calendario</h1>
+          <p className="text-sm text-muted-foreground">
+            Riunioni di team, shooting e altri eventi.
+          </p>
+        </div>
+        <Link
+          href="/presenze?view=generale"
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
+        >
+          <Users />
+          Vedi presenze del team
+        </Link>
       </div>
 
       <CalendarView
         events={calendarEvents}
+        absences={leaveRequests.map(({ user, ...absence }) => ({
+          ...absence,
+          userName: user.name,
+        }))}
         users={calendarUsers}
         currentUserId={user.id}
         isSuperAdmin={user.role === "super_admin"}

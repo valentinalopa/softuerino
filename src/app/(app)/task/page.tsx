@@ -70,7 +70,7 @@ export default async function TaskPage({
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Task</h1>
+          <h1>Task</h1>
           <p className="text-sm text-muted-foreground">
             Assegna e tieni traccia dei task del team.
           </p>

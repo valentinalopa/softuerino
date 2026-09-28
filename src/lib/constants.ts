@@ -23,18 +23,44 @@ export const LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE = {
   partita_iva: { assenzeDaysPerYear: 30 },
 } as const;
 
-export const LEAVE_TYPES = ["ferie", "permesso", "malattia", "assenza"] as const;
+export const LEAVE_TYPES = [
+  "ferie",
+  "permesso",
+  "recupero",
+  "malattia",
+  "assenza",
+  "assenza_extra",
+] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
 
-// Tipi richiedibili dai dipendenti; le partite IVA usano solo "assenza".
-export const DIPENDENTE_LEAVE_TYPES = ["ferie", "permesso", "malattia"] as const;
+// Tipi richiedibili per tipo di rapporto. "recupero" (riposo compensativo,
+// es. dopo una trasferta) e "assenza_extra" (assenza di una partita IVA che
+// non vuole scalarla dal monte) non consumano il monte annuale.
+export const DIPENDENTE_LEAVE_TYPES = ["ferie", "permesso", "recupero", "malattia"] as const;
+export const PARTITA_IVA_LEAVE_TYPES = ["assenza", "assenza_extra"] as const;
+
+export function leaveTypesFor(employmentType: string): readonly LeaveType[] {
+  return employmentType === "partita_iva" ? PARTITA_IVA_LEAVE_TYPES : DIPENDENTE_LEAVE_TYPES;
+}
+
+// Il recupero va motivato (es. "trasferta Milano 12/10"): senza una banca ore
+// la nota è l'unica traccia del perché.
+export const NOTE_REQUIRED_LEAVE_TYPES: readonly LeaveType[] = ["recupero"];
 
 export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   ferie: "Ferie",
   permesso: "Permesso",
+  recupero: "Recupero",
   malattia: "Malattia",
   assenza: "Assenza",
+  assenza_extra: "Assenza extra",
 };
+
+// Pagina di atterraggio dopo il login: il super admin parte dalla Panoramica
+// (vista del team), gli altri dalla propria Dashboard.
+export function homePathFor(role: string) {
+  return role === "super_admin" ? "/panoramica" : "/";
+}
 
 export const LEAVE_STATUSES = [
   "pending",
@@ -90,19 +116,19 @@ export const TASK_STATUSES = [
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  not_started: "Not started",
-  in_progress: "In progress",
+  not_started: "Da iniziare",
+  in_progress: "In corso",
   in_pausa: "In pausa",
-  done: "Done",
+  done: "Completato",
 };
 
 export const TASK_PRIORITIES = ["low", "medium", "high"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
 export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
+  low: "Bassa",
+  medium: "Media",
+  high: "Alta",
 };
 
 // I task "done" vengono eliminati questi giorni dopo il completamento
@@ -111,7 +137,7 @@ export const TASK_DONE_RETENTION_DAYS = 30;
 // --- Clienti ---
 
 // Categorie di servizio del cliente, combinabili (un cliente può essere
-// "incrociato"). "comunicazione" abilita il PED.
+// "incrociato").
 export const CLIENT_CATEGORIES = [
   "comunicazione",
   "it_design",
@@ -135,39 +161,3 @@ export function parseClientCategories(csv: string): ClientCategory[] {
         ) as ClientCategory[])
     : [];
 }
-
-export function clientHasPed(categoriesCsv: string) {
-  return parseClientCategories(categoriesCsv).includes("comunicazione");
-}
-
-// --- PED (piano editoriale) ---
-
-export const PED_STATUSES = [
-  "idea",
-  "in_lavorazione",
-  "programmato",
-  "pubblicato",
-] as const;
-export type PedStatus = (typeof PED_STATUSES)[number];
-
-export const PED_STATUS_LABELS: Record<PedStatus, string> = {
-  idea: "Idea",
-  in_lavorazione: "In lavorazione",
-  programmato: "Programmato",
-  pubblicato: "Pubblicato",
-};
-
-export const PED_SOCIALS = [
-  "instagram",
-  "tiktok",
-  "facebook",
-  "linkedin",
-] as const;
-export type PedSocial = (typeof PED_SOCIALS)[number];
-
-export const PED_SOCIAL_LABELS: Record<PedSocial, string> = {
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  facebook: "Facebook",
-  linkedin: "LinkedIn",
-};

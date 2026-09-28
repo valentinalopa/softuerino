@@ -5,9 +5,6 @@ import { Check, X } from "lucide-react";
 import { updateLeaveStatus } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 
-export const APPROVE_BUTTON_CLASS =
-  "bg-green-500/10 text-green-700 hover:bg-green-500/20 dark:bg-green-500/15 dark:text-green-300 dark:hover:bg-green-500/25";
-
 export function ApproveRejectActions({ requestId }: { requestId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -33,7 +30,7 @@ export function ApproveRejectActions({ requestId }: { requestId: string }) {
           type="button"
           size="sm"
           disabled={pending}
-          className={APPROVE_BUTTON_CLASS}
+          variant="success"
           onClick={() => handle("approved")}
         >
           <Check />
@@ -42,7 +39,7 @@ export function ApproveRejectActions({ requestId }: { requestId: string }) {
         <Button
           type="button"
           size="sm"
-          variant="destructive"
+          variant="destructive-soft"
           disabled={pending}
           onClick={() => handle("rejected")}
         >

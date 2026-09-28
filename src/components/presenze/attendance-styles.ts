@@ -4,42 +4,59 @@ import {
   CalendarOff,
   Clock3,
   Home,
+  CalendarMinus,
   Palmtree,
+  RotateCcw,
   Sunrise,
   Sunset,
   Thermometer,
 } from "lucide-react";
 import { lookupAttendance, type DayEntry } from "@/lib/attendance-utils";
+import { TONE_CHIP } from "@/lib/tones";
 
-export const NEUTRAL_CHIP = "bg-muted text-muted-foreground border-border";
+// Richieste ancora in attesa: neutre, qualunque sia il tipo.
+export const NEUTRAL_CHIP = TONE_CHIP.neutral;
 
 export const LEAVE_STYLES = {
   ferie: {
-    chip: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
+    chip: TONE_CHIP.success,
     title: "Ferie",
     icon: Palmtree,
   },
   malattia: {
-    chip: "bg-rose-500/12 text-rose-700 dark:text-rose-300 border-rose-500/25",
+    chip: TONE_CHIP.danger,
     title: "Malattia",
     icon: Thermometer,
   },
+  // Riposo compensativo (es. dopo una trasferta): non scala il monte.
+  recupero: {
+    chip: TONE_CHIP.teal,
+    title: "Recupero",
+    icon: RotateCcw,
+  },
   // Monte unico delle partite IVA (nessuna distinzione ferie/malattia).
   assenza: {
-    chip: "bg-teal-500/12 text-teal-700 dark:text-teal-300 border-teal-500/25",
+    // Stesso significato delle ferie, per le partite IVA.
+    chip: TONE_CHIP.success,
     title: "Assenza",
     icon: CalendarOff,
+  },
+  // Assenza di una partita IVA fuori dal monte.
+  assenza_extra: {
+    chip: TONE_CHIP.neutral,
+    title: "Assenza extra",
+    icon: CalendarMinus,
   },
 } as const;
 
 export const MODE_STYLES = {
   ufficio: {
-    chip: "bg-sky-500/12 text-sky-800 dark:text-sky-300 border-sky-500/25",
+    chip: TONE_CHIP.aqua,
     title: "Ufficio",
     icon: Building2,
   },
   smartworking: {
-    chip: "bg-violet-500/12 text-violet-700 dark:text-violet-300 border-violet-500/25",
+    chip: TONE_CHIP.accent,
     title: "Smartworking",
     icon: Home,
   },
@@ -50,20 +67,22 @@ export const MODE_STYLES = {
 // "Giornata intera" non genera un blocco orario a sé, il luogo basta.
 export const TIME_STYLES = {
   mattina: {
-    chip: "bg-cyan-500/12 text-cyan-800 dark:text-cyan-300 border-cyan-500/25",
+    chip: TONE_CHIP.neutral,
     title: "Mattina",
     icon: Sunrise,
   },
   pomeriggio: {
-    chip: "bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-500/25",
+    chip: TONE_CHIP.neutral,
     title: "Pomeriggio",
     icon: Sunset,
   },
 } as const;
 
-export const PERMESSO_CHIP =
-  "bg-amber-500/12 text-amber-700 dark:text-amber-300 border-amber-500/25";
-export const PERMESSO_ICON = Clock3;
+// Assenze a ore (un solo giorno): permesso e recupero a ore.
+export const HOURLY_STYLES = {
+  permesso: { chip: TONE_CHIP.warning, title: "Permesso", icon: Clock3 },
+  recupero: { chip: TONE_CHIP.teal, title: "Recupero", icon: RotateCcw },
+} as const;
 
 export type DayCategory = {
   key: string;
@@ -80,9 +99,13 @@ const CATEGORY_ORDER = [
   "pomeriggio",
   "ferie",
   "ferie-pending",
+  "recupero",
+  "recupero-pending",
   "malattia",
   "assenza",
   "assenza-pending",
+  "assenza_extra",
+  "assenza_extra-pending",
   "permesso",
   "permesso-pending",
 ];
@@ -139,11 +162,14 @@ export function buildDayCategories(
       }
     }
 
-    if (entry.permesso) {
-      const pending = entry.permesso.status === "pending";
-      const key = pending ? "permesso-pending" : "permesso";
-      const label = pending ? "Permesso (in attesa)" : "Permesso";
-      add(key, label, pending ? NEUTRAL_CHIP : PERMESSO_CHIP, PERMESSO_ICON, person);
+    if (entry.hourly) {
+      // Stesso blocco del tipo a giornata: "Recupero" raccoglie chi recupera
+      // tutto il giorno e chi solo qualche ora.
+      const style = HOURLY_STYLES[entry.hourly.type];
+      const pending = entry.hourly.status === "pending";
+      const key = pending ? `${entry.hourly.type}-pending` : entry.hourly.type;
+      const label = pending ? `${style.title} (in attesa)` : style.title;
+      add(key, label, pending ? NEUTRAL_CHIP : style.chip, style.icon, person);
     }
   }
 

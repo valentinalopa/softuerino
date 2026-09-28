@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth/session";
+import { getAuthContext } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
+import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
 import type { Role } from "@/lib/constants";
 
 export default async function AppLayout({
@@ -8,14 +10,22 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireUser();
+  // Durante un'impersonificazione `user` è il membro impersonato: sidebar e
+  // pagine si comportano come per lui.
+  const context = await getAuthContext();
+  if (!context) {
+    redirect("/login");
+  }
+  const { user, impersonating } = context;
 
-  // Sottovoci PED in sidebar: i clienti "comunicazione" attivi.
-  const pedClients = await prisma.client.findMany({
-    where: { active: true, categories: { contains: "comunicazione" } },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
+  // Contatore in sidebar delle richieste da approvare (stesso criterio della
+  // pagina /richieste-team: quelle degli altri membri).
+  const teamPendingCount =
+    user.role === "super_admin"
+      ? await prisma.leaveRequest.count({
+          where: { userId: { not: user.id }, status: "pending" },
+        })
+      : 0;
 
   return (
     <div className="flex min-h-screen">
@@ -25,11 +35,14 @@ export default async function AppLayout({
           email: user.email,
           role: user.role as Role,
         }}
-        pedClients={pedClients}
+        teamPendingCount={teamPendingCount}
       />
-      <main className="min-w-0 flex-1 overflow-x-hidden px-6 py-8 md:px-10">
-        <div className="mx-auto w-full max-w-5xl">{children}</div>
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {impersonating && <ImpersonationBanner userName={user.name} />}
+        <main className="min-w-0 flex-1 overflow-x-hidden px-6 py-8 md:px-10">
+          <div className="mx-auto w-full max-w-5xl">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }

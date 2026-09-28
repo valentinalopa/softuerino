@@ -2,11 +2,10 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { getLeaveBalance } from "@/lib/leave-balance";
-import { buildHoursByClientByMonth } from "@/lib/panoramica-utils";
 import { formatDayMonth, formatTime } from "@/lib/calendar-utils";
+import { formatRange } from "@/lib/leave-format";
 import { eventTypeStyle } from "@/components/calendar/types";
 import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS } from "@/lib/constants";
-import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -15,66 +14,28 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const DASHBOARD_CHART_MONTHS = 6;
-
 export default async function Home() {
   const user = await requireUser();
-  const isSuperAdmin = user.role === "super_admin";
-
-  const [balance, pendingRequests, upcomingEvents, hoursByClientByMonth] =
-    await Promise.all([
-      getLeaveBalance(user.id, user.employmentType as "dipendente" | "partita_iva"),
-      prisma.leaveRequest.findMany({
-        where: {
-          status: "pending",
-          ...(isSuperAdmin ? {} : { userId: user.id }),
-        },
-        include: { user: { select: { id: true, name: true } } },
-        orderBy: { startDate: "asc" },
-        take: 5,
-      }),
-      prisma.calendarEvent.findMany({
-        where: { startAt: { gte: new Date() } },
-        orderBy: { startAt: "asc" },
-        take: 5,
-      }),
-      isSuperAdmin
-        ? prisma.timeEntry
-            .findMany({
-              where: {
-                date: {
-                  gte: new Date(
-                    new Date().getFullYear(),
-                    new Date().getMonth() - (DASHBOARD_CHART_MONTHS - 1),
-                    1
-                  ),
-                },
-              },
-              select: {
-                date: true,
-                hours: true,
-                clientId: true,
-                client: { select: { name: true } },
-              },
-            })
-            .then((entries) =>
-              buildHoursByClientByMonth(
-                entries.map((entry) => ({
-                  date: entry.date,
-                  hours: entry.hours,
-                  clientId: entry.clientId,
-                  clientName: entry.client.name,
-                })),
-                DASHBOARD_CHART_MONTHS
-              )
-            )
-        : Promise.resolve(null),
-    ]);
+  // Dashboard personale, identica per tutti (super admin compreso): la
+  // gestione del team vive nelle pagine di Amministrazione.
+  const [balance, pendingRequests, upcomingEvents] = await Promise.all([
+    getLeaveBalance(user.id, user.employmentType as "dipendente" | "partita_iva"),
+    prisma.leaveRequest.findMany({
+      where: { status: "pending", userId: user.id },
+      orderBy: { startDate: "asc" },
+      take: 5,
+    }),
+    prisma.calendarEvent.findMany({
+      where: { startAt: { gte: new Date() } },
+      orderBy: { startAt: "asc" },
+      take: 5,
+    }),
+  ]);
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1>Dashboard</h1>
         <p className="text-sm text-muted-foreground">
           Ciao {user.name}, ecco il tuo riepilogo.
         </p>
@@ -116,7 +77,7 @@ export default async function Home() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>
-              {isSuperAdmin ? "Richieste in attesa" : "Le tue richieste in attesa"}
+              Le tue richieste in attesa
             </CardTitle>
             <Link
               href="/richieste"
@@ -132,11 +93,13 @@ export default async function Home() {
                   key={request.id}
                   className="flex items-center justify-between border-b pb-2 last:border-0"
                 >
-                  <span>{request.user.name}</span>
-                  <span className="text-muted-foreground">
+                  <span>
                     {LEAVE_TYPE_LABELS[
                       request.type as keyof typeof LEAVE_TYPE_LABELS
                     ] ?? request.type}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {formatRange(request.startDate, request.endDate)}
                   </span>
                 </li>
               ))}
@@ -170,7 +133,7 @@ export default async function Home() {
                       {formatDayMonth(event.startAt)} · {formatTime(event.startAt)}
                     </p>
                   </div>
-                  <Badge variant="outline" className={eventTypeStyle(event.type).chip}>
+                  <Badge variant={eventTypeStyle(event.type).tone}>
                     {EVENT_TYPE_LABELS[
                       event.type as keyof typeof EVENT_TYPE_LABELS
                     ] ?? event.type}
@@ -185,25 +148,6 @@ export default async function Home() {
         </Card>
       </div>
 
-      {isSuperAdmin && hoursByClientByMonth && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Ore per cliente</CardTitle>
-            <Link
-              href="/panoramica"
-              className="text-xs text-muted-foreground hover:underline"
-            >
-              Vedi panoramica
-            </Link>
-          </CardHeader>
-          <CardContent>
-            <HoursByClientChart
-              rows={hoursByClientByMonth.rows}
-              clients={hoursByClientByMonth.clients}
-            />
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

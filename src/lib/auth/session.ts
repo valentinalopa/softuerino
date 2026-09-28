@@ -41,7 +41,7 @@ export const getSession = cache(async () => {
 
   const session = await prisma.session.findUnique({
     where: { token: hashToken(token) },
-    include: { user: true },
+    include: { user: true, impersonatedUser: true },
   });
 
   if (!session || session.expiresAt < new Date()) {
@@ -51,12 +51,49 @@ export const getSession = cache(async () => {
   return session;
 });
 
-export async function requireUser() {
+// Chi sta davvero usando l'app (realUser) e per conto di chi la sta vedendo
+// (user). Coincidono, tranne quando un super admin impersona un membro: allora
+// `user` è il membro e tutte le pagine si comportano come per lui.
+// L'impersonificazione vale solo se fatta da un super admin verso un membro
+// attivo che non sia a sua volta super admin.
+export const getAuthContext = cache(async () => {
   const session = await getSession();
-  if (!session || !session.user.active) {
+  if (!session || !session.user.active) return null;
+
+  const realUser = session.user;
+  const target = session.impersonatedUser;
+  const impersonating =
+    realUser.role === "super_admin" &&
+    target !== null &&
+    target.active &&
+    target.role !== "super_admin";
+
+  return {
+    realUser,
+    user: impersonating ? target : realUser,
+    impersonating,
+  };
+});
+
+// Per le azioni di scrittura: durante un'impersonificazione l'app è in sola
+// lettura, quindi restituisce null e l'azione deve rifiutarsi. Va usata in
+// ogni server action che modifica dati (le azioni solo super admin sono già
+// bloccate da requireSuperAdmin, perché l'utente effettivo è un membro).
+export async function requireWritableUser() {
+  const context = await getAuthContext();
+  if (!context) {
     redirect("/login");
   }
-  return session.user;
+  return context.impersonating ? null : context.user;
+}
+
+// L'utente "effettivo": durante un'impersonificazione è il membro impersonato.
+export async function requireUser() {
+  const context = await getAuthContext();
+  if (!context) {
+    redirect("/login");
+  }
+  return context.user;
 }
 
 export async function requireSuperAdmin() {
@@ -65,6 +102,42 @@ export async function requireSuperAdmin() {
     redirect("/");
   }
   return user;
+}
+
+// Avvia (targetUserId) o chiude (null) l'impersonificazione sulla sessione
+// corrente, annotandola nel registro. Il controllo dei permessi (solo super
+// admin, verso un membro attivo non super admin) sta nella server action che
+// la chiama.
+export async function setImpersonation(targetUserId: string | null) {
+  const session = await getSession();
+  if (!session) return;
+
+  await prisma.$transaction([
+    prisma.session.update({
+      where: { id: session.id },
+      data: { impersonatedUserId: targetUserId },
+    }),
+    // Chiude un'eventuale voce ancora aperta per questa sessione.
+    closeImpersonationLogs(session.id),
+    ...(targetUserId
+      ? [
+          prisma.impersonationLog.create({
+            data: {
+              adminId: session.userId,
+              targetUserId,
+              sessionId: session.id,
+            },
+          }),
+        ]
+      : []),
+  ]);
+}
+
+function closeImpersonationLogs(sessionId: string) {
+  return prisma.impersonationLog.updateMany({
+    where: { sessionId, endedAt: null },
+    data: { endedAt: new Date() },
+  });
 }
 
 // Revoca le sessioni di un utente dopo un cambio password: tutte, oppure
@@ -81,12 +154,21 @@ export async function revokeSessions(
     currentTokenHash = token ? hashToken(token) : undefined;
   }
 
-  await prisma.session.deleteMany({
-    where: {
-      userId,
-      ...(currentTokenHash ? { token: { not: currentTokenHash } } : {}),
-    },
-  });
+  const where = {
+    userId,
+    ...(currentTokenHash ? { token: { not: currentTokenHash } } : {}),
+  };
+  const sessions = await prisma.session.findMany({ where, select: { id: true } });
+  const sessionIds = sessions.map((session) => session.id);
+
+  await prisma.$transaction([
+    // Le impersonificazioni in corso su queste sessioni finiscono con loro.
+    prisma.impersonationLog.updateMany({
+      where: { sessionId: { in: sessionIds }, endedAt: null },
+      data: { endedAt: new Date() },
+    }),
+    prisma.session.deleteMany({ where: { id: { in: sessionIds } } }),
+  ]);
 }
 
 export async function destroySession() {
@@ -94,7 +176,17 @@ export async function destroySession() {
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (token) {
-    await prisma.session.deleteMany({ where: { token: hashToken(token) } });
+    // Il logout chiude anche un'impersonificazione in corso nel registro.
+    const session = await prisma.session.findUnique({
+      where: { token: hashToken(token) },
+      select: { id: true },
+    });
+    if (session) {
+      await prisma.$transaction([
+        closeImpersonationLogs(session.id),
+        prisma.session.delete({ where: { id: session.id } }),
+      ]);
+    }
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);

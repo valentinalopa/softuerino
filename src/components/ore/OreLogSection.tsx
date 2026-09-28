@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TONE_TEXT } from "@/lib/tones";
 import { Pencil } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { appendQuery } from "@/lib/utils";
@@ -96,7 +97,7 @@ async function SummaryView({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-3">
-      <h2 className="text-lg font-semibold">Report mensile ore</h2>
+      <h2>Report mensile ore</h2>
       <Card>
         <CardContent>
           <MonthlySummaryTable rows={rows} />
@@ -193,14 +194,14 @@ async function DailyView({
       />
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold capitalize">
+        <h2 className="capitalize">
           {formatFullDateNoYear(selectedDate)}
         </h2>
         <span
           className={
             alreadyLogged
-              ? "text-sm font-medium text-emerald-600 dark:text-emerald-400"
-              : "text-sm font-medium text-rose-600 dark:text-rose-400"
+              ? `text-sm font-medium ${TONE_TEXT.success}`
+              : `text-sm font-medium ${TONE_TEXT.danger}`
           }
         >
           {alreadyLogged

@@ -3,64 +3,17 @@ import {
   LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE,
   type EmploymentType,
 } from "@/lib/constants";
-
-export function daysBetweenInclusive(startDate: Date, endDate: Date) {
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const start = Date.UTC(
-    startDate.getFullYear(),
-    startDate.getMonth(),
-    startDate.getDate()
-  );
-  const end = Date.UTC(
-    endDate.getFullYear(),
-    endDate.getMonth(),
-    endDate.getDate()
-  );
-  return Math.round((end - start) / msPerDay) + 1;
-}
-
-// Giorni conteggiati ai fini dei monti ferie/malattia/assenze: si lavora
-// lun-ven, quindi sabati e domeniche non vengono scalati. I festivi non sono
-// gestiti (servirebbe un calendario festività).
-export function countedLeaveDays(startDate: Date, endDate: Date) {
-  let count = 0;
-  const d = new Date(
-    startDate.getFullYear(),
-    startDate.getMonth(),
-    startDate.getDate()
-  );
-  const end = new Date(
-    endDate.getFullYear(),
-    endDate.getMonth(),
-    endDate.getDate()
-  );
-  while (d <= end) {
-    if (d.getDay() !== 0 && d.getDay() !== 6) count++;
-    d.setDate(d.getDate() + 1);
-  }
-  return count;
-}
-
-// Conta solo i giorni della richiesta che ricadono dentro [rangeStart, rangeEnd]:
-// una richiesta a cavallo di due anni (es. 28/12 -> 05/01) va spalmata sui due
-// anni invece di essere interamente contata su uno solo.
-export function clippedDaysInRange(
-  startDate: Date,
-  endDate: Date,
-  rangeStart: Date,
-  rangeEnd: Date
-) {
-  const clippedStart = startDate < rangeStart ? rangeStart : startDate;
-  const clippedEnd = endDate > rangeEnd ? rangeEnd : endDate;
-  if (clippedEnd < clippedStart) return 0;
-  return countedLeaveDays(clippedStart, clippedEnd);
-}
+import { clippedDaysInRange } from "@/lib/leave-days";
 
 export type LeaveTally = {
   ferieUsed: number;
   permessoUsed: number;
   malattiaDays: number;
   assenzaDays: number;
+  // Fuori monte: contati solo per le statistiche, non scalano il saldo.
+  recuperoDays: number;
+  recuperoHours: number;
+  assenzaExtraDays: number;
 };
 
 type TallyableRequest = {
@@ -82,20 +35,39 @@ export function tallyLeave(
   let permessoUsed = 0;
   let malattiaDays = 0;
   let assenzaDays = 0;
+  let recuperoDays = 0;
+  let recuperoHours = 0;
+  let assenzaExtraDays = 0;
 
   for (const request of requests) {
     if (request.type === "ferie" && request.status === "approved") {
       ferieUsed += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
     } else if (request.type === "permesso" && request.status === "approved") {
       permessoUsed += request.hours ?? 0;
-    } else if (request.type === "malattia") {
+    } else if (request.type === "malattia" && request.status === "registrata") {
       malattiaDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
     } else if (request.type === "assenza" && request.status === "approved") {
       assenzaDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
+    } else if (request.type === "recupero" && request.status === "approved") {
+      if (request.hours !== null) {
+        recuperoHours += request.hours;
+      } else {
+        recuperoDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
+      }
+    } else if (request.type === "assenza_extra" && request.status === "approved") {
+      assenzaExtraDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
     }
   }
 
-  return { ferieUsed, permessoUsed, malattiaDays, assenzaDays };
+  return {
+    ferieUsed,
+    permessoUsed,
+    malattiaDays,
+    assenzaDays,
+    recuperoDays,
+    recuperoHours,
+    assenzaExtraDays,
+  };
 }
 
 // Dipendenti: ferie (giorni) + permessi (ore) + malattia senza tetto.

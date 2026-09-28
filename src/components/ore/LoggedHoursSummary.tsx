@@ -6,7 +6,7 @@ export function LoggedHoursSummary({
   entries: { clientName: string; hours: number }[];
 }) {
   return (
-    <div className="divide-y overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="divide-y overflow-hidden surface">
       {entries.map((entry, i) => (
         <div
           key={`${entry.clientName}-${i}`}
