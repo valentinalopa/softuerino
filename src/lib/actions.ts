@@ -743,6 +743,17 @@ export async function saveDailyTimeEntries(formData: FormData) {
     .map((clientId, i) => ({ clientId, hours: Number(hoursRaw[i]) }))
     .filter((e) => e.clientId && Number.isFinite(e.hours) && e.hours > 0);
 
+  // Una giornata già registrata la corregge solo il super admin (dalla scheda
+  // membro): il form la nasconde, ma il vincolo va garantito anche qui.
+  if (user.role !== "super_admin") {
+    const alreadyLogged = await prisma.timeEntry.count({
+      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
+    });
+    if (alreadyLogged > 0) {
+      return { error: "Questa giornata è già registrata" };
+    }
+  }
+
   await prisma.$transaction([
     prisma.timeEntry.deleteMany({
       where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
@@ -761,6 +772,7 @@ export async function saveDailyTimeEntries(formData: FormData) {
   ]);
 
   revalidatePath("/ore");
+  revalidatePath(`/team/${targetUserId}`);
   revalidatePath("/");
 }
 

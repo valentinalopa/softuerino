@@ -18,11 +18,12 @@ export default async function OrePage({
         </p>
       </div>
 
-      {/* Pagina personale: il log ore degli altri membri si consulta e
-          modifica dalla loro scheda in /team/[id]. */}
+      {/* Pagina personale, identica per tutti (super admin compreso): una
+          giornata registrata non si modifica da qui. Le correzioni si fanno
+          dalla scheda membro in /team/[id]. */}
       <OreLogSection
         userId={user.id}
-        canEdit={user.role === "super_admin"}
+        canEdit={false}
         basePath="/ore"
         params={params}
       />
