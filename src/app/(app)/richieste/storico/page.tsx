@@ -44,6 +44,7 @@ export default async function StoricoRichiestePage() {
           <LeaveRequestsTable
             requests={pastRequests}
             showMember
+            showActions
             emptyMessage="Nessuna richiesta passata."
           />
         </CardContent>

@@ -88,7 +88,7 @@ export function tallyLeave(
       ferieUsed += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
     } else if (request.type === "permesso" && request.status === "approved") {
       permessoUsed += request.hours ?? 0;
-    } else if (request.type === "malattia") {
+    } else if (request.type === "malattia" && request.status === "registrata") {
       malattiaDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
     } else if (request.type === "assenza" && request.status === "approved") {
       assenzaDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);

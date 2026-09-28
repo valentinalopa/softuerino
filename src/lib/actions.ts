@@ -325,16 +325,83 @@ export async function updateLeaveStatus(
 ): Promise<ActionResult> {
   await requireSuperAdmin();
 
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: { type: true, userId: true },
+  });
+  if (!request) {
+    return { error: "Richiesta non trovata" };
+  }
+
+  // La malattia non si "approva": una malattia riportata in attesa e poi
+  // confermata torna "registrata", come quando nasce.
+  const nextStatus =
+    status === "approved" && request.type === "malattia" ? "registrata" : status;
+
   // updateMany invece di update: se la richiesta non è più pending (es. già
   // gestita da un altro admin) non deve esplodere con P2025, solo non fare nulla.
   const updated = await prisma.leaveRequest.updateMany({
     where: { id: requestId, status: "pending" },
-    data: { status },
+    data: { status: nextStatus },
   });
   if (updated.count === 0) {
     return { error: "Richiesta già gestita o non più in attesa" };
   }
+  revalidateLeavePaths(request.userId);
+}
+
+// Il super admin può sempre riportare in attesa una richiesta già decisa
+// (approvata, rifiutata o malattia registrata) per ridecidere. Il dipendente
+// non può fare nulla sulla richiesta.
+export async function revertLeaveToPending(requestId: string): Promise<ActionResult> {
+  await requireSuperAdmin();
+
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: { userId: true, status: true, startDate: true, endDate: true },
+  });
+  if (!request) {
+    return { error: "Richiesta non trovata" };
+  }
+  if (request.status === "pending") {
+    return { error: "La richiesta è già in attesa" };
+  }
+
+  // Una richiesta rifiutata non occupa le date: nel frattempo il membro può
+  // averne fatta un'altra sugli stessi giorni. Riportarla in attesa creerebbe
+  // una sovrapposizione, quindi la blocchiamo.
+  if (request.status === "rejected") {
+    const overlapping = await prisma.leaveRequest.findFirst({
+      where: {
+        id: { not: requestId },
+        userId: request.userId,
+        status: { not: "rejected" },
+        startDate: { lte: request.endDate },
+        endDate: { gte: request.startDate },
+      },
+    });
+    if (overlapping) {
+      return {
+        error:
+          "Il membro ha già un'altra richiesta su queste date: non è possibile riportarla in attesa",
+      };
+    }
+  }
+
+  const updated = await prisma.leaveRequest.updateMany({
+    where: { id: requestId, status: { not: "pending" } },
+    data: { status: "pending" },
+  });
+  if (updated.count === 0) {
+    return { error: "La richiesta è già in attesa" };
+  }
+  revalidateLeavePaths(request.userId);
+}
+
+function revalidateLeavePaths(userId: string) {
   revalidatePath("/richieste");
+  revalidatePath("/richieste/storico");
+  revalidatePath(`/team/${userId}`);
   revalidatePath("/");
 }
 

@@ -2,6 +2,7 @@ import { LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, type LeaveStatus } from "@/lib/
 import { formatDate, formatRange, formatDuration, type LeaveRequestRow } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
+import { RevertToPendingAction } from "@/components/richieste/RevertToPendingAction";
 import {
   Table,
   TableBody,
@@ -73,9 +74,12 @@ export function LeaveRequestsTable({
             </TableCell>
             <TableCell className="text-muted-foreground">{formatDate(request.createdAt)}</TableCell>
             <TableCell className="text-right">
-              {showActions && request.status === "pending" && (
-                <ApproveRejectActions requestId={request.id} />
-              )}
+              {showActions &&
+                (request.status === "pending" ? (
+                  <ApproveRejectActions requestId={request.id} />
+                ) : (
+                  <RevertToPendingAction requestId={request.id} />
+                ))}
             </TableCell>
           </TableRow>
         ))}
