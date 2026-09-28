@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Marchio } from "@/components/brand/Marchio";
 import { cn } from "@/lib/utils";
+import { TONE_DOT, TONE_SOFT } from "@/lib/tones";
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -59,7 +60,7 @@ const SUPER_ADMIN_LINKS = [
 
 // Voce di navigazione — DS Sidebar: 14px, padding 10px, raggio 10px.
 const NAV_ITEM =
-  "flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm transition-colors duration-[120ms] ease-ds";
+  "flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm transition-colors duration-ds ease-ds";
 const NAV_ITEM_ACTIVE =
   "bg-sidebar-accent font-semibold text-sidebar-accent-foreground";
 const NAV_ITEM_IDLE =
@@ -107,7 +108,7 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-[280ms] ease-ds",
+        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-ds-slow ease-ds",
         collapsed ? "w-[72px]" : "w-[248px]",
         !ready && "transition-none"
       )}
@@ -128,7 +129,7 @@ export function AppSidebar({
         >
           <Marchio className={collapsed ? "h-6" : "h-[26px]"} />
           {!collapsed && (
-            <span className="truncate font-display text-lg leading-7 text-foreground">
+            <span className="truncate font-heading text-lg leading-7 font-semibold text-foreground">
               Softuerino
             </span>
           )}
@@ -137,7 +138,7 @@ export function AppSidebar({
           type="button"
           onClick={toggle}
           title={collapsed ? "Espandi" : "Comprimi"}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-[120ms] hover:bg-subtle hover:text-foreground"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-ds hover:bg-subtle hover:text-foreground"
         >
           <PanelLeft className="size-4" />
         </button>
@@ -150,7 +151,7 @@ export function AppSidebar({
               <div className="mx-2 mb-2 border-t border-sidebar-border" aria-hidden="true" />
             )}
             {section.label && !collapsed && (
-              <div className="px-2 pb-1 text-xs leading-4 font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+              <div className="px-2 pb-1 text-xs leading-4 font-semibold tracking-label text-muted-foreground uppercase">
                 {section.label}
               </div>
             )}
@@ -175,10 +176,10 @@ export function AppSidebar({
                   )}
                 >
                   <span className="relative flex shrink-0">
-                    <Icon className="size-[18px]" strokeWidth={1.5} />
+                    <Icon className="size-4.5" strokeWidth={1.5} />
                     {collapsed && badge > 0 && (
                       <span
-                        className="absolute -top-1 -right-1 size-2 rounded-full bg-amber-500"
+                        className={`absolute -top-1 -right-1 size-2 rounded-full ${TONE_DOT.warning}`}
                         aria-hidden="true"
                       />
                     )}
@@ -186,7 +187,7 @@ export function AppSidebar({
                   {!collapsed && <span className="truncate">{link.label}</span>}
                   {!collapsed && badge > 0 && (
                     <span
-                      className="ml-auto rounded-full bg-amber-500/15 px-1.5 text-xs leading-5 font-semibold text-amber-700 dark:text-amber-300"
+                      className={`ml-auto rounded-full px-1.5 text-xs leading-5 font-semibold ${TONE_SOFT.warning}`}
                       aria-label={`${badge} in attesa`}
                     >
                       {badge}
@@ -208,7 +209,7 @@ export function AppSidebar({
         <DropdownMenu>
           <DropdownMenuTrigger
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-[120ms] hover:bg-subtle",
+              "flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-ds hover:bg-subtle",
               collapsed && "justify-center"
             )}
             title={collapsed ? currentUser.name : undefined}

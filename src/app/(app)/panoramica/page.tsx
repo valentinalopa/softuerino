@@ -9,7 +9,7 @@ import {
 } from "@/lib/panoramica-utils";
 import { formatRange } from "@/lib/leave-format";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
-import { NotificationCard } from "@/components/richieste/NotificationCard";
+import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
@@ -79,10 +79,7 @@ export default async function PanoramicaPage() {
           title={`${teamPendingCount} richiest${teamPendingCount === 1 ? "a" : "e"} da approvare`}
         >
           {teamPending.map((request) => (
-            <li
-              key={request.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/15 pb-2 last:border-0 last:pb-0"
-            >
+            <NotificationItem key={request.id}>
               <span>
                 <span className="font-medium">{request.user.name}</span>{" "}
                 <span className="text-muted-foreground">
@@ -92,7 +89,7 @@ export default async function PanoramicaPage() {
                 </span>
               </span>
               <ApproveRejectActions requestId={request.id} />
-            </li>
+            </NotificationItem>
           ))}
           <li className="pt-1">
             <Link href="/richieste-team" className="text-xs text-muted-foreground hover:underline">

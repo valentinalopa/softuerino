@@ -38,7 +38,7 @@ export function MonthNav({
           <ChevronRight className="size-4" />
         </Link>
       </div>
-      <h2 className="text-lg font-semibold capitalize">{monthLabel}</h2>
+      <h2 className="capitalize">{monthLabel}</h2>
     </div>
   );
 }

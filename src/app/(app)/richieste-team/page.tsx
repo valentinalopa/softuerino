@@ -6,7 +6,7 @@ import { formatRange } from "@/lib/leave-format";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
-import { NotificationCard } from "@/components/richieste/NotificationCard";
+import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -61,10 +61,7 @@ export default async function RichiesteTeamPage({
           title={`${teamPending.length} richiest${teamPending.length === 1 ? "a" : "e"} in attesa di approvazione`}
         >
           {teamPending.map((request) => (
-            <li
-              key={request.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/15 pb-2 last:border-0 last:pb-0"
-            >
+            <NotificationItem key={request.id}>
               <span>
                 <span className="font-medium">{request.user.name}</span>{" "}
                 <span className="text-muted-foreground">
@@ -74,7 +71,7 @@ export default async function RichiesteTeamPage({
                 </span>
               </span>
               <ApproveRejectActions requestId={request.id} />
-            </li>
+            </NotificationItem>
           ))}
         </NotificationCard>
       )}

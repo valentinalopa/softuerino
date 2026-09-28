@@ -9,10 +9,10 @@
    shadcn, così i componenti in src/components/ui li ereditano. */
 
 @theme inline {
-  /* Clash Grotesk (body/UI) e Anton (titoli) arrivano da next/font in layout.tsx */
+  /* Clash Grotesk arriva da next/font in layout.tsx ed è l'unico font: testo,
+     UI e titoli. */
   --font-sans: var(--font-clash), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: var(--font-sans);
-  --font-display: var(--font-anton), var(--font-clash), Impact, sans-serif;
   --font-serif: var(--font-sans);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
@@ -55,6 +55,48 @@
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-active: var(--destructive-active);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-secondary-active: var(--secondary-active);
+  --color-primary-border: var(--primary-border);
+  --color-overlay: var(--overlay);
+  --color-input-focus: var(--input-focus);
+  --color-disabled-foreground: var(--disabled-foreground);
+  --color-surface-border: var(--surface-border);
+
+  /* Toni semantici e di categoria: ognuno ha un colore pieno (punti,
+     bordi), un fondo tenue e il testo da usare su quel fondo. Badge, chip e
+     messaggi di stato li prendono da qui, mai dalla palette grezza. */
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-soft-foreground: var(--success-soft-foreground);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-soft-foreground: var(--warning-soft-foreground);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-soft-foreground: var(--danger-soft-foreground);
+  --color-aqua: var(--aqua);
+  --color-aqua-soft: var(--aqua-soft);
+  --color-aqua-soft-foreground: var(--aqua-soft-foreground);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
+  --color-teal-soft-foreground: var(--teal-soft-foreground);
+  --color-neutral-tone: var(--neutral-tone);
+  --color-neutral-soft: var(--neutral-soft);
+  --color-neutral-soft-foreground: var(--neutral-soft-foreground);
+
+  /* Testi molto piccoli per le griglie di calendario (chip degli eventi). */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+  --text-3xs: 10px;
+  --text-3xs--line-height: 12px;
+  --text-4xs: 8px; /* iniziali negli avatar minuscoli */
+  --text-4xs--line-height: 10px;
+
+  /* Etichette maiuscole (intestazioni tabella, sezioni sidebar). */
+  --tracking-label: 0.04em;
 
   /* Radii — base 10px (controlli), 14px (card), 20px (superfici), pill */
   --radius-sm: 6px;
@@ -231,6 +273,35 @@
   --sidebar-border: #f1f5f9;
   --sidebar-ring: #c5c3f9;
 
+  --secondary-hover: #68b8c6; /* aqua-600 */
+  --secondary-active: #5196a2; /* aqua-700 */
+  --primary-border: #c5c3f9; /* accent-200 — bordo dei pulsanti outline */
+  --destructive-hover: #dc2626;
+  --destructive-active: #b91c1c;
+  --overlay: rgba(17, 24, 38, 0.45); /* neutral-900 al 45%: sotto dialog e sheet */
+  --input-focus: #8a88f2; /* accent-400 — bordo dei campi a fuoco */
+  --disabled-foreground: #94a3b7; /* neutral-400 */
+  --surface-border: rgba(17, 24, 38, 0.1); /* bordino unico di card, calendari, popup */
+
+  --success: #22c55e;
+  --success-soft: #ecfdf3;
+  --success-soft-foreground: #15803d;
+  --warning: #f59e0b;
+  --warning-soft: #fffbeb;
+  --warning-soft-foreground: #b45309;
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+  --danger-soft-foreground: #b91c1c;
+  --aqua: #80dae9; /* secondary aqua 500 */
+  --aqua-soft: #e6f8fb; /* aqua-100 */
+  --aqua-soft-foreground: #39757f; /* aqua-800 */
+  --teal: #2e98a5; /* brand teal */
+  --teal-soft: #e7f4f6;
+  --teal-soft-foreground: #1f6b74;
+  --neutral-tone: #94a3b7; /* neutral-400 */
+  --neutral-soft: #f1f5f9; /* neutral-100 */
+  --neutral-soft-foreground: #334154; /* neutral-700 */
+
   --ds-shadow-xs: 0 1px 2px rgba(17, 24, 38, 0.04);
   --ds-shadow-sm: 0 2px 8px rgba(17, 24, 38, 0.06);
   --ds-shadow-md: 0 8px 24px rgba(17, 24, 38, 0.07);
@@ -282,6 +353,35 @@
   --sidebar-border: #1e293a;
   --sidebar-ring: #2f2d7a;
 
+  --secondary-hover: #99e1ed; /* aqua-400 */
+  --secondary-active: #b3e9f2; /* aqua-300 */
+  --primary-border: #2f2d7a; /* accent-800 */
+  --destructive-hover: #f87171;
+  --destructive-active: #fca5a5;
+  --overlay: rgba(0, 0, 0, 0.55);
+  --input-focus: #8a88f2;
+  --disabled-foreground: #64748a; /* neutral-500 */
+  --surface-border: rgba(241, 245, 249, 0.1);
+
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.15);
+  --success-soft-foreground: #86efac;
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.15);
+  --warning-soft-foreground: #fcd34d;
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.15);
+  --danger-soft-foreground: #fca5a5;
+  --aqua: #80dae9;
+  --aqua-soft: rgba(128, 218, 233, 0.15);
+  --aqua-soft-foreground: #b3e9f2; /* aqua-300 */
+  --teal: #2e98a5;
+  --teal-soft: rgba(46, 152, 165, 0.18);
+  --teal-soft-foreground: #7fd0da;
+  --neutral-tone: #64748a; /* neutral-500 */
+  --neutral-soft: #1e293a; /* neutral-800 */
+  --neutral-soft-foreground: #cbd5e0; /* neutral-300 */
+
   --ds-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
   --ds-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
   --ds-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -299,11 +399,29 @@
   html {
     @apply font-sans;
   }
-  /* Titoli di pagina: Anton 400, 36/40 (DS "Anton — titles") */
+  /* Titoli in Clash Grotesk: h1 = titolo di pagina, h2 = titolo di sezione. */
   h1 {
-    @apply font-display text-4xl leading-10 font-normal text-foreground;
+    @apply font-heading text-3xl leading-9 font-semibold tracking-tight text-foreground;
   }
   h2 {
-    @apply text-foreground;
+    @apply font-heading text-lg leading-7 font-semibold text-foreground;
   }
+}
+
+/* Superficie standard (card, calendari, liste in riquadro): stesso bordino,
+   raggio e ombra ovunque. Card la usa già; per i riquadri costruiti a mano
+   basta la classe `surface`. */
+@utility surface {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--surface-border);
+  background-color: var(--card);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+/* Durate delle transizioni del DS: rapida (hover, stati) e lenta (layout). */
+@utility duration-ds {
+  transition-duration: 120ms;
+}
+@utility duration-ds-slow {
+  transition-duration: 280ms;
 }

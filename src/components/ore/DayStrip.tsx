@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TONE_DOT } from "@/lib/tones";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { appendQuery, cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -44,21 +45,21 @@ export function DayStrip({
           const future = key > todayKey;
 
           const dotClass = logged
-            ? "bg-emerald-500"
+            ? TONE_DOT.success
             : weekend || future
               ? "bg-muted-foreground/30"
-              : "bg-rose-500";
+              : TONE_DOT.danger;
 
           return (
             <Link
               key={key}
               href={appendQuery(basePath, { date: key, window: windowKey })}
               className={cn(
-                "flex min-w-16 flex-1 flex-col items-center gap-1.5 rounded-lg border px-2 py-2 text-center transition-colors hover:bg-muted/40",
+                "flex min-w-16 flex-1 flex-col items-center gap-1.5 rounded-lg border border-surface-border bg-card px-2 py-2 text-center transition-colors duration-ds hover:bg-muted/40",
                 selected && "border-foreground"
               )}
             >
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 {shortDayLabel(day)}
               </span>
               <span className="text-lg font-semibold">{day.getDate()}</span>

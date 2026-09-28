@@ -170,7 +170,7 @@ async function RichiesteTab({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">Richieste e assenze</h2>
+        <h2>Richieste e assenze</h2>
         <NewLeaveRequestDialog
           employmentType={employmentType}
           targetUserId={memberId}

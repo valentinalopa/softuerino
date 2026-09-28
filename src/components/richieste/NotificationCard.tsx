@@ -1,7 +1,8 @@
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Riquadro ambra per ciò che attende un'azione (richieste in attesa).
+// Riquadro per ciò che attende un'azione (richieste in attesa): tono warning.
 export function NotificationCard({
   icon: Icon,
   title,
@@ -12,10 +13,10 @@ export function NotificationCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="bg-amber-500/8 ring-amber-500/25 dark:bg-amber-500/10 dark:ring-amber-500/20">
+    <Card className="border-warning/25 bg-warning-soft">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Icon className="size-4 text-amber-600 dark:text-amber-400" />
+          <Icon className="size-4 text-warning-soft-foreground" />
           {title}
         </CardTitle>
       </CardHeader>
@@ -23,5 +24,25 @@ export function NotificationCard({
         <ul className="space-y-2 text-sm">{children}</ul>
       </CardContent>
     </Card>
+  );
+}
+
+// Riga della lista dentro NotificationCard, con separatore nel tono del riquadro.
+export function NotificationItem({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <li
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-3 border-b border-warning/20 pb-2 last:border-0 last:pb-0",
+        className
+      )}
+    >
+      {children}
+    </li>
   );
 }

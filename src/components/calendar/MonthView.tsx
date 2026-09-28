@@ -30,7 +30,7 @@ export function MonthView({
   const today = new Date();
 
   return (
-    <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="overflow-hidden surface">
       <div className="grid grid-cols-7 border-b bg-muted/40 text-xs font-medium text-muted-foreground">
         {WEEKDAY_LABELS.map((d) => (
           <div key={d} className="px-2 py-2 text-center">
@@ -93,7 +93,7 @@ export function MonthView({
                         }
                       }}
                       className={cn(
-                        "truncate rounded-[0.4rem] border px-1.5 py-0.5 text-[11px]",
+                        "truncate rounded-sm border px-1.5 py-0.5 text-2xs",
                         style.chip
                       )}
                     >
@@ -102,7 +102,7 @@ export function MonthView({
                   );
                 })}
                 {overflow > 0 && (
-                  <span className="px-1.5 text-[11px] text-muted-foreground">
+                  <span className="px-1.5 text-2xs text-muted-foreground">
                     +{overflow} altri
                   </span>
                 )}

@@ -38,7 +38,7 @@ export function Marchio({
       viewBox="0 0 439.15 373.046"
       role="img"
       aria-label={title}
-      className={cn("h-7 w-auto shrink-0 text-neutral-900 dark:text-white", className)}
+      className={cn("h-7 w-auto shrink-0 text-foreground", className)}
     >
       {FACETS.map((facet, index) => (
         <path

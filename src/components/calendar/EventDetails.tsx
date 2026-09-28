@@ -38,7 +38,7 @@ export function EventDetails({
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Badge variant="outline" className={eventTypeStyle(event.type).chip}>
+        <Badge variant={eventTypeStyle(event.type).tone}>
           {EVENT_TYPE_LABELS[event.type as keyof typeof EVENT_TYPE_LABELS] ??
             event.type}
         </Badge>

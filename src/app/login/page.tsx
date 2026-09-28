@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { Marchio } from "@/components/brand/Marchio";
+import { TONE_SOFT } from "@/lib/tones";
 
 export default async function LoginPage({
   searchParams,
@@ -29,7 +30,7 @@ export default async function LoginPage({
         <CardHeader className="gap-3">
           <Marchio className="h-10" />
           <div className="flex flex-col gap-1">
-            <CardTitle className="font-display text-3xl leading-9 font-normal">
+            <CardTitle className="text-3xl leading-9 tracking-tight">
               Softuerino
             </CardTitle>
             <CardDescription>Accedi al gestionale del team.</CardDescription>
@@ -39,7 +40,7 @@ export default async function LoginPage({
           {error && (
             <p
               role="alert"
-              className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/15 dark:text-red-300"
+              className={`mb-4 rounded-xl px-4 py-3 text-sm ${TONE_SOFT.danger}`}
             >
               Email o password non corrette.
             </p>

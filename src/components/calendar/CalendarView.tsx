@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { NewEventDialog } from "./NewEventDialog";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
@@ -20,6 +19,7 @@ import {
   startOfDay,
   startOfWeek,
 } from "@/lib/calendar-utils";
+import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
 
 type ViewMode = "month" | "week" | "day";
 
@@ -94,27 +94,18 @@ export function CalendarView({
               <ChevronRight className="size-4" />
             </Button>
           </div>
-          <h2 className="text-lg font-semibold capitalize">{periodLabel}</h2>
+          <h2 className="capitalize">{periodLabel}</h2>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md border p-0.5">
-            {(Object.keys(VIEW_LABELS) as ViewMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setView(mode)}
-                className={cn(
-                  "rounded-[calc(var(--radius-md)-2px)] px-3 py-1 text-sm transition-colors",
-                  view === mode
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {VIEW_LABELS[mode]}
-              </button>
-            ))}
-          </div>
+          <SegmentedButtonTabs
+            items={(Object.keys(VIEW_LABELS) as ViewMode[]).map((mode) => ({
+              key: mode,
+              label: VIEW_LABELS[mode],
+            }))}
+            value={view}
+            onChange={setView}
+          />
           <NewEventDialog users={users} defaultStart={toDateTimeLocal(current)} />
         </div>
       </div>

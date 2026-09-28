@@ -74,7 +74,7 @@ export function ThemeToggle() {
               "flex flex-1 flex-col items-center gap-2 rounded-md border px-3 py-3 text-sm transition-colors",
               active
                 ? "border-primary bg-primary/5 text-foreground"
-                : "border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                : "border-surface-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             )}
           >
             <Icon className="size-4" />

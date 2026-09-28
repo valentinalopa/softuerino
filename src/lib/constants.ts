@@ -96,19 +96,19 @@ export const TASK_STATUSES = [
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  not_started: "Not started",
-  in_progress: "In progress",
+  not_started: "Da iniziare",
+  in_progress: "In corso",
   in_pausa: "In pausa",
-  done: "Done",
+  done: "Completato",
 };
 
 export const TASK_PRIORITIES = ["low", "medium", "high"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
 export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
+  low: "Bassa",
+  medium: "Media",
+  high: "Alta",
 };
 
 // I task "done" vengono eliminati questi giorni dopo il completamento

@@ -35,12 +35,12 @@ function SheetContent({
     <SheetPrimitive.Portal data-slot="sheet-portal">
       <SheetPrimitive.Backdrop
         data-slot="sheet-overlay"
-        className="fixed inset-0 isolate z-50 bg-neutral-900/45 duration-150 supports-backdrop-filter:backdrop-blur-[2px] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        className="fixed inset-0 isolate z-50 bg-overlay duration-150 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
       />
       <SheetPrimitive.Popup
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-card text-sm text-card-foreground shadow-lg duration-[280ms] ease-ds outline-none sm:rounded-l-2xl",
+          "fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-surface-border bg-card text-sm text-card-foreground shadow-lg duration-ds-slow ease-ds outline-none sm:rounded-l-2xl",
           "data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right",
           className
         )}

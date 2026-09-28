@@ -1,6 +1,7 @@
 import { LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, type LeaveStatus } from "@/lib/constants";
 import { formatDate, formatRange, formatDuration, type LeaveRequestRow } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
+import type { Tone } from "@/lib/tones";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
 import { RevertToPendingAction } from "@/components/richieste/RevertToPendingAction";
 import {
@@ -12,22 +13,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+const STATUS_TONES: Record<LeaveStatus, Tone> = {
+  pending: "warning",
+  approved: "success",
+  rejected: "danger",
+  registrata: "aqua",
+};
+
 export function StatusBadge({ status }: { status: LeaveStatus }) {
-  const styles: Record<LeaveStatus, string> = {
-    pending:
-      "bg-yellow-500/12 text-yellow-700 dark:text-yellow-300 border-yellow-500/25",
-    approved:
-      "bg-green-500/12 text-green-700 dark:text-green-300 border-green-500/25",
-    rejected:
-      "bg-red-500/12 text-red-700 dark:text-red-300 border-red-500/25",
-    registrata:
-      "bg-blue-500/12 text-blue-800 dark:text-blue-300 border-blue-500/25",
-  };
-  return (
-    <Badge variant="outline" className={styles[status]}>
-      {LEAVE_STATUS_LABELS[status]}
-    </Badge>
-  );
+  return <Badge variant={STATUS_TONES[status]}>{LEAVE_STATUS_LABELS[status]}</Badge>;
 }
 
 export function LeaveRequestsTable({

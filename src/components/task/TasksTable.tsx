@@ -1,6 +1,7 @@
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/lib/constants";
 import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
+import type { Tone } from "@/lib/tones";
 import { TaskStatusSelect } from "@/components/task/TaskStatusSelect";
 import { DeleteTaskButton } from "@/components/task/DeleteTaskButton";
 import {
@@ -22,18 +23,14 @@ type TaskRow = {
   assignees: { user: { id: string; name: string } }[];
 };
 
+const PRIORITY_TONES: Record<TaskPriority, Tone> = {
+  low: "neutral",
+  medium: "warning",
+  high: "danger",
+};
+
 export function PriorityBadge({ priority }: { priority: TaskPriority }) {
-  const styles: Record<TaskPriority, string> = {
-    low: "bg-neutral-500/12 text-neutral-700 dark:text-neutral-300 border-neutral-500/25",
-    medium:
-      "bg-yellow-500/12 text-yellow-700 dark:text-yellow-300 border-yellow-500/25",
-    high: "bg-red-500/12 text-red-700 dark:text-red-300 border-red-500/25",
-  };
-  return (
-    <Badge variant="outline" className={styles[priority]}>
-      {TASK_PRIORITY_LABELS[priority]}
-    </Badge>
-  );
+  return <Badge variant={PRIORITY_TONES[priority]}>{TASK_PRIORITY_LABELS[priority]}</Badge>;
 }
 
 export function TasksTable({

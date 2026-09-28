@@ -42,7 +42,7 @@ export function LoginForm() {
             className="absolute inset-y-0 right-0 flex items-center px-3.5 text-muted-foreground transition-colors hover:text-foreground"
             aria-label={showPassword ? "Nascondi password" : "Mostra password"}
           >
-            {showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
+            {showPassword ? <EyeOff className="size-4.5" /> : <Eye className="size-4.5" />}
           </button>
         </div>
       </div>

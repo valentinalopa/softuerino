@@ -39,7 +39,7 @@ export function AttendanceDayContent({
       >
         <Icon className="size-4" />
         <span className="text-xs font-medium">{style.title}</span>
-        {pending && <span className="text-[10px]">In attesa</span>}
+        {pending && <span className="text-3xs">In attesa</span>}
       </div>
     );
   }
@@ -82,7 +82,7 @@ export function AttendanceDayContent({
       {entry.permesso && (
         <div
           className={cn(
-            "flex items-center justify-center gap-1 rounded-[0.4rem] border px-1.5 py-1 text-[11px] font-medium",
+            "flex items-center justify-center gap-1 rounded-sm border px-1.5 py-1 text-2xs font-medium",
             entry.permesso.status === "pending" ? NEUTRAL_CHIP : PERMESSO_CHIP
           )}
         >
@@ -128,7 +128,7 @@ function PresenceBlock({
           onToggle?.();
         }}
         className={cn(
-          "flex flex-1 cursor-pointer flex-col items-start gap-1 rounded-[0.4rem] border px-2 py-1.5 text-left text-xs font-medium outline-none transition-colors hover:brightness-95",
+          "flex flex-1 cursor-pointer flex-col items-start gap-1 rounded-sm border px-2 py-1.5 text-left text-xs font-medium outline-none transition-colors hover:brightness-95",
           style.chip,
           selected && "ring-2 ring-inset ring-primary"
         )}
@@ -141,7 +141,7 @@ function PresenceBlock({
   return (
     <div
       className={cn(
-        "flex flex-1 flex-col items-start gap-1 rounded-[0.4rem] border px-2 py-1.5 text-xs font-medium",
+        "flex flex-1 flex-col items-start gap-1 rounded-sm border px-2 py-1.5 text-xs font-medium",
         style.chip
       )}
     >

@@ -7,7 +7,7 @@ import { formatRange } from "@/lib/leave-format";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { LeaveRequestsTable, StatusBadge } from "@/components/richieste/LeaveRequestsTable";
-import { NotificationCard } from "@/components/richieste/NotificationCard";
+import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
 import { LEAVE_TYPE_LABELS, type EmploymentType } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -65,10 +65,7 @@ export default async function RichiestePage({
           title={`Hai ${ownPending.length} richiest${ownPending.length === 1 ? "a" : "e"} in attesa di risposta`}
         >
           {ownPending.map((request) => (
-            <li
-              key={request.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/15 pb-2 last:border-0 last:pb-0"
-            >
+            <NotificationItem key={request.id}>
               <div className="flex items-center gap-2">
                 <StatusBadge status="pending" />
                 <span>
@@ -78,7 +75,7 @@ export default async function RichiestePage({
               <span className="text-muted-foreground">
                 {formatRange(request.startDate, request.endDate)}
               </span>
-            </li>
+            </NotificationItem>
           ))}
         </NotificationCard>
       )}
@@ -108,7 +105,7 @@ export default async function RichiestePage({
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Le mie richieste</h2>
+        <h2>Le mie richieste</h2>
         <SegmentedLinkTabs
           items={[
             {

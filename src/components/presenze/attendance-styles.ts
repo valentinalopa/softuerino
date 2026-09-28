@@ -10,23 +10,26 @@ import {
   Thermometer,
 } from "lucide-react";
 import { lookupAttendance, type DayEntry } from "@/lib/attendance-utils";
+import { TONE_CHIP } from "@/lib/tones";
 
-export const NEUTRAL_CHIP = "bg-muted text-muted-foreground border-border";
+// Richieste ancora in attesa: neutre, qualunque sia il tipo.
+export const NEUTRAL_CHIP = TONE_CHIP.neutral;
 
 export const LEAVE_STYLES = {
   ferie: {
-    chip: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
+    chip: TONE_CHIP.success,
     title: "Ferie",
     icon: Palmtree,
   },
   malattia: {
-    chip: "bg-rose-500/12 text-rose-700 dark:text-rose-300 border-rose-500/25",
+    chip: TONE_CHIP.danger,
     title: "Malattia",
     icon: Thermometer,
   },
   // Monte unico delle partite IVA (nessuna distinzione ferie/malattia).
   assenza: {
-    chip: "bg-teal-500/12 text-teal-700 dark:text-teal-300 border-teal-500/25",
+    // Stesso significato delle ferie, per le partite IVA.
+    chip: TONE_CHIP.success,
     title: "Assenza",
     icon: CalendarOff,
   },
@@ -34,12 +37,12 @@ export const LEAVE_STYLES = {
 
 export const MODE_STYLES = {
   ufficio: {
-    chip: "bg-sky-500/12 text-sky-800 dark:text-sky-300 border-sky-500/25",
+    chip: TONE_CHIP.aqua,
     title: "Ufficio",
     icon: Building2,
   },
   smartworking: {
-    chip: "bg-violet-500/12 text-violet-700 dark:text-violet-300 border-violet-500/25",
+    chip: TONE_CHIP.accent,
     title: "Smartworking",
     icon: Home,
   },
@@ -50,19 +53,18 @@ export const MODE_STYLES = {
 // "Giornata intera" non genera un blocco orario a sé, il luogo basta.
 export const TIME_STYLES = {
   mattina: {
-    chip: "bg-cyan-500/12 text-cyan-800 dark:text-cyan-300 border-cyan-500/25",
+    chip: TONE_CHIP.teal,
     title: "Mattina",
     icon: Sunrise,
   },
   pomeriggio: {
-    chip: "bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-500/25",
+    chip: TONE_CHIP.neutral,
     title: "Pomeriggio",
     icon: Sunset,
   },
 } as const;
 
-export const PERMESSO_CHIP =
-  "bg-amber-500/12 text-amber-700 dark:text-amber-300 border-amber-500/25";
+export const PERMESSO_CHIP = TONE_CHIP.warning;
 export const PERMESSO_ICON = Clock3;
 
 export type DayCategory = {

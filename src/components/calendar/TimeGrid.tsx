@@ -35,7 +35,7 @@ export function TimeGrid({
   const columns = `56px repeat(${days.length}, minmax(0, 1fr))`;
 
   return (
-    <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="overflow-hidden surface">
       <div
         className="grid border-b bg-muted/40 text-xs"
         style={{ gridTemplateColumns: columns }}
@@ -65,7 +65,7 @@ export function TimeGrid({
             {HOURS.map((h) => (
               <div
                 key={h}
-                className="absolute right-2 -translate-y-2 text-[11px] text-muted-foreground"
+                className="absolute right-2 -translate-y-2 text-2xs text-muted-foreground"
                 style={{ top: h * HOUR_HEIGHT }}
               >
                 {String(h).padStart(2, "0")}:00
@@ -111,7 +111,7 @@ export function TimeGrid({
                       type="button"
                       onClick={() => onSelectEvent(event)}
                       className={cn(
-                        "absolute overflow-hidden rounded-[0.4rem] border px-1.5 py-0.5 text-left text-[11px] leading-tight",
+                        "absolute overflow-hidden rounded-sm border px-1.5 py-0.5 text-left text-2xs leading-tight",
                         style.chip
                       )}
                       style={{
@@ -122,7 +122,7 @@ export function TimeGrid({
                       }}
                     >
                       <span className="font-medium">{event.title}</span>
-                      <span className="block text-[10px] opacity-80">
+                      <span className="block text-3xs opacity-80">
                         {formatTime(event.startAt)}
                       </span>
                     </button>

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { NameEmailFields } from "@/components/form/name-email-fields";
+import { TONE_TEXT } from "@/lib/tones";
 
 type TeamUser = {
   id: string;
@@ -103,7 +104,7 @@ export function EditTeamMemberForm({
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {success && (
-        <p className="text-sm text-emerald-600 dark:text-emerald-400">Modifiche salvate.</p>
+        <p className={`text-sm ${TONE_TEXT.success}`}>Modifiche salvate.</p>
       )}
       <Button type="submit" disabled={pending}>
         {pending ? "Salvataggio..." : "Salva modifiche"}
