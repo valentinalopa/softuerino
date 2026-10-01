@@ -2,6 +2,8 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Niente header "X-Powered-By: Next.js": non serve e rivela lo stack.
+  poweredByHeader: false,
   // Radice esplicita: con un package-lock.json anche nella home, Next la
   // sceglieva come root e il watcher perdeva le modifiche a globals.css.
   turbopack: {
