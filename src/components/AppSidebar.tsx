@@ -20,6 +20,9 @@ import {
   Inbox,
   Mail,
   RefreshCw,
+  Cloud,
+  ExternalLink,
+  type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
 import { ROLE_LABELS, homePathFor, isAdminRole, type Role } from "@/lib/constants";
@@ -41,19 +44,23 @@ function getInitials(name: string) {
   return initials.join("") || "?";
 }
 
-const COMMON_LINKS = [
+// external: sito esterno (es. il cloud aziendale), aperto in una nuova scheda.
+type NavLink = { href: string; label: string; icon: LucideIcon; external?: boolean };
+
+const COMMON_LINKS: NavLink[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/richieste", label: "Giorni off", icon: ClipboardCheck },
   { href: "/presenze", label: "Presenze", icon: Clock3 },
   { href: "/ore", label: "Log ore", icon: Timer },
 ];
 
-const OPERATIVITA_LINKS = [
+const OPERATIVITA_LINKS: NavLink[] = [
   { href: "/calendario", label: "Calendario", icon: CalendarDays },
   { href: "/task", label: "Task", icon: ListTodo },
+  { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true },
 ];
 
-const ADMIN_LINKS = [
+const ADMIN_LINKS: NavLink[] = [
   { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
   { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
   { href: "/team", label: "Team", icon: Users },
@@ -61,7 +68,7 @@ const ADMIN_LINKS = [
 ];
 
 // Operazioni di sistema: solo super admin.
-const SYSTEM_LINKS = [
+const SYSTEM_LINKS: NavLink[] = [
   { href: "/impostazioni/aggiornamenti", label: "Aggiornamenti", icon: RefreshCw },
   { href: "/impostazioni/email", label: "Email", icon: Mail },
 ];
@@ -201,6 +208,27 @@ export function AppSidebar({
                   : pathname === link.href || pathname.startsWith(`${link.href}/`);
               const Icon = link.icon;
               const badge = link.href === "/richieste-team" ? teamPendingCount : 0;
+              if (link.external) {
+                return (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={collapsed ? `${link.label} (nuova scheda)` : undefined}
+                    className={cn(NAV_ITEM, NAV_ITEM_IDLE, collapsed && "justify-center px-0")}
+                  >
+                    <Icon className="size-4.5 shrink-0" strokeWidth={1.5} />
+                    {!collapsed && <span className="truncate">{link.label}</span>}
+                    {!collapsed && (
+                      <ExternalLink
+                        className="ml-auto size-3.5 shrink-0 text-muted-foreground"
+                        aria-label="si apre in una nuova scheda"
+                      />
+                    )}
+                  </a>
+                );
+              }
               return (
                 <Link
                   key={link.href}
