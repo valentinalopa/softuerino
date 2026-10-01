@@ -19,6 +19,7 @@ import {
   ListTodo,
   Inbox,
   Mail,
+  RefreshCw,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
 import { ROLE_LABELS, homePathFor, isAdminRole, type Role } from "@/lib/constants";
@@ -60,7 +61,10 @@ const ADMIN_LINKS = [
 ];
 
 // Operazioni di sistema: solo super admin.
-const SYSTEM_LINKS = [{ href: "/impostazioni/email", label: "Email", icon: Mail }];
+const SYSTEM_LINKS = [
+  { href: "/impostazioni/aggiornamenti", label: "Aggiornamenti", icon: RefreshCw },
+  { href: "/impostazioni/email", label: "Email", icon: Mail },
+];
 
 // Voce di navigazione — DS Sidebar: 14px, padding 10px, raggio 10px.
 const NAV_ITEM =
