@@ -177,3 +177,16 @@ export function parseClientCategories(csv: string): ClientCategory[] {
         ) as ClientCategory[])
     : [];
 }
+
+// --- Email ---
+
+// Cifratura della connessione SMTP: STARTTLS (di solito porta 587), TLS
+// implicito (465) o nessuna (solo server interni fidati).
+export const EMAIL_SECURITY = ["starttls", "tls", "none"] as const;
+export type EmailSecurity = (typeof EMAIL_SECURITY)[number];
+
+export const EMAIL_SECURITY_LABELS: Record<EmailSecurity, string> = {
+  starttls: "STARTTLS (porta 587)",
+  tls: "TLS (porta 465)",
+  none: "Nessuna",
+};

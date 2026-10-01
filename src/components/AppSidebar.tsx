@@ -18,6 +18,7 @@ import {
   Settings,
   ListTodo,
   Inbox,
+  Mail,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
 import { ROLE_LABELS, homePathFor, isAdminRole, type Role } from "@/lib/constants";
@@ -57,6 +58,9 @@ const ADMIN_LINKS = [
   { href: "/team", label: "Team", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
 ];
+
+// Operazioni di sistema: solo super admin.
+const SYSTEM_LINKS = [{ href: "/impostazioni/email", label: "Email", icon: Mail }];
 
 // Voce di navigazione — DS Sidebar: 14px, padding 10px, raggio 10px.
 const NAV_ITEM =
@@ -125,6 +129,9 @@ export function AppSidebar({
           { label: null, links: COMMON_LINKS },
           { label: "Operatività", links: OPERATIVITA_LINKS },
           { label: "Amministrazione", links: ADMIN_LINKS },
+          ...(currentUser.role === "super_admin"
+            ? [{ label: "Sistema", links: SYSTEM_LINKS }]
+            : []),
         ]
       : [
           { label: null, links: COMMON_LINKS },
