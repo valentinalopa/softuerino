@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   requireUser,
@@ -10,6 +11,11 @@ import {
 } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { absenceConflict } from "@/lib/absence-conflicts";
+import {
+  notifyEventInvite,
+  notifyLeaveDecision,
+  notifyTaskAssigned,
+} from "@/lib/email/notifications";
 import {
   EVENT_TYPES,
   leaveTypesFor,
@@ -382,7 +388,7 @@ export async function updateLeaveStatus(
   requestId: string,
   status: "approved" | "rejected"
 ): Promise<ActionResult> {
-  await requireAdmin();
+  const currentUser = await requireAdmin();
 
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
@@ -407,6 +413,7 @@ export async function updateLeaveStatus(
     return { error: "Richiesta già gestita o non più in attesa" };
   }
   revalidateLeavePaths(request.userId);
+  after(() => notifyLeaveDecision(requestId, currentUser.id));
 }
 
 // Un admin può sempre riportare in attesa una richiesta già decisa
@@ -523,7 +530,7 @@ export async function createEvent(formData: FormData) {
     }
   }
 
-  await prisma.calendarEvent.create({
+  const event = await prisma.calendarEvent.create({
     data: {
       title,
       type,
@@ -540,6 +547,7 @@ export async function createEvent(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/calendario");
+  after(() => notifyEventInvite(event.id, participantIds, user.id));
 }
 
 export async function deleteEvent(eventId: string) {
@@ -873,7 +881,8 @@ export async function saveDailyTimeEntries(formData: FormData) {
 // --- Task ---
 
 export async function createTask(formData: FormData) {
-  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
   const title = String(formData.get("title") ?? "").trim();
   const clientIdRaw = String(formData.get("clientId") ?? "").trim();
@@ -897,7 +906,7 @@ export async function createTask(formData: FormData) {
     return { error: "Scadenza non valida" };
   }
 
-  await prisma.task.create({
+  const task = await prisma.task.create({
     data: {
       title,
       clientId,
@@ -914,6 +923,7 @@ export async function createTask(formData: FormData) {
   });
 
   revalidatePath("/task");
+  after(() => notifyTaskAssigned(task.id, assigneeIds, user.id));
 }
 
 async function hasTaskAccess(taskId: string) {

@@ -188,3 +188,20 @@ model TaskAssignee {
   @@unique([taskId, userId])
   @@index([userId])
 }
+
+// Impostazioni email (una sola riga, id = 1), gestite dai super admin.
+// La password SMTP è cifrata con SETTINGS_ENCRYPTION_KEY (vedi
+// src/lib/crypto/secret-box.ts): una copia del DB da sola non la rivela.
+model EmailSettings {
+  id                Int      @id // sempre 1
+  enabled           Boolean  @default(false)
+  host              String   @default("")
+  port              Int      @default(587)
+  security          String   @default("starttls") // starttls | tls | none
+  username          String   @default("")
+  passwordEncrypted String?
+  fromAddress       String   @default("")
+  fromName          String   @default("Softuerino")
+  appUrl            String   @default("") // per i link nelle email
+  updatedAt         DateTime @updatedAt
+}
