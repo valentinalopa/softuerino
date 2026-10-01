@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveEmailSettings, sendTestEmail } from "@/lib/email/actions";
+import { saveEmailSettings } from "@/lib/email/actions";
 import { EMAIL_SECURITY, EMAIL_SECURITY_LABELS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,9 +51,7 @@ export function EmailSettingsForm({
   const [enabled, setEnabled] = useState(settings.enabled);
   const [clearPassword, setClearPassword] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<Feedback>(null);
-  const [testFeedback, setTestFeedback] = useState<Feedback>(null);
   const [saving, startSaving] = useTransition();
-  const [testing, startTesting] = useTransition();
 
   function handleSave(formData: FormData) {
     setSaveFeedback(null);
@@ -63,17 +61,6 @@ export function EmailSettingsForm({
         setClearPassword(false);
       } catch {
         setSaveFeedback({ kind: "error", message: "Errore imprevisto" });
-      }
-    });
-  }
-
-  function handleTest() {
-    setTestFeedback(null);
-    startTesting(async () => {
-      try {
-        setTestFeedback(toFeedback(await sendTestEmail()));
-      } catch {
-        setTestFeedback({ kind: "error", message: "Errore imprevisto" });
       }
     });
   }
@@ -184,16 +171,6 @@ export function EmailSettingsForm({
           {saving ? "Salvataggio..." : "Salva impostazioni"}
         </Button>
       </form>
-
-      <div className="space-y-2 border-t pt-4">
-        <p className="text-sm text-muted-foreground">
-          Invia un&apos;email di prova al tuo indirizzo usando le impostazioni salvate.
-        </p>
-        <FeedbackText feedback={testFeedback} />
-        <Button type="button" variant="outline" disabled={testing} onClick={handleTest}>
-          {testing ? "Invio..." : "Invia email di prova"}
-        </Button>
-      </div>
     </div>
   );
 }
