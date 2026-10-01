@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { requireSuperAdmin } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers, type LeaveBalance } from "@/lib/leave-balance";
-import { EMPLOYMENT_TYPE_LABELS, type EmploymentType } from "@/lib/constants";
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  assignableRoles,
+  type EmploymentType,
+  type Role,
+} from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { RoleBadge } from "@/components/team/RoleBadge";
@@ -18,7 +23,8 @@ import {
 } from "@/components/ui/table";
 
 export default async function TeamPage() {
-  const currentUser = await requireSuperAdmin();
+  const currentUser = await requireAdmin();
+  const roles = assignableRoles(currentUser.role);
 
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "asc" },
@@ -40,7 +46,7 @@ export default async function TeamPage() {
             Membri del team, ruolo e saldo ferie/permessi.
           </p>
         </div>
-        <NewTeamMemberDialog />
+        <NewTeamMemberDialog roles={roles} />
       </div>
 
       <Card>
@@ -83,7 +89,12 @@ export default async function TeamPage() {
                     <ActiveBadge active={user.active} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <UserRowActions user={user} isSelf={user.id === currentUser.id} />
+                    <UserRowActions
+                      user={user}
+                      canDelete={
+                        user.id !== currentUser.id && roles.includes(user.role as Role)
+                      }
+                    />
                   </TableCell>
                 </TeamMemberRow>
               ))}

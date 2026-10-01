@@ -9,8 +9,8 @@ import {
 import { AttendanceMonthCalendar } from "@/components/presenze/AttendanceMonthCalendar";
 
 // Calendario presenze mensile di un singolo utente. Usato sia da /presenze
-// (il proprio) sia dalla scheda membro in /team/[id] (quello altrui, per il
-// super admin): stessa vista, nessuna duplicazione.
+// (il proprio) sia dalla scheda membro in /team/[id] (quello altrui, per
+// gli admin): stessa vista, nessuna duplicazione.
 export async function AttendanceSection({
   userId,
   editable,

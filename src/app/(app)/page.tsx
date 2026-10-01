@@ -16,7 +16,7 @@ import {
 
 export default async function Home() {
   const user = await requireUser();
-  // Dashboard personale, identica per tutti (super admin compreso): la
+  // Dashboard personale, identica per tutti (admin compresi): la
   // gestione del team vive nelle pagine di Amministrazione.
   const [balance, pendingRequests, upcomingEvents] = await Promise.all([
     getLeaveBalance(user.id, user.employmentType as "dipendente" | "partita_iva"),

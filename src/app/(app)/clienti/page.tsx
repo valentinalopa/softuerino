@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { requireSuperAdmin } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { ClientCategoryBadges } from "@/components/clienti/ClientCategoryBadges";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function ClientiPage() {
-  await requireSuperAdmin();
+  await requireAdmin();
 
   const clients = await prisma.client.findMany({
     orderBy: { createdAt: "asc" },

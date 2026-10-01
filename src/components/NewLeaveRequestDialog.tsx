@@ -32,7 +32,7 @@ export function NewLeaveRequestDialog({
 }: {
   // Tipo di rapporto della persona per cui si registra la richiesta.
   employmentType: EmploymentType;
-  // Valorizzato solo nella scheda membro (/team/[id]): il super admin registra
+  // Valorizzato solo nella scheda membro (/team/[id]): un admin registra
   // la richiesta per conto di quel membro, che nasce già approvata/registrata.
   targetUserId?: string;
 }) {

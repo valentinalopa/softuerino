@@ -1,6 +1,6 @@
 import { Clock3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireSuperAdmin } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
@@ -9,14 +9,14 @@ import { Card, CardContent } from "@/components/ui/card";
 
 type View = "in_corso" | "storico";
 
-// Gestione delle richieste di tutto il team (solo super admin): approvazioni,
+// Gestione delle richieste di tutto il team (admin e super admin): approvazioni,
 // richieste in corso e storico. Le proprie richieste stanno in /richieste.
 export default async function RichiesteTeamPage({
   searchParams,
 }: {
   searchParams: Promise<{ view?: string }>;
 }) {
-  const user = await requireSuperAdmin();
+  const user = await requireAdmin();
   // endDate è a mezzanotte dell'ultimo giorno incluso: "passata" solo da
   // domani in poi, non dalle 00:01 dell'ultimo giorno.
   const today = startOfDay(new Date());

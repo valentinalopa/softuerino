@@ -5,7 +5,7 @@ const PUBLIC_PATHS = ["/login"];
 
 // Controllo ottimistico: verifica solo la presenza del cookie di sessione,
 // non la sua validita/scadenza (richiede una query al DB, fatta invece
-// in requireUser()/requireSuperAdmin() dentro ogni pagina/server action).
+// in requireUser()/requireAdmin() dentro ogni pagina/server action).
 // Nota: non reindirizza via da /login quando il cookie e presente, perche
 // un cookie presente ma non piu valido (sessione scaduta/cancellata) andrebbe
 // altrimenti in loop con il redirect a /login fatto da requireUser(); il

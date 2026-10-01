@@ -3,7 +3,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
-import type { Role } from "@/lib/constants";
+import { isAdminRole, type Role } from "@/lib/constants";
 
 export default async function AppLayout({
   children,
@@ -21,7 +21,7 @@ export default async function AppLayout({
   // Contatore in sidebar delle richieste da approvare (stesso criterio della
   // pagina /richieste-team: quelle degli altri membri).
   const teamPendingCount =
-    user.role === "super_admin"
+    isAdminRole(user.role)
       ? await prisma.leaveRequest.count({
           where: { userId: { not: user.id }, status: "pending" },
         })

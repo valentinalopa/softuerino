@@ -25,7 +25,7 @@ export type OreLogParams = {
 
 // Log ore di un singolo utente (vista giornaliera + report mensile). Usato sia
 // da /ore (il proprio) sia dalla scheda membro in /team/[id] (quello altrui,
-// per il super admin): stessa vista, nessuna duplicazione.
+// per gli admin): stessa vista, nessuna duplicazione.
 export async function OreLogSection({
   userId,
   canEdit,
@@ -33,7 +33,7 @@ export async function OreLogSection({
   params,
 }: {
   userId: string;
-  // Chi può modificare una giornata già registrata (solo super admin).
+  // Chi può modificare una giornata già registrata (solo admin).
   canEdit: boolean;
   // Pagina che ospita la sezione (es. "/ore" o "/team/abc?tab=ore").
   basePath: string;

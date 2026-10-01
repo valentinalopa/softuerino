@@ -1,12 +1,28 @@
 // Ruoli utenza: "membro", non "dipendente", per non confondersi con
 // l'employmentType (dipendente | partita_iva) che è il tipo di rapporto.
-export const ROLES = ["super_admin", "membro"] as const;
+// super_admin: tutto, comprese le operazioni di sistema (aggiornamenti, SMTP).
+// admin: gestisce la piattaforma come un super admin, ma non le operazioni di
+// sistema e non gli account dei super admin.
+export const ROLES = ["super_admin", "admin", "membro"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
+  admin: "Admin",
   membro: "Membro",
 };
+
+// Ruoli con accesso all'amministrazione della piattaforma (team, richieste,
+// clienti, panoramica...).
+export function isAdminRole(role: string) {
+  return role === "super_admin" || role === "admin";
+}
+
+// Ruoli che un utente può assegnare: solo un super admin crea o nomina altri
+// super admin.
+export function assignableRoles(actorRole: string): readonly Role[] {
+  return actorRole === "super_admin" ? ROLES : ROLES.filter((r) => r !== "super_admin");
+}
 
 export const EMPLOYMENT_TYPES = ["dipendente", "partita_iva"] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
@@ -56,10 +72,10 @@ export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   assenza_extra: "Assenza extra",
 };
 
-// Pagina di atterraggio dopo il login: il super admin parte dalla Panoramica
-// (vista del team), gli altri dalla propria Dashboard.
+// Pagina di atterraggio dopo il login: admin e super admin partono dalla
+// Panoramica (vista del team), i membri dalla propria Dashboard.
 export function homePathFor(role: string) {
-  return role === "super_admin" ? "/panoramica" : "/";
+  return isAdminRole(role) ? "/panoramica" : "/";
 }
 
 export const LEAVE_STATUSES = [

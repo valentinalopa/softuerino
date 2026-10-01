@@ -35,14 +35,14 @@ export function CalendarView({
   absences,
   users,
   currentUserId,
-  isSuperAdmin,
+  isAdmin,
 }: {
   events: CalendarEventData[];
   // Assenze del team (non rifiutate), mostrate nel dettaglio del giorno.
   absences: CalendarAbsence[];
   users: { id: string; name: string }[];
   currentUserId: string;
-  isSuperAdmin: boolean;
+  isAdmin: boolean;
 }) {
   const [view, setView] = useState<ViewMode>("month");
   const [current, setCurrent] = useState(() => startOfDay(new Date()));
@@ -149,7 +149,7 @@ export function CalendarView({
             event={selected}
             onClose={() => setSelected(null)}
             canDelete={
-              isSuperAdmin ||
+              isAdmin ||
               selected.createdById === currentUserId ||
               selected.participants.some((p) => p.user.id === currentUserId)
             }

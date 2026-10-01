@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 import { CalendarView } from "@/components/calendar/CalendarView";
 import { buttonVariants } from "@/components/ui/button";
+import { isAdminRole } from "@/lib/constants";
 
 export default async function CalendarioPage() {
   const user = await requireUser();
@@ -82,7 +83,7 @@ export default async function CalendarioPage() {
         }))}
         users={calendarUsers}
         currentUserId={user.id}
-        isSuperAdmin={user.role === "super_admin"}
+        isAdmin={isAdminRole(user.role)}
       />
     </div>
   );

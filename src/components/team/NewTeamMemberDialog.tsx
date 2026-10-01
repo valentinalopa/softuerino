@@ -4,10 +4,10 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { createUser } from "@/lib/actions";
 import {
-  ROLES,
   ROLE_LABELS,
   EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPE_LABELS,
+  type Role,
 } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,9 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-export function NewTeamMemberDialog() {
+// `roles`: i ruoli che l'utente corrente può assegnare (un admin non crea
+// super admin).
+export function NewTeamMemberDialog({ roles }: { roles: readonly Role[] }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -81,7 +83,7 @@ export function NewTeamMemberDialog() {
                 fullWidth
                 name="role"
                 defaultValue="membro"
-                items={ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+                items={roles.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
               />
             </div>
             <div className="flex flex-col gap-1.5">

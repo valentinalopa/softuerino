@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { updateUser } from "@/lib/actions";
 import {
-  ROLES,
   ROLE_LABELS,
   EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPE_LABELS,
+  type Role,
 } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,9 +28,12 @@ type TeamUser = {
 export function EditTeamMemberForm({
   user,
   isSelf,
+  roles,
 }: {
   user: TeamUser;
   isSelf: boolean;
+  // Ruoli che l'utente corrente può assegnare.
+  roles: readonly Role[];
 }) {
   const [active, setActive] = useState(user.active);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +79,7 @@ export function EditTeamMemberForm({
         <NativeSelectField
           name="role"
           defaultValue={user.role}
-          items={ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+          items={roles.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
         />
       </div>
       <div className="flex flex-col gap-1.5">

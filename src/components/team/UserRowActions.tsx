@@ -23,10 +23,11 @@ type TeamUser = {
 
 export function UserRowActions({
   user,
-  isSelf,
+  canDelete,
 }: {
   user: TeamUser;
-  isSelf: boolean;
+  // Falso per il proprio account e, per un admin, per i super admin.
+  canDelete: boolean;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export function UserRowActions({
               size="icon-sm"
               className="text-destructive hover:text-destructive"
               aria-label="Elimina"
-              disabled={isSelf}
+              disabled={!canDelete}
             />
           }
         >

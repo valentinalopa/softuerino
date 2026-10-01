@@ -20,7 +20,7 @@ import {
   Inbox,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
-import { ROLE_LABELS, homePathFor, type Role } from "@/lib/constants";
+import { ROLE_LABELS, homePathFor, isAdminRole, type Role } from "@/lib/constants";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -51,7 +51,7 @@ const OPERATIVITA_LINKS = [
   { href: "/task", label: "Task", icon: ListTodo },
 ];
 
-const SUPER_ADMIN_LINKS = [
+const ADMIN_LINKS = [
   { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
   { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
   { href: "/team", label: "Team", icon: Users },
@@ -105,7 +105,7 @@ export function AppSidebar({
   teamPendingCount = 0,
 }: {
   currentUser: { name: string; email: string; role: Role };
-  // Richieste del team in attesa di approvazione (solo super admin).
+  // Richieste del team in attesa di approvazione (admin e super admin).
   teamPendingCount?: number;
 }) {
   const pathname = usePathname();
@@ -120,11 +120,11 @@ export function AppSidebar({
   }
 
   const sections =
-    currentUser.role === "super_admin"
+    isAdminRole(currentUser.role)
       ? [
           { label: null, links: COMMON_LINKS },
           { label: "Operatività", links: OPERATIVITA_LINKS },
-          { label: "Amministrazione", links: SUPER_ADMIN_LINKS },
+          { label: "Amministrazione", links: ADMIN_LINKS },
         ]
       : [
           { label: null, links: COMMON_LINKS },
@@ -151,7 +151,7 @@ export function AppSidebar({
             "flex min-w-0 flex-1 items-center gap-2.5",
             collapsed && "flex-none"
           )}
-          title={currentUser.role === "super_admin" ? "Panoramica" : "Dashboard"}
+          title={isAdminRole(currentUser.role) ? "Panoramica" : "Dashboard"}
         >
           <Marchio className={collapsed ? "h-6" : "h-[26px]"} />
           {!collapsed && (
