@@ -72,14 +72,25 @@ const PEOPLE: SeedPerson[] = [
 ];
 
 async function main() {
+  // Il seed crea utenti con password note ("password123") e dati demo: mai su
+  // un database di produzione. Il primo super admin in produzione va creato a
+  // parte, con credenziali scelte al momento.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Seed bloccato: NODE_ENV=production. Il seed crea utenti con password di default e dati demo."
+    );
+  }
+
   const primaryAdminName = "Valentina Loparco";
   const primaryAdminDefaultEmail = PEOPLE.find(
     (p) => p.name === primaryAdminName
   )!.email;
+  // `||`: in .env.example queste variabili sono presenti ma vuote, e con `??`
+  // il seed creerebbe un admin con email e password vuote.
   const primaryAdminEmail =
-    process.env.SEED_SUPER_ADMIN_EMAIL ?? primaryAdminDefaultEmail;
+    process.env.SEED_SUPER_ADMIN_EMAIL || primaryAdminDefaultEmail;
   const primaryAdminPassword =
-    process.env.SEED_SUPER_ADMIN_PASSWORD ?? "changeme123";
+    process.env.SEED_SUPER_ADMIN_PASSWORD || "changeme123";
 
   if (!process.env.SEED_SUPER_ADMIN_EMAIL || !process.env.SEED_SUPER_ADMIN_PASSWORD) {
     console.warn(
