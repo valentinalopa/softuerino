@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin } from "@/lib/auth/session";
 import { encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
-import { escapeHtml, getEmailSettings, renderHtml, sendMail } from "@/lib/email/mailer";
+import { getEmailSettings, sendMail } from "@/lib/email/mailer";
+import type { Mail } from "@/lib/email/templates";
+import { buildSample, SAMPLE_KINDS, type SampleKind } from "@/lib/email/samples";
 import { EMAIL_SECURITY, type EmailSecurity } from "@/lib/constants";
 
 type ActionResult = { error: string } | { success: string } | undefined;
@@ -69,32 +71,41 @@ export async function saveEmailSettings(formData: FormData): Promise<ActionResul
   return { success: "Impostazioni salvate." };
 }
 
-// Email di prova, sempre all'indirizzo del super admin che la chiede (non a
-// destinatari arbitrari). Usa le impostazioni salvate, anche se le notifiche
+// Invio di prova, sempre all'indirizzo del super admin che lo chiede (non a
+// destinatari arbitrari). Usa le impostazioni salvate anche se le notifiche
 // non sono ancora attive, così si può verificare prima di accenderle.
-export async function sendTestEmail(): Promise<ActionResult> {
+async function sendToSelf(
+  build: (recipient: { name: string; email: string }, appUrl: string) => Mail
+): Promise<ActionResult> {
   const user = await requireSuperAdmin();
   const settings = await getEmailSettings();
   if (!settings) {
     return { error: "Salva prima le impostazioni" };
   }
-
   try {
-    await sendMail(settings, {
-      to: user.email,
-      subject: "Softuerino: email di prova",
-      text: `Ciao ${user.name},\n\nse leggi questo messaggio le impostazioni SMTP di Softuerino funzionano.\n`,
-      html: renderHtml([
-        `Ciao ${escapeHtml(user.name)},`,
-        "se leggi questo messaggio le impostazioni SMTP di Softuerino funzionano.",
-      ]),
-    });
+    await sendMail(settings, build({ name: user.name, email: user.email }, settings.appUrl));
   } catch (err) {
     // Il dettaglio (es. autenticazione rifiutata, host irraggiungibile) serve
     // proprio a chi sta configurando: lo si restituisce, non lo si lancia.
     const detail = err instanceof Error ? err.message : String(err);
     return { error: `Invio non riuscito: ${detail}` };
   }
+  return { success: `Email inviata a ${user.email}.` };
+}
 
-  return { success: `Email di prova inviata a ${user.email}.` };
+export async function sendTestEmail(): Promise<ActionResult> {
+  return sendToSelf((recipient, appUrl) => buildSample("smtp", recipient, appUrl));
+}
+
+// Prova di una notifica: stesso template delle email vere, con dati di
+// esempio e oggetto preceduto da "[Prova]".
+export async function sendSampleNotification(kind: string): Promise<ActionResult> {
+  // "kind" arriva dal client: solo i valori previsti.
+  if (!SAMPLE_KINDS.includes(kind as SampleKind) || kind === "smtp") {
+    return { error: "Tipo di notifica non valido" };
+  }
+  return sendToSelf((recipient, appUrl) => {
+    const mail = buildSample(kind as SampleKind, recipient, appUrl);
+    return { ...mail, subject: `[Prova] ${mail.subject}` };
+  });
 }
