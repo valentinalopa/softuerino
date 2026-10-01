@@ -10,6 +10,7 @@ import {
   revokeSessions,
 } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { isOidcConfigured } from "@/lib/auth/oidc";
 import { absenceConflict } from "@/lib/absence-conflicts";
 import {
   notifyEventInvite,
@@ -241,6 +242,10 @@ export async function updateOwnProfile(formData: FormData) {
 export async function changeOwnPassword(formData: FormData) {
   const currentUser = await requireWritableUser();
   if (!currentUser) return READ_ONLY_ERROR;
+  // Con Keycloak la password locale serve solo ai super admin (emergenza).
+  if (isOidcConfigured() && currentUser.role !== "super_admin") {
+    return { error: "La password si gestisce sull'account aziendale (Keycloak)" };
+  }
 
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");

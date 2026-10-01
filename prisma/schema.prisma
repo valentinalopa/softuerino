@@ -20,6 +20,9 @@ model User {
   employmentType String   @default("dipendente") // dipendente | partita_iva
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
+  // "sub" dell'account Keycloak (OIDC). Valorizzato al primo login SSO: da lì
+  // l'utente è legato a quell'account, non più all'email.
+  oidcSubject    String?  @unique
 
   sessions               Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")

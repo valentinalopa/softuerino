@@ -15,7 +15,10 @@ export function proxy(request: NextRequest) {
   const hasSession = Boolean(
     request.cookies.get(SESSION_COOKIE_NAME)?.value
   );
-  const isPublicPath = PUBLIC_PATHS.includes(request.nextUrl.pathname);
+  // Le route del login con Keycloak servono proprio a chi non ha una sessione.
+  const isPublicPath =
+    PUBLIC_PATHS.includes(request.nextUrl.pathname) ||
+    request.nextUrl.pathname.startsWith("/api/auth/oidc/");
 
   if (!hasSession && !isPublicPath) {
     return NextResponse.redirect(new URL("/login", request.url));
