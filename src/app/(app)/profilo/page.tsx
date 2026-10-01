@@ -3,9 +3,12 @@ import { ROLE_LABELS, EMPLOYMENT_TYPE_LABELS, type Role, type EmploymentType } f
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileForm } from "@/components/profilo/ProfileForm";
 import { PasswordForm } from "@/components/profilo/PasswordForm";
+import { isOidcConfigured } from "@/lib/auth/oidc";
 
 export default async function ProfiloPage() {
   const user = await requireUser();
+  // Con Keycloak la password locale ce l'hanno solo i super admin (emergenza).
+  const localPassword = !isOidcConfigured() || user.role === "super_admin";
 
   return (
     <div className="space-y-8">
@@ -31,7 +34,13 @@ export default async function ProfiloPage() {
             <CardTitle>Password</CardTitle>
           </CardHeader>
           <CardContent>
-            <PasswordForm />
+            {localPassword ? (
+              <PasswordForm />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Accedi con l&apos;account aziendale: la password si cambia su Keycloak.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

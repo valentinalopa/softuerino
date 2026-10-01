@@ -12,6 +12,7 @@ import {
   setImpersonation,
 } from "@/lib/auth/session";
 import { homePathFor, isAdminRole } from "@/lib/constants";
+import { isOidcConfigured } from "@/lib/auth/oidc";
 
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "")
@@ -32,6 +33,12 @@ export async function loginAction(formData: FormData) {
 
   if (!user || !user.active || !valid) {
     redirect("/login?error=1");
+  }
+  // Con Keycloak attivo la password locale resta solo ai super admin, come
+  // accesso di emergenza se Keycloak non risponde. Il controllo viene dopo la
+  // verifica della password, così non rivela chi è super admin.
+  if (isOidcConfigured() && user.role !== "super_admin") {
+    redirect("/login?error=local_disabled");
   }
 
   await createSession(user.id);
