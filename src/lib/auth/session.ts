@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { isAdminRole } from "@/lib/constants";
 
 const SESSION_DURATION_DAYS = 30; // placeholder, nessun requisito specifico ricevuto
 
@@ -52,10 +53,10 @@ export const getSession = cache(async () => {
 });
 
 // Chi sta davvero usando l'app (realUser) e per conto di chi la sta vedendo
-// (user). Coincidono, tranne quando un super admin impersona un membro: allora
-// `user` è il membro e tutte le pagine si comportano come per lui.
-// L'impersonificazione vale solo se fatta da un super admin verso un membro
-// attivo che non sia a sua volta super admin.
+// (user). Coincidono, tranne quando un admin o super admin impersona un membro:
+// allora `user` è il membro e tutte le pagine si comportano come per lui.
+// L'impersonificazione vale solo se fatta da un admin o super admin verso un
+// membro attivo con ruolo "membro".
 export const getAuthContext = cache(async () => {
   const session = await getSession();
   if (!session || !session.user.active) return null;
@@ -63,10 +64,10 @@ export const getAuthContext = cache(async () => {
   const realUser = session.user;
   const target = session.impersonatedUser;
   const impersonating =
-    realUser.role === "super_admin" &&
+    isAdminRole(realUser.role) &&
     target !== null &&
     target.active &&
-    target.role !== "super_admin";
+    target.role === "membro";
 
   return {
     realUser,
@@ -77,8 +78,8 @@ export const getAuthContext = cache(async () => {
 
 // Per le azioni di scrittura: durante un'impersonificazione l'app è in sola
 // lettura, quindi restituisce null e l'azione deve rifiutarsi. Va usata in
-// ogni server action che modifica dati (le azioni solo super admin sono già
-// bloccate da requireSuperAdmin, perché l'utente effettivo è un membro).
+// ogni server action che modifica dati (le azioni da admin sono già bloccate
+// da requireAdmin/requireSuperAdmin, perché l'utente effettivo è un membro).
 export async function requireWritableUser() {
   const context = await getAuthContext();
   if (!context) {
@@ -96,6 +97,16 @@ export async function requireUser() {
   return context.user;
 }
 
+// Amministrazione della piattaforma: admin e super admin.
+export async function requireAdmin() {
+  const user = await requireUser();
+  if (!isAdminRole(user.role)) {
+    redirect("/");
+  }
+  return user;
+}
+
+// Operazioni di sistema (aggiornamenti, SMTP...): solo super admin.
 export async function requireSuperAdmin() {
   const user = await requireUser();
   if (user.role !== "super_admin") {
@@ -105,8 +116,8 @@ export async function requireSuperAdmin() {
 }
 
 // Avvia (targetUserId) o chiude (null) l'impersonificazione sulla sessione
-// corrente, annotandola nel registro. Il controllo dei permessi (solo super
-// admin, verso un membro attivo non super admin) sta nella server action che
+// corrente, annotandola nel registro. Il controllo dei permessi (admin o super
+// admin, verso un membro attivo con ruolo "membro") sta nella server action che
 // la chiama.
 export async function setImpersonation(targetUserId: string | null) {
   const session = await getSession();

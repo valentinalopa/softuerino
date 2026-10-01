@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Clock3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireSuperAdmin } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
 import {
   buildClientTotals,
   buildHoursByClientByMonth,
@@ -18,7 +18,7 @@ const MONTHS_BACK = 12;
 const PENDING_PREVIEW = 5;
 
 export default async function PanoramicaPage() {
-  const user = await requireSuperAdmin();
+  const user = await requireAdmin();
 
   const now = new Date();
   const windowStart = new Date(now.getFullYear(), now.getMonth() - (MONTHS_BACK - 1), 1);

@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireSuperAdmin } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
 import { getLeaveBalance, type LeaveBalance } from "@/lib/leave-balance";
-import { type EmploymentType } from "@/lib/constants";
+import { assignableRoles, type EmploymentType, type Role } from "@/lib/constants";
 import { RoleBadge } from "@/components/team/RoleBadge";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { EditTeamMemberForm } from "@/components/team/EditTeamMemberForm";
@@ -20,7 +20,7 @@ import { buttonVariants } from "@/components/ui/button";
 const TABS = ["info", "ore", "presenze", "richieste"] as const;
 type Tab = (typeof TABS)[number];
 
-// Scheda membro: l'unico punto in cui il super admin consulta e gestisce i
+// Scheda membro: l'unico punto in cui un admin consulta e gestisce i
 // dati di un'altra persona (CRUD su ore, presenze e richieste). Le pagine
 // /ore, /presenze e /richieste restano personali.
 export default async function TeamMemberPage({
@@ -30,7 +30,7 @@ export default async function TeamMemberPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<OreLogParams & { tab?: string; month?: string }>;
 }) {
-  const currentUser = await requireSuperAdmin();
+  const currentUser = await requireAdmin();
   const { id } = await params;
   const { tab: tabParam, month: monthParam, ...oreParams } = await searchParams;
   const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "info";
@@ -60,8 +60,8 @@ export default async function TeamMemberPage({
             </div>
             <p className="text-sm text-muted-foreground">{member.email}</p>
           </div>
-          {/* "Vedi come": solo verso membri attivi, mai verso un super admin. */}
-          {member.active && member.role !== "super_admin" && (
+          {/* "Vedi come": solo verso membri attivi, mai verso admin o super admin. */}
+          {member.active && member.role === "membro" && (
             <StartImpersonationButton userId={member.id} userName={member.name} />
           )}
         </div>
@@ -87,7 +87,11 @@ export default async function TeamMemberPage({
       />
 
       {tab === "info" && (
-        <InfoTab member={member} isSelf={member.id === currentUser.id} />
+        <InfoTab
+          member={member}
+          isSelf={member.id === currentUser.id}
+          roles={assignableRoles(currentUser.role)}
+        />
       )}
 
       {tab === "ore" && (
@@ -121,6 +125,7 @@ export default async function TeamMemberPage({
 async function InfoTab({
   member,
   isSelf,
+  roles,
 }: {
   member: {
     id: string;
@@ -131,6 +136,7 @@ async function InfoTab({
     active: boolean;
   };
   isSelf: boolean;
+  roles: readonly Role[];
 }) {
   const balance = await getLeaveBalance(
     member.id,
@@ -148,7 +154,14 @@ async function InfoTab({
           <CardTitle>Informazioni personali</CardTitle>
         </CardHeader>
         <CardContent>
-          <EditTeamMemberForm user={member} isSelf={isSelf} />
+          {/* Un admin non modifica gli account dei super admin. */}
+          {roles.includes(member.role as Role) ? (
+            <EditTeamMemberForm user={member} isSelf={isSelf} roles={roles} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Solo un super admin può modificare l&apos;account di un super admin.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

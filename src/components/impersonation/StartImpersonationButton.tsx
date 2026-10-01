@@ -5,7 +5,7 @@ import { Eye } from "lucide-react";
 import { startImpersonationAction } from "@/lib/auth/actions";
 import { Button } from "@/components/ui/button";
 
-// Solo super admin, dalla scheda membro: apre l'app come la vede il membro,
+// Solo admin, dalla scheda membro: apre l'app come la vede il membro,
 // in sola lettura.
 export function StartImpersonationButton({
   userId,

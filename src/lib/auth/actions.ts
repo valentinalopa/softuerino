@@ -11,7 +11,7 @@ import {
   getSession,
   setImpersonation,
 } from "@/lib/auth/session";
-import { homePathFor } from "@/lib/constants";
+import { homePathFor, isAdminRole } from "@/lib/constants";
 
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "")
@@ -43,12 +43,12 @@ export async function logoutAction() {
   redirect("/login");
 }
 
-// Solo il super admin (quello reale, non quello impersonato) può vedere l'app
-// come un altro membro, in sola lettura. Mai verso un altro super admin.
+// Solo admin e super admin (quelli reali, non quelli impersonati) possono
+// vedere l'app come un membro, in sola lettura. Mai verso un admin o super admin.
 export async function startImpersonationAction(targetUserId: string) {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (context.realUser.role !== "super_admin") {
+  if (!isAdminRole(context.realUser.role)) {
     return { error: "Non autorizzato" };
   }
 
@@ -59,8 +59,8 @@ export async function startImpersonationAction(targetUserId: string) {
   if (!target || !target.active) {
     return { error: "Membro non trovato o non attivo" };
   }
-  if (target.role === "super_admin") {
-    return { error: "Non è possibile vedere l'app come un altro super admin" };
+  if (target.role !== "membro") {
+    return { error: "Si può vedere l'app solo come un membro, non come un admin" };
   }
   if (target.id === context.realUser.id) {
     return { error: "Stai già vedendo l'app come te stesso" };
@@ -84,7 +84,7 @@ export async function stopImpersonationAction() {
   revalidatePath("/", "layout");
   // Si torna alla scheda del membro da cui si era partiti.
   redirect(
-    context.realUser.role === "super_admin"
+    isAdminRole(context.realUser.role)
       ? targetUserId
         ? `/team/${targetUserId}`
         : "/team"

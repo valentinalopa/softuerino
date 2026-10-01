@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   requireUser,
   requireWritableUser,
-  requireSuperAdmin,
+  requireAdmin,
   revokeSessions,
 } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -18,6 +18,8 @@ import {
   PRESENCE_SLOTS,
   PRESENCE_MODES,
   ROLES,
+  assignableRoles,
+  isAdminRole,
   EMPLOYMENT_TYPES,
   TASK_STATUSES,
   TASK_PRIORITIES,
@@ -50,10 +52,16 @@ const READ_ONLY_ERROR = {
   error: "Stai vedendo l'app come un altro membro: in questa modalità non puoi modificare nulla",
 };
 
-// --- Team (solo Super Admin) ---
+// --- Team (admin e super admin) ---
+
+// Un admin gestisce membri e admin; gli account dei super admin (e il ruolo
+// super_admin stesso) li tocca solo un super admin.
+const SUPER_ADMIN_ONLY_ERROR = {
+  error: "Solo un super admin può gestire gli account dei super admin",
+};
 
 export async function createUser(formData: FormData) {
-  await requireSuperAdmin();
+  const currentUser = await requireAdmin();
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")
@@ -68,6 +76,9 @@ export async function createUser(formData: FormData) {
   }
   if (!ROLES.includes(role as (typeof ROLES)[number])) {
     return { error: "Ruolo non valido" };
+  }
+  if (!assignableRoles(currentUser.role).includes(role as (typeof ROLES)[number])) {
+    return SUPER_ADMIN_ONLY_ERROR;
   }
   if (!EMPLOYMENT_TYPES.includes(employmentType as (typeof EMPLOYMENT_TYPES)[number])) {
     return { error: "Tipo di rapporto non valido" };
@@ -90,7 +101,7 @@ export async function createUser(formData: FormData) {
 }
 
 export async function updateUser(userId: string, formData: FormData) {
-  const currentUser = await requireSuperAdmin();
+  const currentUser = await requireAdmin();
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")
@@ -112,6 +123,21 @@ export async function updateUser(userId: string, formData: FormData) {
   }
   if (!active && userId === currentUser.id) {
     return { error: "Non puoi disattivare il tuo account" };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (!target) {
+    return { error: "Utente non trovato" };
+  }
+  // Né modificare un super admin né promuovere qualcuno a super admin.
+  if (
+    !assignableRoles(currentUser.role).includes(target.role as (typeof ROLES)[number]) ||
+    !assignableRoles(currentUser.role).includes(role as (typeof ROLES)[number])
+  ) {
+    return SUPER_ADMIN_ONLY_ERROR;
   }
 
   try {
@@ -143,10 +169,21 @@ export async function updateUser(userId: string, formData: FormData) {
 }
 
 export async function deleteUser(userId: string) {
-  const currentUser = await requireSuperAdmin();
+  const currentUser = await requireAdmin();
 
   if (userId === currentUser.id) {
     return { error: "Non puoi eliminare il tuo account" };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (!target) {
+    return { error: "Utente non trovato" };
+  }
+  if (!assignableRoles(currentUser.role).includes(target.role as (typeof ROLES)[number])) {
+    return SUPER_ADMIN_ONLY_ERROR;
   }
 
   const [leaveCount, presenceCount, timeEntryCount, taskCount] =
@@ -245,13 +282,13 @@ export async function createLeaveRequest(formData: FormData) {
   const hoursRaw = String(formData.get("hours") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim() || null;
 
-  // Il super admin può registrare ferie/permesso/malattia per conto di un altro
+  // Un admin può registrare ferie/permesso/malattia per conto di un altro
   // membro (es. malattia comunicata a voce): in quel caso la richiesta nasce già
   // approvata/registrata, senza passare dal flusso di approvazione.
   const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
   const targetUserId = targetUserIdRaw || user.id;
   const onBehalfOfOther = targetUserId !== user.id;
-  if (onBehalfOfOther && user.role !== "super_admin") {
+  if (onBehalfOfOther && !isAdminRole(user.role)) {
     return { error: "Non autorizzato" };
   }
 
@@ -345,7 +382,7 @@ export async function updateLeaveStatus(
   requestId: string,
   status: "approved" | "rejected"
 ): Promise<ActionResult> {
-  await requireSuperAdmin();
+  await requireAdmin();
 
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
@@ -372,11 +409,11 @@ export async function updateLeaveStatus(
   revalidateLeavePaths(request.userId);
 }
 
-// Il super admin può sempre riportare in attesa una richiesta già decisa
+// Un admin può sempre riportare in attesa una richiesta già decisa
 // (approvata, rifiutata o malattia registrata) per ridecidere. Il dipendente
 // non può fare nulla sulla richiesta.
 export async function revertLeaveToPending(requestId: string): Promise<ActionResult> {
-  await requireSuperAdmin();
+  await requireAdmin();
 
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
@@ -509,8 +546,8 @@ export async function deleteEvent(eventId: string) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  // Può eliminare: super admin, chi ha creato l'evento, o un partecipante.
-  if (user.role !== "super_admin") {
+  // Può eliminare: admin, chi ha creato l'evento, o un partecipante.
+  if (!isAdminRole(user.role)) {
     const event = await prisma.calendarEvent.findUnique({
       where: { id: eventId },
       select: { createdById: true },
@@ -580,7 +617,7 @@ export async function createPresenceEntry(formData: FormData) {
 }
 
 // Applica la stessa fascia oraria/modalità a più giorni in un colpo solo
-// (es. "tutti i lunedì e giovedì in ufficio la mattina"). Il super admin può
+// (es. "tutti i lunedì e giovedì in ufficio la mattina"). Un admin può
 // farlo anche sul calendario di un altro membro del team.
 export async function createPresenceEntries({
   userId: targetUserId,
@@ -601,7 +638,7 @@ export async function createPresenceEntries({
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
   const userId = targetUserId ?? user.id;
-  if (userId !== user.id && user.role !== "super_admin") {
+  if (userId !== user.id && !isAdminRole(user.role)) {
     return { error: "Non autorizzato" };
   }
 
@@ -654,7 +691,7 @@ export async function deletePresenceEntry(entryId: string) {
 }
 
 // Elimina più presenze selezionate dal calendario (per data + fascia oraria,
-// così non serve conoscere l'id della riga lato client). Il super admin può
+// così non serve conoscere l'id della riga lato client). Un admin può
 // farlo anche sul calendario di un altro membro del team.
 export async function deletePresenceEntries({
   userId: targetUserId,
@@ -666,7 +703,7 @@ export async function deletePresenceEntries({
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
   const userId = targetUserId ?? user.id;
-  if (userId !== user.id && user.role !== "super_admin") {
+  if (userId !== user.id && !isAdminRole(user.role)) {
     return { error: "Non autorizzato" };
   }
 
@@ -685,10 +722,10 @@ export async function deletePresenceEntries({
   revalidatePath("/presenze");
 }
 
-// --- Clienti (solo Super Admin) ---
+// --- Clienti (admin e super admin) ---
 
 export async function createClient(formData: FormData) {
-  await requireSuperAdmin();
+  await requireAdmin();
 
   const name = String(formData.get("name") ?? "").trim();
   const categories = formData.getAll("categories").map(String);
@@ -718,7 +755,7 @@ export async function createClient(formData: FormData) {
 }
 
 export async function updateClient(clientId: string, formData: FormData) {
-  await requireSuperAdmin();
+  await requireAdmin();
 
   const name = String(formData.get("name") ?? "").trim();
   const active = String(formData.get("active") ?? "true") === "true";
@@ -751,7 +788,7 @@ export async function updateClient(clientId: string, formData: FormData) {
 }
 
 export async function deleteClient(clientId: string) {
-  await requireSuperAdmin();
+  await requireAdmin();
 
   const [timeEntryCount, taskCount] = await Promise.all([
     prisma.timeEntry.count({ where: { clientId } }),
@@ -773,14 +810,14 @@ export async function deleteClient(clientId: string) {
 
 // Sostituisce interamente le ore loggate per il giorno indicato con quelle
 // inviate dal form (una riga per cliente con ore > 0; tutte a zero = giornata
-// svuotata). Il super admin può farlo anche sul log di un altro membro.
+// svuotata). Un admin può farlo anche sul log di un altro membro.
 export async function saveDailyTimeEntries(formData: FormData) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
   const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
   const targetUserId = targetUserIdRaw || user.id;
-  if (targetUserId !== user.id && user.role !== "super_admin") {
+  if (targetUserId !== user.id && !isAdminRole(user.role)) {
     return { error: "Non autorizzato" };
   }
 
@@ -800,9 +837,9 @@ export async function saveDailyTimeEntries(formData: FormData) {
     .map((clientId, i) => ({ clientId, hours: Number(hoursRaw[i]) }))
     .filter((e) => e.clientId && Number.isFinite(e.hours) && e.hours > 0);
 
-  // Una giornata già registrata la corregge solo il super admin (dalla scheda
+  // Una giornata già registrata la corregge solo un admin (dalla scheda
   // membro): il form la nasconde, ma il vincolo va garantito anche qui.
-  if (user.role !== "super_admin") {
+  if (!isAdminRole(user.role)) {
     const alreadyLogged = await prisma.timeEntry.count({
       where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
     });
@@ -881,7 +918,7 @@ export async function createTask(formData: FormData) {
 
 async function hasTaskAccess(taskId: string) {
   const user = await requireUser();
-  if (user.role === "super_admin") return true;
+  if (isAdminRole(user.role)) return true;
 
   const isAssignee = await prisma.taskAssignee.findUnique({
     where: { taskId_userId: { taskId, userId: user.id } },

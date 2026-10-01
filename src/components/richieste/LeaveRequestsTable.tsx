@@ -40,7 +40,7 @@ function typeLabel(type: string) {
 }
 
 // Stato della richiesta: in attesa → Approva/Rifiuta, altrimenti la si può
-// riportare in attesa (solo super admin, cioè dove showActions è attivo).
+// riportare in attesa (solo admin, cioè dove showActions è attivo).
 function RequestActions({ request }: { request: LeaveRequestRow }) {
   return request.status === "pending" ? (
     <ApproveRejectActions requestId={request.id} />

@@ -5,7 +5,7 @@ import { Undo2 } from "lucide-react";
 import { revertLeaveToPending } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 
-// Solo super admin: riporta in attesa una richiesta già decisa, per ridecidere.
+// Solo admin: riporta in attesa una richiesta già decisa, per ridecidere.
 export function RevertToPendingAction({ requestId }: { requestId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();

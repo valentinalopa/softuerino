@@ -17,7 +17,7 @@ export function DailyHoursForm({
   cancelHref,
 }: {
   dateValue: string;
-  // Utente su cui loggare: se stesso, o un altro membro quando il super admin
+  // Utente su cui loggare: se stesso, o un altro membro quando un admin
   // modifica il log altrui.
   userId: string;
   clients: { id: string; name: string }[];
