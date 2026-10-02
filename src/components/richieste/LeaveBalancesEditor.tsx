@@ -211,8 +211,8 @@ function BalanceMeter({
   );
 }
 
-// Ogni sezione del pannello salva da sé: i saldi col loro pulsante, i
-// recuperi a ogni azione. Il pannello resta aperto e si chiude con "Chiudi".
+// I saldi si salvano col pulsante in fondo (il pannello resta aperto, con
+// conferma); i recuperi si salvano a ogni azione nella loro sezione.
 function BalanceForm({ row, year }: { row: BalanceRow; year: number }) {
   const kinds = KINDS.filter((k) => row.balances[k.kind]);
   const [values, setValues] = useState<Partial<Record<BalanceKind, string>>>(() =>
@@ -263,6 +263,8 @@ function BalanceForm({ row, year }: { row: BalanceRow; year: number }) {
     });
   }
 
+  const formId = `balance-form-${row.userId}`;
+
   return (
     <>
       <SheetHeader>
@@ -272,7 +274,7 @@ function BalanceForm({ row, year }: { row: BalanceRow; year: number }) {
         </SheetDescription>
       </SheetHeader>
       <SheetBody className="space-y-8">
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-foreground">Saldi</h3>
             <p className="text-sm text-muted-foreground">
@@ -309,13 +311,8 @@ function BalanceForm({ row, year }: { row: BalanceRow; year: number }) {
               </div>
             );
           })}
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={saving || !dirty}>
-              {saving ? "Salvataggio..." : "Salva saldi"}
-            </Button>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            {saved && !dirty && <p className={`text-sm ${TONE_TEXT.success}`}>Saldi salvati.</p>}
-          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {saved && !dirty && <p className={`text-sm ${TONE_TEXT.success}`}>Saldi salvati.</p>}
         </form>
 
         <RecoveryCreditsSection userId={row.userId} credits={row.recoveryCredits} />
@@ -335,7 +332,10 @@ function BalanceForm({ row, year }: { row: BalanceRow; year: number }) {
         </section>
       </SheetBody>
       <SheetFooter>
-        <SheetClose render={<Button type="button" variant="outline" />}>Chiudi</SheetClose>
+        <SheetClose render={<Button type="button" variant="outline" />}>Annulla</SheetClose>
+        <Button type="submit" form={formId} disabled={saving || !dirty}>
+          {saving ? "Salvataggio..." : "Salva saldi"}
+        </Button>
       </SheetFooter>
     </>
   );
