@@ -7,8 +7,10 @@ import {
   requireUser,
   requireWritableUser,
   requireAdmin,
+  requireSuperAdmin,
   revokeSessions,
 } from "@/lib/auth/session";
+import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { absenceConflict } from "@/lib/absence-conflicts";
@@ -32,6 +34,10 @@ import {
   TASK_PRIORITIES,
   TASK_DONE_RETENTION_DAYS,
   CLIENT_CATEGORIES,
+  LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE,
+  balanceKindsFor,
+  type BalanceKind,
+  type EmploymentType,
 } from "@/lib/constants";
 
 // Costruisce una Date a mezzanotte locale da una stringa "yyyy-MM-dd", evitando che
@@ -467,6 +473,62 @@ export async function revertLeaveToPending(requestId: string): Promise<ActionRes
     return { error: "La richiesta è già in attesa" };
   }
   revalidateLeavePaths(request.userId);
+}
+
+// Saldi residui impostati dal super admin (es. ricopiati dall'Excel). Per
+// ogni valore si salva la rettifica che, nell'anno corrente, porta il residuo
+// esattamente al numero inserito; da lì in poi le richieste approvate lo
+// scalano normalmente.
+export async function setLeaveBalances(
+  entries: { userId: string; kind: BalanceKind; remaining: number }[]
+): Promise<ActionResult> {
+  await requireSuperAdmin();
+  if (entries.length === 0) return;
+
+  const year = new Date().getFullYear();
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...new Set(entries.map((e) => e.userId))] } },
+    select: { id: true, employmentType: true },
+  });
+  const userById = new Map(users.map((u) => [u.id, u]));
+
+  for (const entry of entries) {
+    const user = userById.get(entry.userId);
+    if (!user) return { error: "Membro non trovato" };
+    if (!balanceKindsFor(user.employmentType).includes(entry.kind)) {
+      return { error: "Tipo di saldo non valido per questo membro" };
+    }
+    if (!Number.isFinite(entry.remaining) || Math.abs(entry.remaining) > 9999) {
+      return { error: "Valore del saldo non valido" };
+    }
+  }
+
+  const balances = await getLeaveBalancesForUsers(
+    users.map((u) => ({ id: u.id, employmentType: u.employmentType as EmploymentType })),
+    year
+  );
+  const monte = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE;
+
+  await prisma.$transaction(
+    entries.map((entry) => {
+      const balance = balances.get(entry.userId)!;
+      // Rettifica = residuo voluto − monte annuale + già goduto quest'anno.
+      const amount =
+        balance.kind === "assenze"
+          ? entry.remaining - monte.partita_iva.assenzeDaysPerYear + balance.assenzeUsed
+          : entry.kind === "ferie"
+            ? entry.remaining - monte.dipendente.ferieDaysPerYear + balance.ferieUsed
+            : entry.remaining - monte.dipendente.permessoHoursPerYear + balance.permessoUsed;
+      return prisma.leaveBalanceAdjustment.upsert({
+        where: { userId_year_kind: { userId: entry.userId, year, kind: entry.kind } },
+        create: { userId: entry.userId, year, kind: entry.kind, amount },
+        update: { amount },
+      });
+    })
+  );
+
+  for (const userId of userById.keys()) revalidateLeavePaths(userId);
+  revalidatePath("/team");
 }
 
 function revalidateLeavePaths(userId: string) {

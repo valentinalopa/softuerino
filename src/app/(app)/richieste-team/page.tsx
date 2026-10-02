@@ -6,8 +6,14 @@ import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  LeaveBalancesEditor,
+  type BalanceRow,
+} from "@/components/richieste/LeaveBalancesEditor";
+import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
+import type { EmploymentType } from "@/lib/constants";
 
-type View = "in_corso" | "storico";
+type View = "in_corso" | "storico" | "saldi";
 
 // Gestione delle richieste di tutto il team (admin e super admin): approvazioni,
 // richieste in corso e storico. Le proprie richieste stanno in /richieste.
@@ -22,7 +28,14 @@ export default async function RichiesteTeamPage({
   const today = startOfDay(new Date());
 
   const { view: viewParam } = await searchParams;
-  const view: View = viewParam === "storico" ? "storico" : "in_corso";
+  // I saldi si modificano solo da super admin.
+  const canEditBalances = user.role === "super_admin";
+  const view: View =
+    viewParam === "storico"
+      ? "storico"
+      : viewParam === "saldi" && canEditBalances
+        ? "saldi"
+        : "in_corso";
 
   const include = { user: { select: { id: true, name: true } } } as const;
   const [teamPending, currentRequests, pastRequests] = await Promise.all([
@@ -78,21 +91,86 @@ export default async function RichiesteTeamPage({
               href: "/richieste-team?view=storico",
               active: view === "storico",
             },
+            ...(canEditBalances
+              ? [
+                  {
+                    key: "saldi",
+                    label: "Saldi",
+                    href: "/richieste-team?view=saldi",
+                    active: view === "saldi",
+                  },
+                ]
+              : []),
           ]}
         />
+        {view === "saldi" && (
+          <p className="text-sm text-muted-foreground">
+            Clicca un membro per aggiornarne il saldo. Per i dipendenti il residuo passa
+            all&apos;anno dopo, per le partite IVA il monte riparte da capo a gennaio.
+          </p>
+        )}
         <Card>
           <CardContent>
-            <LeaveRequestsTable
-              requests={view === "in_corso" ? currentRequests : pastRequests}
-              showMember
-              showActions
-              emptyMessage={
-                view === "in_corso" ? "Nessuna richiesta in corso." : "Nessuna richiesta passata."
-              }
-            />
+            {view === "saldi" ? (
+              <LeaveBalancesEditor rows={await loadBalanceRows(today.getFullYear())} year={today.getFullYear()} />
+            ) : (
+              <LeaveRequestsTable
+                requests={view === "in_corso" ? currentRequests : pastRequests}
+                showMember
+                showActions
+                emptyMessage={
+                  view === "in_corso" ? "Nessuna richiesta in corso." : "Nessuna richiesta passata."
+                }
+              />
+            )}
           </CardContent>
         </Card>
       </div>
     </div>
   );
+}
+
+// Saldi residui dell'anno corrente dei membri attivi, per la tabella dei saldi.
+async function loadBalanceRows(year: number): Promise<BalanceRow[]> {
+  const users = await prisma.user.findMany({
+    where: { active: true },
+    select: {
+      id: true,
+      name: true,
+      employmentType: true,
+      balanceAdjustments: {
+        where: { year },
+        select: { updatedAt: true },
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+  const balances = await getLeaveBalancesForUsers(
+    users.map((u) => ({ id: u.id, employmentType: u.employmentType as EmploymentType })),
+    year
+  );
+  return users.map((u) => {
+    const b = balances.get(u.id)!;
+    return {
+      userId: u.id,
+      name: u.name,
+      employmentType: u.employmentType as EmploymentType,
+      balances:
+        b.kind === "assenze"
+          ? {
+              assenze: { remaining: b.assenzeRemaining, allowance: b.assenzeAllowance, used: b.assenzeUsed },
+            }
+          : {
+              ferie: { remaining: b.ferieRemaining, allowance: b.ferieAllowance, used: b.ferieUsed },
+              permesso: {
+                remaining: b.permessoRemaining,
+                allowance: b.permessoAllowance,
+                used: b.permessoUsed,
+              },
+            },
+      updatedAt: u.balanceAdjustments[0]?.updatedAt ?? null,
+    };
+  });
 }

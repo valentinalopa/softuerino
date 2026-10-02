@@ -34,6 +34,7 @@ model User {
   presenceEntries        PresenceEntry[]
   timeEntries            TimeEntry[]
   taskAssignments        TaskAssignee[]
+  balanceAdjustments     LeaveBalanceAdjustment[]
 }
 
 // Sessione di login: token opaco in cookie httpOnly, riga cancellabile per logout/revoca
@@ -88,6 +89,24 @@ model LeaveRequest {
 
   @@index([userId])
   @@index([startDate, endDate])
+}
+
+// Rettifica del saldo ferie/permessi/assenze, impostata dal super admin
+// (es. per allineare i residui tenuti finora su Excel). amount si somma al
+// monte annuale dell'anno indicato. Per i dipendenti (ferie, permesso) l'anno
+// della rettifica fa da punto di partenza: da lì il residuo si riporta di anno
+// in anno. Per le partite IVA (assenze) vale solo per quell'anno.
+model LeaveBalanceAdjustment {
+  id        String   @id @default(cuid())
+  userId    String
+  year      Int
+  kind      String // ferie | permesso | assenze
+  amount    Float
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, kind])
 }
 
 // Evento di calendario: riunione di team, shooting, altro

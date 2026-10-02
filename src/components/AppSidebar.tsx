@@ -35,14 +35,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Marchio } from "@/components/brand/Marchio";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import { TONE_DOT, TONE_SOFT } from "@/lib/tones";
-
-function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
-  return initials.join("") || "?";
-}
 
 // external: sito esterno (es. il cloud aziendale), aperto in una nuova scheda.
 type NavLink = { href: string; label: string; icon: LucideIcon; external?: boolean };

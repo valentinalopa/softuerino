@@ -34,10 +34,20 @@ export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
 
 // Monte annuale per tipo di rapporto: i dipendenti hanno ferie (giorni) e
 // permessi (ore) separati, le partite IVA un unico monte di assenze (giorni).
+// Dipendenti: il residuo non goduto passa all'anno dopo. Partite IVA: il
+// monte si azzera ogni 1° gennaio.
 export const LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE = {
-  dipendente: { ferieDaysPerYear: 26, permessoHoursPerYear: 88 },
+  dipendente: { ferieDaysPerYear: 26, permessoHoursPerYear: 36 },
   partita_iva: { assenzeDaysPerYear: 30 },
 } as const;
+
+// Saldi rettificabili dal super admin (LeaveBalanceAdjustment.kind).
+export const BALANCE_KINDS = ["ferie", "permesso", "assenze"] as const;
+export type BalanceKind = (typeof BALANCE_KINDS)[number];
+
+export function balanceKindsFor(employmentType: string): readonly BalanceKind[] {
+  return employmentType === "partita_iva" ? ["assenze"] : ["ferie", "permesso"];
+}
 
 export const LEAVE_TYPES = [
   "ferie",
