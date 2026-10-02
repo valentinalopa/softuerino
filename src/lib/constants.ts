@@ -45,6 +45,23 @@ export const LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE = {
 export const BALANCE_KINDS = ["ferie", "permesso", "assenze"] as const;
 export type BalanceKind = (typeof BALANCE_KINDS)[number];
 
+// Recuperi da fare (es. dopo una trasferta): si misurano a giorni o a ore,
+// come la richiesta di recupero che li smaltisce.
+export const RECOVERY_UNITS = ["giorni", "ore"] as const;
+export type RecoveryUnit = (typeof RECOVERY_UNITS)[number];
+
+export const RECOVERY_STATUSES = ["da_fare", "in_parte", "fatto"] as const;
+export type RecoveryStatus = (typeof RECOVERY_STATUSES)[number];
+
+export const RECOVERY_STATUS_LABELS: Record<RecoveryStatus, string> = {
+  da_fare: "Da fare",
+  in_parte: "In parte",
+  fatto: "Fatto",
+};
+
+// Il super admin può forzare solo questi due: "in parte" viene dalle richieste.
+export const RECOVERY_STATUS_OVERRIDES = ["da_fare", "fatto"] as const;
+
 export function balanceKindsFor(employmentType: string): readonly BalanceKind[] {
   return employmentType === "partita_iva" ? ["assenze"] : ["ferie", "permesso"];
 }

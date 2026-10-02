@@ -11,6 +11,7 @@ import {
   type BalanceRow,
 } from "@/components/richieste/LeaveBalancesEditor";
 import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
+import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
 import type { EmploymentType } from "@/lib/constants";
 
 type View = "in_corso" | "storico" | "saldi";
@@ -147,10 +148,13 @@ async function loadBalanceRows(year: number): Promise<BalanceRow[]> {
     },
     orderBy: { name: "asc" },
   });
-  const balances = await getLeaveBalancesForUsers(
-    users.map((u) => ({ id: u.id, employmentType: u.employmentType as EmploymentType })),
-    year
-  );
+  const [balances, recoveryCredits] = await Promise.all([
+    getLeaveBalancesForUsers(
+      users.map((u) => ({ id: u.id, employmentType: u.employmentType as EmploymentType })),
+      year
+    ),
+    getRecoveryCreditsForUsers(users.filter((u) => u.employmentType === "dipendente").map((u) => u.id)),
+  ]);
   return users.map((u) => {
     const b = balances.get(u.id)!;
     return {
@@ -171,6 +175,15 @@ async function loadBalanceRows(year: number): Promise<BalanceRow[]> {
               },
             },
       updatedAt: u.balanceAdjustments[0]?.updatedAt ?? null,
+      outsideAllowance:
+        b.kind === "assenze"
+          ? [{ label: "Assenze extra", value: b.assenzaExtraDays, unit: "gg" }]
+          : [
+              { label: "Recuperi goduti", value: b.recuperoDays, unit: "gg" },
+              { label: "Recuperi goduti (ore)", value: b.recuperoHours, unit: "h" },
+              { label: "Malattia", value: b.malattiaDaysRegistered, unit: "gg" },
+            ],
+      recoveryCredits: recoveryCredits.get(u.id) ?? null,
     };
   });
 }

@@ -35,6 +35,7 @@ model User {
   timeEntries            TimeEntry[]
   taskAssignments        TaskAssignee[]
   balanceAdjustments     LeaveBalanceAdjustment[]
+  recoveryCredits        RecoveryCredit[]
 }
 
 // Sessione di login: token opaco in cookie httpOnly, riga cancellabile per logout/revoca
@@ -84,11 +85,15 @@ model LeaveRequest {
   status    String   @default("pending") // pending | approved | rejected | registrata
   note      String?
   createdAt DateTime @default(now())
+  // Solo per type = "recupero": quale recupero da fare sta smaltendo.
+  recoveryCreditId String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryCredit RecoveryCredit? @relation(fields: [recoveryCreditId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([startDate, endDate])
+  @@index([recoveryCreditId])
 }
 
 // Rettifica del saldo ferie/permessi/assenze, impostata dal super admin
@@ -107,6 +112,26 @@ model LeaveBalanceAdjustment {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, year, kind])
+}
+
+// Recupero da fare (es. 2 giorni dopo una trasferta), registrato dal super
+// admin. Le richieste di recupero approvate collegate lo smaltiscono: lo stato
+// (da fare / in parte / fatto) si calcola da lì, salvo che il super admin lo
+// forzi con statusOverride.
+model RecoveryCredit {
+  id             String   @id @default(cuid())
+  userId         String
+  reason         String
+  amount         Float
+  unit           String // giorni | ore
+  earnedOn       DateTime
+  statusOverride String? // da_fare | fatto; null = calcolato dalle richieste
+  createdAt      DateTime @default(now())
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests LeaveRequest[]
+
+  @@index([userId])
 }
 
 // Evento di calendario: riunione di team, shooting, altro

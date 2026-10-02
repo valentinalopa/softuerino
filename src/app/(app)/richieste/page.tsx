@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
 import { getLeaveBalance } from "@/lib/leave-balance";
+import { getOpenRecoveryCredits } from "@/lib/recovery-credits";
 import { formatRange } from "@/lib/leave-format";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
@@ -29,12 +30,13 @@ export default async function RichiestePage({
 
   // Pagina personale, identica per tutti: le richieste del team (approvazioni,
   // storico) vivono in /richieste-team, sotto Amministrazione.
-  const [balance, ownRequests] = await Promise.all([
+  const [balance, ownRequests, recoveryCredits] = await Promise.all([
     getLeaveBalance(user.id, user.employmentType as EmploymentType),
     prisma.leaveRequest.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
     }),
+    user.employmentType === "dipendente" ? getOpenRecoveryCredits(user.id) : [],
   ]);
 
   const ownPending = ownRequests.filter((request) => request.status === "pending");
@@ -56,6 +58,7 @@ export default async function RichiestePage({
             scheda membro in /team/[id]. */}
         <NewLeaveRequestDialog
           employmentType={user.employmentType as EmploymentType}
+          recoveryCredits={recoveryCredits}
         />
       </div>
 

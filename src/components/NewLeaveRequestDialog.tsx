@@ -10,6 +10,7 @@ import {
   type EmploymentType,
   type LeaveType,
 } from "@/lib/constants";
+import type { OpenRecoveryCredit } from "@/lib/recovery-credits";
 import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -29,12 +30,15 @@ import {
 export function NewLeaveRequestDialog({
   employmentType,
   targetUserId,
+  recoveryCredits = [],
 }: {
   // Tipo di rapporto della persona per cui si registra la richiesta.
   employmentType: EmploymentType;
   // Valorizzato solo nella scheda membro (/team/[id]): un admin registra
   // la richiesta per conto di quel membro, che nasce già approvata/registrata.
   targetUserId?: string;
+  // Recuperi da fare ancora aperti, tra cui scegliere per una richiesta di recupero.
+  recoveryCredits?: OpenRecoveryCredit[];
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,9 +49,14 @@ export function NewLeaveRequestDialog({
   const [type, setType] = useState<LeaveType>(types[0]);
   // Solo per il recupero: a giorni (periodo) o a ore (un giorno).
   const [unit, setUnit] = useState<"giorni" | "ore">("giorni");
+  // Recupero da fare che si sta smaltendo ("" = altro, motivo nella nota).
+  const [creditId, setCreditId] = useState(recoveryCredits[0]?.id ?? "");
+  const credit =
+    type === "recupero" ? recoveryCredits.find((c) => c.id === creditId) ?? null : null;
+  const effectiveUnit = credit ? credit.unit : unit;
 
-  const isHourly = type === "permesso" || (type === "recupero" && unit === "ore");
-  const noteRequired = NOTE_REQUIRED_LEAVE_TYPES.includes(type);
+  const isHourly = type === "permesso" || (type === "recupero" && effectiveUnit === "ore");
+  const noteRequired = NOTE_REQUIRED_LEAVE_TYPES.includes(type) && !credit;
   const outsideAllowance = type === "recupero" || type === "assenza_extra";
 
   async function handleSubmit(formData: FormData) {
@@ -76,6 +85,7 @@ export function NewLeaveRequestDialog({
           setError(null);
           setType(types[0]);
           setUnit("giorni");
+          setCreditId(recoveryCredits[0]?.id ?? "");
         }
       }}
     >
@@ -117,7 +127,26 @@ export function NewLeaveRequestDialog({
               )}
             </div>
 
-            {type === "recupero" && (
+            {type === "recupero" && recoveryCredits.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <Label>Cosa stai recuperando</Label>
+                <NativeSelectField
+                  fullWidth
+                  name="recoveryCreditId"
+                  defaultValue={creditId}
+                  onValueChange={setCreditId}
+                  items={[
+                    ...recoveryCredits.map((c) => ({
+                      value: c.id,
+                      label: `${c.reason} · restano ${c.remaining.toLocaleString("it-IT")} ${c.unit === "ore" ? "h" : "gg"}`,
+                    })),
+                    { value: "", label: "Altro (scrivi il motivo nella nota)" },
+                  ]}
+                />
+              </div>
+            )}
+
+            {type === "recupero" && !credit && (
               <div className="flex flex-col gap-1.5">
                 <input type="hidden" name="unit" value={unit} />
                 <SegmentedButtonTabs

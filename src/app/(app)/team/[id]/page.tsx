@@ -10,6 +10,7 @@ import { ActiveBadge } from "@/components/ActiveBadge";
 import { EditTeamMemberForm } from "@/components/team/EditTeamMemberForm";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
+import { getOpenRecoveryCredits } from "@/lib/recovery-credits";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { StartImpersonationButton } from "@/components/impersonation/StartImpersonationButton";
 import { OreLogSection, type OreLogParams } from "@/components/ore/OreLogSection";
@@ -175,10 +176,13 @@ async function RichiesteTab({
   memberId: string;
   employmentType: EmploymentType;
 }) {
-  const leaveRequests = await prisma.leaveRequest.findMany({
-    where: { userId: memberId },
-    orderBy: { startDate: "desc" },
-  });
+  const [leaveRequests, recoveryCredits] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: { userId: memberId },
+      orderBy: { startDate: "desc" },
+    }),
+    employmentType === "dipendente" ? getOpenRecoveryCredits(memberId) : [],
+  ]);
 
   return (
     <div className="space-y-4">
@@ -187,6 +191,7 @@ async function RichiesteTab({
         <NewLeaveRequestDialog
           employmentType={employmentType}
           targetUserId={memberId}
+          recoveryCredits={recoveryCredits}
         />
       </div>
       <Card>

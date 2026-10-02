@@ -10,6 +10,8 @@ import {
   type EmploymentType,
 } from "@/lib/constants";
 import { getInitials } from "@/lib/utils";
+import type { RecoveryCreditView } from "@/lib/recovery-credits";
+import { RecoveryCreditsSection } from "@/components/richieste/RecoveryCreditsSection";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +44,24 @@ export type BalanceRow = {
   balances: Partial<Record<BalanceKind, BalanceFigures>>;
   // Ultima rettifica del super admin nell'anno, se c'è.
   updatedAt: Date | null;
+  // Fuori monte nell'anno (recuperi goduti, malattia, assenze extra): solo lettura.
+  outsideAllowance: { label: string; value: number; unit: string }[];
+  // Recuperi da fare: solo per i dipendenti (null per le partite IVA).
+  recoveryCredits: RecoveryCreditView[] | null;
 };
+
+// Quanto resta da recuperare (recuperi non fatti), separato per unità.
+function toRecover(credits: RecoveryCreditView[] | null) {
+  const totals = { giorni: 0, ore: 0 };
+  for (const credit of credits ?? []) {
+    if (credit.status === "fatto") continue;
+    totals[credit.unit] += Math.max(credit.amount - credit.used, 0);
+  }
+  const parts = [];
+  if (totals.giorni > 0) parts.push(`${formatNumber(totals.giorni)} gg`);
+  if (totals.ore > 0) parts.push(`${formatNumber(totals.ore)} h`);
+  return parts.join(" · ");
+}
 
 const KINDS: { kind: BalanceKind; label: string; fieldLabel: string; unit: string }[] = [
   { kind: "ferie", label: "Ferie", fieldLabel: "Ferie residue", unit: "gg" },
@@ -116,6 +135,14 @@ export function LeaveBalancesEditor({ rows, year }: { rows: BalanceRow[]; year: 
                   {KINDS.filter((k) => row.balances[k.kind]).map((k) => (
                     <BalanceMeter key={k.kind} label={k.label} unit={k.unit} figures={row.balances[k.kind]!} />
                   ))}
+                  {toRecover(row.recoveryCredits) && (
+                    <div>
+                      <span className="block text-xs text-muted-foreground">Da recuperare</span>
+                      <span className="block text-base font-semibold whitespace-nowrap text-foreground">
+                        {toRecover(row.recoveryCredits)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </TableCell>
               <TableCell className="whitespace-nowrap text-muted-foreground">
@@ -247,20 +274,25 @@ function BalanceForm({
     });
   }
 
+  const formId = `balance-form-${row.userId}`;
+
   return (
     <>
       <SheetHeader>
         <SheetTitle>{row.name}</SheetTitle>
         <SheetDescription>
-          {EMPLOYMENT_TYPE_LABELS[row.employmentType]} · saldi {year}
+          {EMPLOYMENT_TYPE_LABELS[row.employmentType]} · {year}
         </SheetDescription>
       </SheetHeader>
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-        <SheetBody className="space-y-5">
-          <p className="text-sm text-muted-foreground">
-            Scrivi il residuo che deve risultare oggi (anche con la virgola, es. 2,5). Da qui in
-            poi le richieste approvate lo scalano.
-          </p>
+      <SheetBody className="space-y-8">
+        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">Saldi</h3>
+            <p className="text-sm text-muted-foreground">
+              Scrivi il residuo che deve risultare oggi (anche con la virgola, es. 2,5). Da qui in
+              poi le richieste approvate lo scalano.
+            </p>
+          </div>
           {kinds.map((k) => {
             const figures = row.balances[k.kind]!;
             const id = `balance-${row.userId}-${k.kind}`;
@@ -290,13 +322,31 @@ function BalanceForm({
             );
           })}
           {error && <p className="text-sm text-destructive">{error}</p>}
-        </SheetBody>
-        <SheetFooter>
-          <Button type="submit" disabled={saving}>
-            {saving ? "Salvataggio..." : "Salva"}
-          </Button>
-        </SheetFooter>
-      </form>
+        </form>
+
+        {row.recoveryCredits && (
+          <RecoveryCreditsSection userId={row.userId} credits={row.recoveryCredits} />
+        )}
+
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-foreground">Fuori monte nel {year}</h3>
+          <dl className="divide-y divide-border-subtle text-sm">
+            {row.outsideAllowance.map((item) => (
+              <div key={item.label} className="flex items-center justify-between py-2">
+                <dt className="text-muted-foreground">{item.label}</dt>
+                <dd className="font-medium text-foreground">
+                  {formatNumber(item.value)} {item.unit}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </SheetBody>
+      <SheetFooter>
+        <Button type="submit" form={formId} disabled={saving}>
+          {saving ? "Salvataggio..." : "Salva saldi"}
+        </Button>
+      </SheetFooter>
     </>
   );
 }

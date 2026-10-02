@@ -85,12 +85,17 @@ export type LeaveBalance =
       permessoUsed: number;
       permessoRemaining: number;
       malattiaDaysRegistered: number;
+      // Fuori monte, solo informativi.
+      recuperoDays: number;
+      recuperoHours: number;
     }
   | {
       kind: "assenze";
       assenzeAllowance: number;
       assenzeUsed: number;
       assenzeRemaining: number;
+      // Fuori monte, solo informativo.
+      assenzaExtraDays: number;
     };
 
 type BalanceAdjustment = { kind: string; year: number; amount: number };
@@ -187,6 +192,7 @@ function computeBalance(
       assenzeAllowance: round2(allowance),
       assenzeUsed: round2(used),
       assenzeRemaining: round2(allowance - used),
+      assenzaExtraDays: tallyFor(year).assenzaExtraDays,
     };
   }
 
@@ -202,6 +208,8 @@ function computeBalance(
     permessoUsed: permesso.used,
     permessoRemaining: permesso.remaining,
     malattiaDaysRegistered: tallyFor(year).malattiaDays,
+    recuperoDays: tallyFor(year).recuperoDays,
+    recuperoHours: round2(tallyFor(year).recuperoHours),
   };
 }
 

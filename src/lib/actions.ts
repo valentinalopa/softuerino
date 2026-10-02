@@ -38,6 +38,9 @@ import {
   balanceKindsFor,
   type BalanceKind,
   type EmploymentType,
+  RECOVERY_UNITS,
+  RECOVERY_STATUS_OVERRIDES,
+  type RecoveryUnit,
 } from "@/lib/constants";
 
 // Costruisce una Date a mezzanotte locale da una stringa "yyyy-MM-dd", evitando che
@@ -327,14 +330,28 @@ export async function createLeaveRequest(formData: FormData) {
   if (!startDateRaw) {
     return { error: "La data è obbligatoria" };
   }
-  if (NOTE_REQUIRED_LEAVE_TYPES.includes(type as LeaveType) && !note) {
+  // Un recupero può smaltire un recupero da fare registrato dal super admin:
+  // in quel caso il motivo è già lì e la nota diventa facoltativa.
+  const recoveryCreditIdRaw =
+    type === "recupero" ? String(formData.get("recoveryCreditId") ?? "").trim() : "";
+  const recoveryCredit = recoveryCreditIdRaw
+    ? await prisma.recoveryCredit.findFirst({
+        where: { id: recoveryCreditIdRaw, userId: targetUserId },
+        select: { id: true, unit: true },
+      })
+    : null;
+  if (recoveryCreditIdRaw && !recoveryCredit) {
+    return { error: "Recupero da fare non trovato" };
+  }
+  if (NOTE_REQUIRED_LEAVE_TYPES.includes(type as LeaveType) && !note && !recoveryCredit) {
     return { error: "Per il recupero la nota è obbligatoria: indica il motivo (es. la trasferta)" };
   }
   // A ore = un solo giorno con un numero di ore: il permesso sempre, il
-  // recupero quando si sceglie "A ore".
+  // recupero quando si sceglie "A ore" (o quando il recupero da fare è in ore).
   const isHourly =
     type === "permesso" ||
-    (type === "recupero" && String(formData.get("unit") ?? "") === "ore");
+    (type === "recupero" &&
+      (recoveryCredit ? recoveryCredit.unit === "ore" : String(formData.get("unit") ?? "") === "ore"));
   const effectiveEndDateRaw = isHourly ? startDateRaw : endDateRaw;
   if (effectiveEndDateRaw < startDateRaw) {
     return { error: "La data di fine non può precedere quella di inizio" };
@@ -386,6 +403,7 @@ export async function createLeaveRequest(formData: FormData) {
       hours,
       note,
       status,
+      recoveryCreditId: recoveryCredit?.id ?? null,
     },
   });
 
@@ -529,6 +547,73 @@ export async function setLeaveBalances(
 
   for (const userId of userById.keys()) revalidateLeavePaths(userId);
   revalidatePath("/team");
+}
+
+// --- Recuperi da fare (solo super admin) ---
+
+export async function createRecoveryCredit(formData: FormData): Promise<ActionResult> {
+  await requireSuperAdmin();
+
+  const userId = String(formData.get("userId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const unit = String(formData.get("unit") ?? "");
+  const amount = Number(String(formData.get("amount") ?? "").trim().replace(",", "."));
+  const earnedOnRaw = String(formData.get("earnedOn") ?? "");
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { employmentType: true },
+  });
+  if (!user) return { error: "Membro non trovato" };
+  if (user.employmentType !== "dipendente") {
+    return { error: "I recuperi valgono solo per i dipendenti" };
+  }
+  if (!reason) return { error: "Indica il motivo (es. trasferta Milano)" };
+  if (!RECOVERY_UNITS.includes(unit as RecoveryUnit)) return { error: "Unità non valida" };
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 999) {
+    return { error: "Indica una quantità valida" };
+  }
+  if (!earnedOnRaw) return { error: "Indica la data" };
+
+  await prisma.recoveryCredit.create({
+    data: { userId, reason, unit, amount, earnedOn: localDate(earnedOnRaw) },
+  });
+  revalidateLeavePaths(userId);
+}
+
+// override null = torna allo stato calcolato dalle richieste.
+export async function setRecoveryCreditStatus(
+  creditId: string,
+  override: "da_fare" | "fatto" | null
+): Promise<ActionResult> {
+  await requireSuperAdmin();
+  if (override !== null && !RECOVERY_STATUS_OVERRIDES.includes(override)) {
+    return { error: "Stato non valido" };
+  }
+  const credit = await prisma.recoveryCredit.findUnique({
+    where: { id: creditId },
+    select: { userId: true },
+  });
+  if (!credit) return { error: "Recupero non trovato" };
+
+  await prisma.recoveryCredit.update({
+    where: { id: creditId },
+    data: { statusOverride: override },
+  });
+  revalidateLeavePaths(credit.userId);
+}
+
+// Le richieste collegate restano: perdono solo il collegamento.
+export async function deleteRecoveryCredit(creditId: string): Promise<ActionResult> {
+  await requireSuperAdmin();
+  const credit = await prisma.recoveryCredit.findUnique({
+    where: { id: creditId },
+    select: { userId: true },
+  });
+  if (!credit) return { error: "Recupero non trovato" };
+
+  await prisma.recoveryCredit.delete({ where: { id: creditId } });
+  revalidateLeavePaths(credit.userId);
 }
 
 function revalidateLeavePaths(userId: string) {
