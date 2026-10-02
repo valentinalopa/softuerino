@@ -76,11 +76,12 @@ export const LEAVE_TYPES = [
 ] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
 
-// Tipi richiedibili per tipo di rapporto. "recupero" (riposo compensativo,
-// es. dopo una trasferta) e "assenza_extra" (assenza di una partita IVA che
-// non vuole scalarla dal monte) non consumano il monte annuale.
+// Tipi richiedibili per tipo di rapporto. "recupero" (riposo compensativo per
+// lavoro in più, es. una trasferta) vale per tutti; "assenza_extra" (giorno
+// fuori monte di una partita IVA, senza lavoro da compensare) solo per le
+// partite IVA. Nessuno dei due consuma il monte annuale.
 export const DIPENDENTE_LEAVE_TYPES = ["ferie", "permesso", "recupero", "malattia"] as const;
-export const PARTITA_IVA_LEAVE_TYPES = ["assenza", "assenza_extra"] as const;
+export const PARTITA_IVA_LEAVE_TYPES = ["assenza", "recupero", "assenza_extra"] as const;
 
 export function leaveTypesFor(employmentType: string): readonly LeaveType[] {
   return employmentType === "partita_iva" ? PARTITA_IVA_LEAVE_TYPES : DIPENDENTE_LEAVE_TYPES;
@@ -89,6 +90,12 @@ export function leaveTypesFor(employmentType: string): readonly LeaveType[] {
 // Il recupero va motivato (es. "trasferta Milano 12/10"): senza una banca ore
 // la nota è l'unica traccia del perché.
 export const NOTE_REQUIRED_LEAVE_TYPES: readonly LeaveType[] = ["recupero"];
+
+// Spiegazione sotto il tipo nel form di richiesta, dove serve distinguere.
+export const LEAVE_TYPE_HINTS: Partial<Record<LeaveType, string>> = {
+  recupero: "Compensa lavoro in più (es. una trasferta): non scala dal monte annuale.",
+  assenza_extra: "Giorno fuori monte, senza lavoro da compensare: non scala dal monte annuale.",
+};
 
 export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   ferie: "Ferie",

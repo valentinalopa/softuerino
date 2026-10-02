@@ -34,7 +34,7 @@ function unitShort(unit: RecoveryUnit) {
 }
 
 
-// Recuperi da fare di un dipendente (es. 2 gg dopo una trasferta): elenco con
+// Recuperi da fare di un membro (dipendente o partita IVA) (es. 2 gg dopo una trasferta): elenco con
 // stato, aggiunta e stato forzabile dal super admin.
 export function RecoveryCreditsSection({
   userId,
@@ -61,8 +61,8 @@ export function RecoveryCreditsSection({
 
       {credits.length === 0 && !adding ? (
         <p className="text-sm text-muted-foreground">
-          Nessun recupero registrato. Aggiungine uno quando matura (es. una trasferta): il
-          dipendente lo sceglierà quando chiede il recupero.
+          Nessun recupero registrato. Aggiungine uno quando matura (es. una trasferta):
+          verrà proposto quando si chiede un recupero.
         </p>
       ) : (
         <ul className="space-y-2">

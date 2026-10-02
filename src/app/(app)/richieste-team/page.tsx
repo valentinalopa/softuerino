@@ -156,7 +156,7 @@ async function loadBalanceRows(year: number): Promise<BalanceRow[]> {
       users.map((u) => ({ id: u.id, employmentType: u.employmentType as EmploymentType })),
       year
     ),
-    getRecoveryCreditsForUsers(users.filter((u) => u.employmentType === "dipendente").map((u) => u.id)),
+    getRecoveryCreditsForUsers(users.map((u) => u.id)),
   ]);
   return users.map((u) => {
     const b = balances.get(u.id)!;
@@ -180,13 +180,17 @@ async function loadBalanceRows(year: number): Promise<BalanceRow[]> {
       updatedAt: u.balanceAdjustments[0]?.updatedAt ?? null,
       outsideAllowance:
         b.kind === "assenze"
-          ? [{ label: "Assenze extra", value: b.assenzaExtraDays, unit: "gg" }]
+          ? [
+              { label: "Recuperi goduti", value: b.recuperoDays, unit: "gg" },
+              { label: "Recuperi goduti (ore)", value: b.recuperoHours, unit: "h" },
+              { label: "Assenze extra", value: b.assenzaExtraDays, unit: "gg" },
+            ]
           : [
               { label: "Recuperi goduti", value: b.recuperoDays, unit: "gg" },
               { label: "Recuperi goduti (ore)", value: b.recuperoHours, unit: "h" },
               { label: "Malattia", value: b.malattiaDaysRegistered, unit: "gg" },
             ],
-      recoveryCredits: recoveryCredits.get(u.id) ?? null,
+      recoveryCredits: recoveryCredits.get(u.id) ?? [],
     };
   });
 }

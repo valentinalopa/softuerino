@@ -183,7 +183,7 @@ async function RichiesteTab({
       include: { recoveryCredit: { select: { reason: true, amount: true, unit: true } } },
       orderBy: { startDate: "desc" },
     }),
-    employmentType === "dipendente" ? getOpenRecoveryCredits(memberId) : [],
+    getOpenRecoveryCredits(memberId),
   ]);
 
   return (

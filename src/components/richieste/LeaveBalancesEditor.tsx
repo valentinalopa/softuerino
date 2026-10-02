@@ -48,12 +48,12 @@ export type BalanceRow = {
   updatedAt: Date | null;
   // Fuori monte nell'anno (recuperi goduti, malattia, assenze extra): solo lettura.
   outsideAllowance: { label: string; value: number; unit: string }[];
-  // Recuperi da fare: solo per i dipendenti (null per le partite IVA).
-  recoveryCredits: RecoveryCreditView[] | null;
+  // Recuperi da fare (dipendenti e partite IVA).
+  recoveryCredits: RecoveryCreditView[];
 };
 
-function toRecover(credits: RecoveryCreditView[] | null) {
-  return formatToRecover(credits ?? []);
+function toRecover(credits: RecoveryCreditView[]) {
+  return formatToRecover(credits);
 }
 
 const KINDS: { kind: BalanceKind; label: string; fieldLabel: string; unit: string }[] = [
@@ -318,9 +318,7 @@ function BalanceForm({ row, year }: { row: BalanceRow; year: number }) {
           </div>
         </form>
 
-        {row.recoveryCredits && (
-          <RecoveryCreditsSection userId={row.userId} credits={row.recoveryCredits} />
-        )}
+        <RecoveryCreditsSection userId={row.userId} credits={row.recoveryCredits} />
 
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-foreground">Fuori monte nel {year}</h3>

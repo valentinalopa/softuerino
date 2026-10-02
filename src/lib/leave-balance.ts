@@ -94,7 +94,9 @@ export type LeaveBalance =
       assenzeAllowance: number;
       assenzeUsed: number;
       assenzeRemaining: number;
-      // Fuori monte, solo informativo.
+      // Fuori monte, solo informativi.
+      recuperoDays: number;
+      recuperoHours: number;
       assenzaExtraDays: number;
     };
 
@@ -192,6 +194,8 @@ function computeBalance(
       assenzeAllowance: round2(allowance),
       assenzeUsed: round2(used),
       assenzeRemaining: round2(allowance - used),
+      recuperoDays: tallyFor(year).recuperoDays,
+      recuperoHours: round2(tallyFor(year).recuperoHours),
       assenzaExtraDays: tallyFor(year).assenzaExtraDays,
     };
   }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { createLeaveRequest } from "@/lib/actions";
 import {
+  LEAVE_TYPE_HINTS,
   LEAVE_TYPE_LABELS,
   NOTE_REQUIRED_LEAVE_TYPES,
   leaveTypesFor,
@@ -44,7 +45,7 @@ export function NewLeaveRequestDialog({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
-  // (scala il monte unico) e assenza extra (fuori monte).
+  // (scala il monte unico), recupero e assenza extra (fuori monte).
   const types = leaveTypesFor(employmentType);
   const [type, setType] = useState<LeaveType>(types[0]);
   // Solo per il recupero: a giorni (periodo) o a ore (un giorno).
@@ -57,7 +58,6 @@ export function NewLeaveRequestDialog({
 
   const isHourly = type === "permesso" || (type === "recupero" && effectiveUnit === "ore");
   const noteRequired = NOTE_REQUIRED_LEAVE_TYPES.includes(type) && !credit;
-  const outsideAllowance = type === "recupero" || type === "assenza_extra";
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -120,10 +120,8 @@ export function NewLeaveRequestDialog({
                   label: LEAVE_TYPE_LABELS[leaveType],
                 }))}
               />
-              {outsideAllowance && (
-                <p className="text-xs text-muted-foreground">
-                  Non scala dal monte annuale.
-                </p>
+              {LEAVE_TYPE_HINTS[type] && (
+                <p className="text-xs text-muted-foreground">{LEAVE_TYPE_HINTS[type]}</p>
               )}
             </div>
 

@@ -323,7 +323,7 @@ export async function createLeaveRequest(formData: FormData) {
   }
 
   // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
-  // (monte unico) e assenza extra (fuori monte).
+  // (monte unico), recupero e assenza extra (fuori monte).
   if (!leaveTypesFor(targetUser.employmentType).includes(type as LeaveType)) {
     return { error: "Tipo di richiesta non valido" };
   }
@@ -560,14 +560,8 @@ export async function createRecoveryCredit(formData: FormData): Promise<ActionRe
   const amount = Number(String(formData.get("amount") ?? "").trim().replace(",", "."));
   const earnedOnRaw = String(formData.get("earnedOn") ?? "");
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { employmentType: true },
-  });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!user) return { error: "Membro non trovato" };
-  if (user.employmentType !== "dipendente") {
-    return { error: "I recuperi valgono solo per i dipendenti" };
-  }
   if (!reason) return { error: "Indica il motivo (es. trasferta Milano)" };
   if (!RECOVERY_UNITS.includes(unit as RecoveryUnit)) return { error: "Unità non valida" };
   if (!Number.isFinite(amount) || amount <= 0 || amount > 999) {

@@ -38,9 +38,9 @@ export default async function RichiestePage({
       include: { recoveryCredit: { select: { reason: true, amount: true, unit: true } } },
       orderBy: { createdAt: "desc" },
     }),
-    user.employmentType === "dipendente" ? getRecoveryCreditsForUsers([user.id]) : null,
+    getRecoveryCreditsForUsers([user.id]),
   ]);
-  const ownCredits = recoveryCredits?.get(user.id) ?? [];
+  const ownCredits = recoveryCredits.get(user.id) ?? [];
   const toRecover = formatToRecover(ownCredits);
 
   const ownPending = ownRequests.filter((request) => request.status === "pending");
@@ -114,17 +114,17 @@ export default async function RichiestePage({
               label="Malattia registrata"
               value={`${formatAmount(balance.malattiaDaysRegistered)} giorni (nessun tetto)`}
             />
-            {toRecover && (
-              <BalanceCard
-                label="Da recuperare"
-                value={toRecover}
-                detail={ownCredits
-                  .filter((credit) => credit.status !== "fatto")
-                  .map((credit) => credit.reason)
-                  .join(", ")}
-              />
-            )}
           </>
+        )}
+        {toRecover && (
+          <BalanceCard
+            label="Da recuperare"
+            value={toRecover}
+            detail={ownCredits
+              .filter((credit) => credit.status !== "fatto")
+              .map((credit) => credit.reason)
+              .join(", ")}
+          />
         )}
       </div>
 
