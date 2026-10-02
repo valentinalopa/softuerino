@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
-import { formatRange } from "@/lib/leave-format";
+import { formatRange, formatRecoveryCredit, type RecoveryCreditRef } from "@/lib/leave-format";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -62,6 +62,7 @@ export function TeamPendingItem({
     endDate: Date;
     note: string | null;
     user: { name: string };
+    recoveryCredit?: RecoveryCreditRef | null;
   };
 }) {
   return (
@@ -74,6 +75,11 @@ export function TeamPendingItem({
             · {formatRange(request.startDate, request.endDate)}
           </span>
         </p>
+        {request.recoveryCredit && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Recupero di: {formatRecoveryCredit(request.recoveryCredit)}
+          </p>
+        )}
         {request.note && (
           <p className="mt-0.5 text-xs text-muted-foreground">Nota: {request.note}</p>
         )}

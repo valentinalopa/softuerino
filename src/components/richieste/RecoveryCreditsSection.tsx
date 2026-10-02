@@ -7,7 +7,7 @@ import {
   deleteRecoveryCredit,
   setRecoveryCreditStatus,
 } from "@/lib/actions";
-import { formatDate } from "@/lib/leave-format";
+import { formatAmount as formatNumber, formatDate } from "@/lib/leave-format";
 import {
   RECOVERY_STATUS_LABELS,
   type RecoveryStatus,
@@ -33,9 +33,6 @@ function unitShort(unit: RecoveryUnit) {
   return unit === "ore" ? "h" : "gg";
 }
 
-function formatNumber(value: number) {
-  return value.toLocaleString("it-IT", { maximumFractionDigits: 2, useGrouping: false });
-}
 
 // Recuperi da fare di un dipendente (es. 2 gg dopo una trasferta): elenco con
 // stato, aggiunta e stato forzabile dal super admin.
@@ -112,18 +109,27 @@ function CreditItem({ credit }: { credit: RecoveryCreditView }) {
             {credit.pending > 0 && ` (+${formatNumber(credit.pending)} ${unit} in attesa)`}
           </span>
         </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
-            TONE_SOFT[STATUS_TONE[credit.status]]
+        <div className="flex shrink-0 flex-col items-end gap-0.5">
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-xs font-semibold",
+              TONE_SOFT[STATUS_TONE[credit.status]]
+            )}
+          >
+            {RECOVERY_STATUS_LABELS[credit.status]}
+          </span>
+          {credit.statusOverride && (
+            <span className="text-xs text-muted-foreground">impostato a mano</span>
           )}
-        >
-          {RECOVERY_STATUS_LABELS[credit.status]}
-        </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
+        <Label htmlFor={`credit-status-${credit.id}`} className="text-xs font-normal text-muted-foreground">
+          Stato
+        </Label>
         <NativeSelectField
+          id={`credit-status-${credit.id}`}
           // Rimonta quando lo stato cambia dal server (es. dopo un'altra azione).
           key={credit.statusOverride ?? "auto"}
           name={`status-${credit.id}`}
@@ -137,10 +143,10 @@ function CreditItem({ credit }: { credit: RecoveryCreditView }) {
           items={[
             {
               value: "",
-              label: `Automatico (${RECOVERY_STATUS_LABELS[credit.autoStatus].toLowerCase()})`,
+              label: `Automatico · ${RECOVERY_STATUS_LABELS[credit.autoStatus].toLowerCase()}`,
             },
-            { value: "da_fare", label: "Segna da fare" },
-            { value: "fatto", label: "Segna fatto" },
+            { value: "da_fare", label: "Da fare" },
+            { value: "fatto", label: "Fatto" },
           ]}
         />
         <div className="ml-auto">

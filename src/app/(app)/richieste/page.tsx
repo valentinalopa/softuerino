@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
 import { getLeaveBalance } from "@/lib/leave-balance";
-import { getOpenRecoveryCredits } from "@/lib/recovery-credits";
+import { getRecoveryCreditsForUsers, toOpenRecoveryCredits } from "@/lib/recovery-credits";
+import { formatAmount, formatToRecover } from "@/lib/leave-format";
 import { formatRange } from "@/lib/leave-format";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
@@ -34,10 +35,13 @@ export default async function RichiestePage({
     getLeaveBalance(user.id, user.employmentType as EmploymentType),
     prisma.leaveRequest.findMany({
       where: { userId: user.id },
+      include: { recoveryCredit: { select: { reason: true, amount: true, unit: true } } },
       orderBy: { createdAt: "desc" },
     }),
-    user.employmentType === "dipendente" ? getOpenRecoveryCredits(user.id) : [],
+    user.employmentType === "dipendente" ? getRecoveryCreditsForUsers([user.id]) : null,
   ]);
+  const ownCredits = recoveryCredits?.get(user.id) ?? [];
+  const toRecover = formatToRecover(ownCredits);
 
   const ownPending = ownRequests.filter((request) => request.status === "pending");
   const ownUpcoming = ownRequests.filter((request) => request.endDate >= today);
@@ -58,7 +62,7 @@ export default async function RichiestePage({
             scheda membro in /team/[id]. */}
         <NewLeaveRequestDialog
           employmentType={user.employmentType as EmploymentType}
-          recoveryCredits={recoveryCredits}
+          recoveryCredits={toOpenRecoveryCredits(ownCredits)}
         />
       </div>
 
@@ -88,26 +92,38 @@ export default async function RichiestePage({
         </NotificationCard>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div
+        className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${toRecover ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}
+      >
         {balance.kind === "assenze" ? (
           <BalanceCard
             label="Assenze rimanenti"
-            value={`${balance.assenzeRemaining} / ${balance.assenzeAllowance} giorni`}
+            value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(balance.assenzeAllowance)} giorni`}
           />
         ) : (
           <>
             <BalanceCard
               label="Ferie rimanenti"
-              value={`${balance.ferieRemaining} / ${balance.ferieAllowance} giorni`}
+              value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieAllowance)} giorni`}
             />
             <BalanceCard
               label="Permesso rimanente"
-              value={`${balance.permessoRemaining} / ${balance.permessoAllowance} ore`}
+              value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(balance.permessoAllowance)} ore`}
             />
             <BalanceCard
               label="Malattia registrata"
-              value={`${balance.malattiaDaysRegistered} giorni (nessun tetto)`}
+              value={`${formatAmount(balance.malattiaDaysRegistered)} giorni (nessun tetto)`}
             />
+            {toRecover && (
+              <BalanceCard
+                label="Da recuperare"
+                value={toRecover}
+                detail={ownCredits
+                  .filter((credit) => credit.status !== "fatto")
+                  .map((credit) => credit.reason)
+                  .join(", ")}
+              />
+            )}
           </>
         )}
       </div>
@@ -146,12 +162,13 @@ export default async function RichiestePage({
   );
 }
 
-function BalanceCard({ label, value }: { label: string; value: string }) {
+function BalanceCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <Card>
       <CardContent>
         <p className="text-sm text-muted-foreground">{label}</p>
         <p className="mt-1 text-lg font-semibold">{value}</p>
+        {detail && <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>}
       </CardContent>
     </Card>
   );

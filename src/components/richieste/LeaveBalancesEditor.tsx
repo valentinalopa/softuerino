@@ -3,13 +3,14 @@
 import { useState, useTransition } from "react";
 import { ChevronRight } from "lucide-react";
 import { setLeaveBalances } from "@/lib/actions";
-import { formatDate } from "@/lib/leave-format";
+import { formatAmount as formatNumber, formatDate, formatToRecover } from "@/lib/leave-format";
 import {
   EMPLOYMENT_TYPE_LABELS,
   type BalanceKind,
   type EmploymentType,
 } from "@/lib/constants";
 import { getInitials } from "@/lib/utils";
+import { TONE_TEXT } from "@/lib/tones";
 import type { RecoveryCreditView } from "@/lib/recovery-credits";
 import { RecoveryCreditsSection } from "@/components/richieste/RecoveryCreditsSection";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -19,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import {
   Sheet,
   SheetBody,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -50,17 +52,8 @@ export type BalanceRow = {
   recoveryCredits: RecoveryCreditView[] | null;
 };
 
-// Quanto resta da recuperare (recuperi non fatti), separato per unità.
 function toRecover(credits: RecoveryCreditView[] | null) {
-  const totals = { giorni: 0, ore: 0 };
-  for (const credit of credits ?? []) {
-    if (credit.status === "fatto") continue;
-    totals[credit.unit] += Math.max(credit.amount - credit.used, 0);
-  }
-  const parts = [];
-  if (totals.giorni > 0) parts.push(`${formatNumber(totals.giorni)} gg`);
-  if (totals.ore > 0) parts.push(`${formatNumber(totals.ore)} h`);
-  return parts.join(" · ");
+  return formatToRecover(credits ?? []);
 }
 
 const KINDS: { kind: BalanceKind; label: string; fieldLabel: string; unit: string }[] = [
@@ -69,9 +62,6 @@ const KINDS: { kind: BalanceKind; label: string; fieldLabel: string; unit: strin
   { kind: "assenze", label: "Assenze", fieldLabel: "Assenze residue", unit: "gg" },
 ];
 
-function formatNumber(value: number) {
-  return value.toLocaleString("it-IT", { maximumFractionDigits: 2, useGrouping: false });
-}
 
 // Accetta la virgola come nell'Excel (2,5) e i negativi (chi ha già sforato).
 function parseNumber(raw: string): number | null {
@@ -176,7 +166,6 @@ export function LeaveBalancesEditor({ rows, year }: { rows: BalanceRow[]; year: 
               key={selected.userId}
               row={selected}
               year={year}
-              onSaved={() => setSelectedId(null)}
             />
           )}
         </SheetContent>
@@ -222,15 +211,9 @@ function BalanceMeter({
   );
 }
 
-function BalanceForm({
-  row,
-  year,
-  onSaved,
-}: {
-  row: BalanceRow;
-  year: number;
-  onSaved: () => void;
-}) {
+// Ogni sezione del pannello salva da sé: i saldi col loro pulsante, i
+// recuperi a ogni azione. Il pannello resta aperto e si chiude con "Chiudi".
+function BalanceForm({ row, year }: { row: BalanceRow; year: number }) {
   const kinds = KINDS.filter((k) => row.balances[k.kind]);
   const [values, setValues] = useState<Partial<Record<BalanceKind, string>>>(() =>
     Object.fromEntries(
@@ -238,11 +221,20 @@ function BalanceForm({
     )
   );
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [saving, startSaving] = useTransition();
+
+  // Modifiche rispetto ai saldi attuali (dopo il salvataggio la pagina si
+  // aggiorna e tornano a zero).
+  const dirty = kinds.some((k) => {
+    const parsed = parseNumber(values[k.kind] ?? "");
+    return parsed === null || parsed !== row.balances[k.kind]!.remaining;
+  });
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSaved(false);
 
     const changes: { userId: string; kind: BalanceKind; remaining: number }[] = [];
     for (const k of kinds) {
@@ -255,10 +247,7 @@ function BalanceForm({
         changes.push({ userId: row.userId, kind: k.kind, remaining: parsed });
       }
     }
-    if (changes.length === 0) {
-      onSaved();
-      return;
-    }
+    if (changes.length === 0) return;
 
     startSaving(async () => {
       try {
@@ -267,14 +256,12 @@ function BalanceForm({
           setError(result.error);
           return;
         }
-        onSaved();
+        setSaved(true);
       } catch {
         setError("Salvataggio non riuscito, riprova.");
       }
     });
   }
-
-  const formId = `balance-form-${row.userId}`;
 
   return (
     <>
@@ -285,7 +272,7 @@ function BalanceForm({
         </SheetDescription>
       </SheetHeader>
       <SheetBody className="space-y-8">
-        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-foreground">Saldi</h3>
             <p className="text-sm text-muted-foreground">
@@ -310,6 +297,7 @@ function BalanceForm({
                   onChange={(event) => {
                     const next = event.target.value;
                     setError(null);
+                    setSaved(false);
                     setValues((current) => ({ ...current, [k.kind]: next }));
                   }}
                 />
@@ -321,7 +309,13 @@ function BalanceForm({
               </div>
             );
           })}
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={saving || !dirty}>
+              {saving ? "Salvataggio..." : "Salva saldi"}
+            </Button>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            {saved && !dirty && <p className={`text-sm ${TONE_TEXT.success}`}>Saldi salvati.</p>}
+          </div>
         </form>
 
         {row.recoveryCredits && (
@@ -343,9 +337,7 @@ function BalanceForm({
         </section>
       </SheetBody>
       <SheetFooter>
-        <Button type="submit" form={formId} disabled={saving}>
-          {saving ? "Salvataggio..." : "Salva saldi"}
-        </Button>
+        <SheetClose render={<Button type="button" variant="outline" />}>Chiudi</SheetClose>
       </SheetFooter>
     </>
   );

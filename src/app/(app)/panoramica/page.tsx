@@ -41,7 +41,10 @@ export default async function PanoramicaPage() {
     // Stesso criterio di /richieste-team: le richieste degli altri membri.
     prisma.leaveRequest.findMany({
       where: { userId: { not: user.id }, status: "pending" },
-      include: { user: { select: { name: true } } },
+      include: {
+        user: { select: { name: true } },
+        recoveryCredit: { select: { reason: true, amount: true, unit: true } },
+      },
       orderBy: { startDate: "asc" },
       take: PENDING_PREVIEW,
     }),

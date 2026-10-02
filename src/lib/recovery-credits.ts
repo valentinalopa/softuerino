@@ -83,8 +83,8 @@ export type OpenRecoveryCredit = {
   remaining: number;
 };
 
-export async function getOpenRecoveryCredits(userId: string): Promise<OpenRecoveryCredit[]> {
-  const credits = (await getRecoveryCreditsForUsers([userId])).get(userId) ?? [];
+export function toOpenRecoveryCredits(credits: RecoveryCreditView[]): OpenRecoveryCredit[] {
+  // Fuori anche quelli già coperti da richieste in attesa: non resta nulla da chiedere.
   return credits
     .filter((credit) => credit.status !== "fatto")
     .map((credit) => ({
@@ -92,5 +92,11 @@ export async function getOpenRecoveryCredits(userId: string): Promise<OpenRecove
       reason: credit.reason,
       unit: credit.unit,
       remaining: round2(Math.max(credit.amount - credit.used - credit.pending, 0)),
-    }));
+    }))
+    .filter((credit) => credit.remaining > 0);
+}
+
+export async function getOpenRecoveryCredits(userId: string): Promise<OpenRecoveryCredit[]> {
+  const credits = (await getRecoveryCreditsForUsers([userId])).get(userId) ?? [];
+  return toOpenRecoveryCredits(credits);
 }

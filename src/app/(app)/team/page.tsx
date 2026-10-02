@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers, type LeaveBalance } from "@/lib/leave-balance";
+import { formatAmount } from "@/lib/leave-format";
 import {
   EMPLOYMENT_TYPE_LABELS,
   assignableRoles,
@@ -119,13 +120,13 @@ function BalanceDaysCell({ balance }: { balance?: LeaveBalance }) {
   if (balance.kind === "assenze") {
     return (
       <>
-        {balance.assenzeRemaining} / {balance.assenzeAllowance}
+        {formatAmount(balance.assenzeRemaining)} / {formatAmount(balance.assenzeAllowance)}
       </>
     );
   }
   return (
     <>
-      {balance.ferieRemaining} / {balance.ferieAllowance}
+      {formatAmount(balance.ferieRemaining)} / {formatAmount(balance.ferieAllowance)}
     </>
   );
 }
@@ -135,7 +136,7 @@ function BalanceHoursCell({ balance }: { balance?: LeaveBalance }) {
   if (!balance || balance.kind === "assenze") return <>—</>;
   return (
     <>
-      {balance.permessoRemaining} / {balance.permessoAllowance}
+      {formatAmount(balance.permessoRemaining)} / {formatAmount(balance.permessoAllowance)}
     </>
   );
 }

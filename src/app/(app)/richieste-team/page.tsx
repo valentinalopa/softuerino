@@ -38,7 +38,10 @@ export default async function RichiesteTeamPage({
         ? "saldi"
         : "in_corso";
 
-  const include = { user: { select: { id: true, name: true } } } as const;
+  const include = {
+    user: { select: { id: true, name: true } },
+    recoveryCredit: { select: { reason: true, amount: true, unit: true } },
+  } as const;
   const [teamPending, currentRequests, pastRequests] = await Promise.all([
     prisma.leaveRequest.findMany({
       where: { userId: { not: user.id }, status: "pending" },

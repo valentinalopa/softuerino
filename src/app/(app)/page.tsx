@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { getLeaveBalance } from "@/lib/leave-balance";
 import { formatDayMonth, formatTime } from "@/lib/calendar-utils";
-import { formatRange } from "@/lib/leave-format";
+import { formatAmount, formatRange } from "@/lib/leave-format";
 import { eventTypeStyle } from "@/components/calendar/types";
 import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +46,7 @@ export default async function Home() {
           <StatCard
             label="Assenze rimanenti (giorni)"
             value={balance.assenzeRemaining}
-            sub={`su ${balance.assenzeAllowance}`}
+            sub={`su ${formatAmount(balance.assenzeAllowance)}`}
             href="/richieste"
           />
         ) : (
@@ -54,13 +54,13 @@ export default async function Home() {
             <StatCard
               label="Ferie rimanenti (giorni)"
               value={balance.ferieRemaining}
-              sub={`su ${balance.ferieAllowance}`}
+              sub={`su ${formatAmount(balance.ferieAllowance)}`}
               href="/richieste"
             />
             <StatCard
               label="Permesso rimanente (ore)"
               value={balance.permessoRemaining}
-              sub={`su ${balance.permessoAllowance}`}
+              sub={`su ${formatAmount(balance.permessoAllowance)}`}
               href="/richieste"
             />
             <StatCard
@@ -168,7 +168,7 @@ function StatCard({
       <Card className="transition-colors hover:border-foreground/30">
         <CardContent>
           <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-3xl font-semibold">{value}</p>
+          <p className="mt-1 text-3xl font-semibold">{formatAmount(value)}</p>
           {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
         </CardContent>
       </Card>

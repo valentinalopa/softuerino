@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
 import { getLeaveBalance, type LeaveBalance } from "@/lib/leave-balance";
+import { formatAmount } from "@/lib/leave-format";
 import { assignableRoles, type EmploymentType, type Role } from "@/lib/constants";
 import { RoleBadge } from "@/components/team/RoleBadge";
 import { ActiveBadge } from "@/components/ActiveBadge";
@@ -179,6 +180,7 @@ async function RichiesteTab({
   const [leaveRequests, recoveryCredits] = await Promise.all([
     prisma.leaveRequest.findMany({
       where: { userId: memberId },
+      include: { recoveryCredit: { select: { reason: true, amount: true, unit: true } } },
       orderBy: { startDate: "desc" },
     }),
     employmentType === "dipendente" ? getOpenRecoveryCredits(memberId) : [],
@@ -212,7 +214,7 @@ function BalanceCards({ balance }: { balance: LeaveBalance }) {
     return (
       <BalanceCard
         label="Assenze rimanenti"
-        value={`${balance.assenzeRemaining} / ${balance.assenzeAllowance} giorni`}
+        value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(balance.assenzeAllowance)} giorni`}
       />
     );
   }
@@ -220,15 +222,15 @@ function BalanceCards({ balance }: { balance: LeaveBalance }) {
     <>
       <BalanceCard
         label="Ferie rimanenti"
-        value={`${balance.ferieRemaining} / ${balance.ferieAllowance} giorni`}
+        value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieAllowance)} giorni`}
       />
       <BalanceCard
         label="Permesso rimanente"
-        value={`${balance.permessoRemaining} / ${balance.permessoAllowance} ore`}
+        value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(balance.permessoAllowance)} ore`}
       />
       <BalanceCard
         label="Malattia registrata"
-        value={`${balance.malattiaDaysRegistered} giorni (nessun tetto)`}
+        value={`${formatAmount(balance.malattiaDaysRegistered)} giorni (nessun tetto)`}
       />
     </>
   );

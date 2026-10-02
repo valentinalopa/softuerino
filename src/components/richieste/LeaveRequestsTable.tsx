@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, type LeaveStatus } from "@/lib/constants";
-import { formatDate, formatRange, formatDuration, type LeaveRequestRow } from "@/lib/leave-format";
+import {
+  formatDate,
+  formatRange,
+  formatDuration,
+  formatRecoveryCredit,
+  type LeaveRequestRow,
+} from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
 import type { Tone } from "@/lib/tones";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
@@ -101,7 +107,12 @@ export function LeaveRequestsTable({
               )}
               <TableCell>
                 <span className="block">{typeLabel(request.type)}</span>
-                {/* La nota spiega il perché (obbligatoria per il recupero). */}
+                {/* Il perché: il recupero da fare collegato, o la nota. */}
+                {request.recoveryCredit && (
+                  <span className="block max-w-56 truncate text-xs text-muted-foreground">
+                    {formatRecoveryCredit(request.recoveryCredit)}
+                  </span>
+                )}
                 {request.note && (
                   <span className="block max-w-56 truncate text-xs text-muted-foreground">
                     {request.note}
@@ -156,6 +167,12 @@ export function LeaveRequestsTable({
                   {selected.user && <DetailRow label="Membro" value={selected.user.name} />}
                   <DetailRow label="Periodo" value={formatRange(selected.startDate, selected.endDate)} />
                   <DetailRow label="Durata" value={formatDuration(selected)} />
+                  {selected.recoveryCredit && (
+                    <DetailRow
+                      label="Recupero di"
+                      value={formatRecoveryCredit(selected.recoveryCredit)}
+                    />
+                  )}
                   <DetailRow label="Inviata il" value={formatDate(selected.createdAt)} />
                   <div className="flex flex-col gap-1 py-3">
                     <dt className="text-muted-foreground">Nota</dt>
