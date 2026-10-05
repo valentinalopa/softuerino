@@ -93,6 +93,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
   currentUrl.search = callbackParams.toString();
 
   let claims: client.IDToken | undefined;
+  let idToken: string | null = null;
   try {
     const tokens = await client.authorizationCodeGrant(config, currentUrl, {
       pkceCodeVerifier: flow.verifier,
@@ -101,6 +102,8 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       idTokenExpected: true,
     });
     claims = tokens.claims();
+    // Conservato solo come id_token_hint per il logout (mai nei log).
+    idToken = tokens.id_token ?? null;
   } catch (err) {
     throw new OidcError("failed", err instanceof Error ? err.message : String(err));
   }
@@ -129,7 +132,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
   const linked = await prisma.user.findUnique({ where: { oidcSubject: subject } });
   if (linked) {
     if (!linked.active) throw new OidcError("inactive");
-    return linked;
+    return { user: linked, idToken };
   }
 
   // 2. Primo login: collegamento per email, solo se Keycloak la garantisce.
@@ -142,13 +145,14 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       throw new OidcError("account_conflict");
     }
     if (!byEmail.active) throw new OidcError("inactive");
-    return prisma.user.update({ where: { id: byEmail.id }, data: { oidcSubject: subject } });
+    const user = await prisma.user.update({ where: { id: byEmail.id }, data: { oidcSubject: subject } });
+    return { user, idToken };
   }
 
   // 3. Nuovo utente: membro, con una password locale casuale e mai comunicata
   // (il login locale è riservato ai super admin). Ruolo e tipo di rapporto li
   // sistema un admin dalla pagina Team.
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       name,
       email,
@@ -158,4 +162,27 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       passwordHash: await hashPassword(randomBytes(32).toString("base64")),
     },
   });
+  return { user, idToken };
+}
+
+// "Esci" per una sessione nata da SSO: URL dell'end_session_endpoint di
+// Keycloak (RP-Initiated Logout) che chiude anche la sessione SSO e riporta a
+// /login. post_logout_redirect_uri deve coincidere con quello registrato sul
+// client: è l'origine di OIDC_REDIRECT_URI + /login. Senza id_token (sessioni
+// vecchie) Keycloak chiede conferma. Null se Keycloak non è configurato o non
+// risponde: in quel caso si esce solo da Softuerino.
+export async function buildOidcLogoutUrl(idToken: string | null) {
+  if (!isOidcConfigured()) return null;
+  try {
+    const config = await getConfig();
+    const { clientId, redirectUri } = env();
+    return client.buildEndSessionUrl(config, {
+      client_id: clientId,
+      post_logout_redirect_uri: new URL("/login", redirectUri).href,
+      ...(idToken ? { id_token_hint: idToken } : {}),
+    }).href;
+  } catch (err) {
+    console.error("[oidc] logout SSO non disponibile, esco solo da Softuerino:", err instanceof Error ? err.message : err);
+    return null;
+  }
 }

@@ -46,6 +46,12 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  // Come è nata la sessione: "password" o "oidc" (null = creata prima che si
+  // registrasse). Per le sessioni "oidc" l'id_token serve solo come
+  // id_token_hint per chiudere anche la sessione Keycloak all'uscita.
+  authMethod String?
+  idToken    String?
+
   // Impersonificazione in sola lettura (solo super admin): finché è
   // valorizzato, l'app mostra le pagine come le vede questo utente. Nessuna
   // scadenza propria: si chiude con "Torna al tuo profilo" o con il logout.

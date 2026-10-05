@@ -12,7 +12,7 @@ import {
   setImpersonation,
 } from "@/lib/auth/session";
 import { homePathFor, isAdminRole } from "@/lib/constants";
-import { isOidcConfigured } from "@/lib/auth/oidc";
+import { buildOidcLogoutUrl, isOidcConfigured } from "@/lib/auth/oidc";
 
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "")
@@ -41,13 +41,19 @@ export async function loginAction(formData: FormData) {
     redirect("/login?error=local_disabled");
   }
 
-  await createSession(user.id);
+  await createSession(user.id, { authMethod: "password" });
   redirect(homePathFor(user.role));
 }
 
+// "Esci": chiude la sessione Softuerino e, se era nata da SSO, anche quella
+// Keycloak (redirect all'end_session_endpoint, che riporta a /login). È una
+// server action, quindi parte solo da un POST con Origin verificato da Next:
+// un sito terzo non può forzare il logout. Chi chiude solo la scheda resta
+// collegato a Keycloak, come prima.
 export async function logoutAction() {
-  await destroySession();
-  redirect("/login");
+  const ended = await destroySession();
+  const ssoLogoutUrl = ended.sso ? await buildOidcLogoutUrl(ended.idToken) : null;
+  redirect(ssoLogoutUrl ?? "/login");
 }
 
 // Solo admin e super admin (quelli reali, non quelli impersonati) possono
