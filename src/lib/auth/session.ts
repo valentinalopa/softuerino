@@ -17,17 +17,14 @@ function hashToken(token: string) {
 
 export type AuthMethod = "password" | "oidc";
 
-export async function createSession(
-  userId: string,
-  { authMethod, idToken }: { authMethod: AuthMethod; idToken?: string | null }
-) {
+export async function createSession(userId: string, { authMethod }: { authMethod: AuthMethod }) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(
     Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
   );
 
   await prisma.session.create({
-    data: { userId, token: hashToken(token), expiresAt, authMethod, idToken: idToken ?? null },
+    data: { userId, token: hashToken(token), expiresAt, authMethod },
   });
 
   const cookieStore = await cookies();
@@ -188,26 +185,23 @@ export async function revokeSessions(
 }
 
 // Chiude la sessione corrente e dice se va chiusa anche quella Keycloak: sì
-// per le sessioni nate da SSO (con il loro id_token) e per quelle nate prima
-// che si registrasse il metodo, se l'utente è collegato a Keycloak (senza
-// id_token: Keycloak chiederà conferma). No per il login con password.
-export async function destroySession(): Promise<{ sso: false } | { sso: true; idToken: string | null }> {
+// per le sessioni nate da SSO e per quelle nate prima che si registrasse il
+// metodo, se l'utente è collegato a Keycloak. No per il login con password.
+export async function destroySession(): Promise<{ sso: boolean }> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  let ended: { sso: false } | { sso: true; idToken: string | null } = { sso: false };
+  let sso = false;
 
   if (token) {
     // Il logout chiude anche un'impersonificazione in corso nel registro.
     const session = await prisma.session.findUnique({
       where: { token: hashToken(token) },
-      select: { id: true, authMethod: true, idToken: true, user: { select: { oidcSubject: true } } },
+      select: { id: true, authMethod: true, user: { select: { oidcSubject: true } } },
     });
     if (session) {
-      if (session.authMethod === "oidc") {
-        ended = { sso: true, idToken: session.idToken };
-      } else if (session.authMethod === null && session.user.oidcSubject) {
-        ended = { sso: true, idToken: null };
-      }
+      sso =
+        session.authMethod === "oidc" ||
+        (session.authMethod === null && session.user.oidcSubject !== null);
       await prisma.$transaction([
         closeImpersonationLogs(session.id),
         prisma.session.delete({ where: { id: session.id } }),
@@ -216,5 +210,5 @@ export async function destroySession(): Promise<{ sso: false } | { sso: true; id
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);
-  return ended;
+  return { sso };
 }

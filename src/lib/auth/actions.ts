@@ -45,14 +45,15 @@ export async function loginAction(formData: FormData) {
   redirect(homePathFor(user.role));
 }
 
-// "Esci": chiude la sessione Softuerino e, se era nata da SSO, anche quella
-// Keycloak (redirect all'end_session_endpoint, che riporta a /login). È una
+// "Esci": chiude la sessione Softuerino e, se era nata da SSO, manda alla
+// pagina di logout di Keycloak, che chiede conferma, chiude la sessione SSO
+// (quindi tutte le app collegate) e riporta a /login. È una
 // server action, quindi parte solo da un POST con Origin verificato da Next:
 // un sito terzo non può forzare il logout. Chi chiude solo la scheda resta
 // collegato a Keycloak, come prima.
 export async function logoutAction() {
   const ended = await destroySession();
-  const ssoLogoutUrl = ended.sso ? await buildOidcLogoutUrl(ended.idToken) : null;
+  const ssoLogoutUrl = ended.sso ? await buildOidcLogoutUrl() : null;
   redirect(ssoLogoutUrl ?? "/login");
 }
 
