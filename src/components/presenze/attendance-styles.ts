@@ -7,10 +7,9 @@ import {
   CalendarMinus,
   Palmtree,
   RotateCcw,
-  Sunrise,
-  Sunset,
   Thermometer,
 } from "lucide-react";
+import { PRESENCE_SLOTS, PRESENCE_SLOT_LABELS } from "@/lib/constants";
 import { lookupAttendance, type DayEntry } from "@/lib/attendance-utils";
 import { TONE_CHIP } from "@/lib/tones";
 
@@ -62,22 +61,6 @@ export const MODE_STYLES = {
   },
 } as const;
 
-// Fasce orarie (indipendenti dal luogo): usate per i blocchi "Mattina"/
-// "Pomeriggio" nella vista team, separati dai blocchi Ufficio/Smartworking.
-// "Giornata intera" non genera un blocco orario a sé, il luogo basta.
-export const TIME_STYLES = {
-  mattina: {
-    chip: TONE_CHIP.neutral,
-    title: "Mattina",
-    icon: Sunrise,
-  },
-  pomeriggio: {
-    chip: TONE_CHIP.neutral,
-    title: "Pomeriggio",
-    icon: Sunset,
-  },
-} as const;
-
 // Assenze a ore (un solo giorno): permesso e recupero a ore.
 export const HOURLY_STYLES = {
   permesso: { chip: TONE_CHIP.warning, title: "Permesso", icon: Clock3 },
@@ -92,11 +75,13 @@ export type DayCategory = {
   people: { id: string; name: string }[];
 };
 
+// Luogo + fascia oraria in un'unica categoria (es. "ufficio-mattina").
+const PRESENCE_CATEGORY_KEYS = (Object.keys(MODE_STYLES) as (keyof typeof MODE_STYLES)[]).flatMap(
+  (mode) => PRESENCE_SLOTS.map((slot) => `${mode}-${slot}`)
+);
+
 const CATEGORY_ORDER = [
-  "ufficio",
-  "smartworking",
-  "mattina",
-  "pomeriggio",
+  ...PRESENCE_CATEGORY_KEYS,
   "ferie",
   "ferie-pending",
   "recupero",
@@ -110,12 +95,10 @@ const CATEGORY_ORDER = [
   "permesso-pending",
 ];
 
-// Raggruppa le persone di un giorno per categoria. Luogo (Ufficio/
-// Smartworking) e orario (Mattina/Pomeriggio) sono blocchi indipendenti, non
-// uniti in un'unica etichetta: una persona in ufficio di mattina compare sia
-// nel blocco "Ufficio" sia nel blocco "Mattina". "Giornata intera" non genera
-// un blocco orario a sé (il luogo è già sufficiente). Ferie/malattia/permesso
-// restano categorie a parte come prima.
+// Raggruppa le persone di un giorno per categoria. Luogo e orario stanno in
+// un'unica etichetta ("Ufficio · Mattina"): ogni persona compare una volta
+// sola per presenza, non in un blocco luogo e in uno orario.
+// Ferie/malattia/permesso restano categorie a parte.
 export function buildDayCategories(
   users: { id: string; name: string }[],
   map: Map<string, DayEntry>,
@@ -154,12 +137,13 @@ export function buildDayCategories(
 
     for (const presence of entry.presences) {
       const modeStyle = MODE_STYLES[presence.mode];
-      add(presence.mode, modeStyle.title, modeStyle.chip, modeStyle.icon, person);
-
-      if (presence.slot === "mattina" || presence.slot === "pomeriggio") {
-        const timeStyle = TIME_STYLES[presence.slot];
-        add(presence.slot, timeStyle.title, timeStyle.chip, timeStyle.icon, person);
-      }
+      add(
+        `${presence.mode}-${presence.slot}`,
+        `${modeStyle.title} · ${PRESENCE_SLOT_LABELS[presence.slot]}`,
+        modeStyle.chip,
+        modeStyle.icon,
+        person
+      );
     }
 
     if (entry.hourly) {

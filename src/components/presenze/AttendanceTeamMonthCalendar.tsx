@@ -86,9 +86,10 @@ function CategoryRow({
       title={`${category.label}: ${category.people.map((p) => p.name).join(", ")}`}
       className={cn("flex flex-col gap-1 rounded-sm border px-1.5 py-1", category.chip)}
     >
-      <div className="flex items-center gap-1 text-3xs font-medium leading-none">
+      <div className="flex items-start gap-1 text-3xs font-medium leading-tight">
         <Icon className="size-3 shrink-0" />
-        <span className="truncate">{category.label}</span>
+        {/* Va a capo invece di troncare: "Smartworking · Pomeriggio" deve leggersi tutto. */}
+        <span className="min-w-0">{category.label}</span>
       </div>
       <div className="flex flex-wrap gap-1">
         {visible.map((person) => (
