@@ -29,13 +29,19 @@ export function EditTeamMemberForm({
   user,
   isSelf,
   roles,
+  ssoManaged,
 }: {
   user: TeamUser;
   isSelf: boolean;
   // Ruoli che l'utente corrente può assegnare.
   roles: readonly Role[];
+  // Account aziendale collegato: nome ed email da Keycloak, password locale
+  // solo per i super admin (accesso d'emergenza).
+  ssoManaged: boolean;
 }) {
   const [active, setActive] = useState(user.active);
+  const [role, setRole] = useState(user.role);
+  const showPassword = !ssoManaged || role === "super_admin";
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
@@ -64,21 +70,32 @@ export function EditTeamMemberForm({
         idPrefix={`member-${user.id}`}
         defaultName={user.name}
         defaultEmail={user.email}
+        readOnly={ssoManaged}
       />
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`password-${user.id}`}>Nuova password</Label>
-        <Input
-          id={`password-${user.id}`}
-          name="password"
-          type="password"
-          placeholder="Lascia vuoto per non modificarla"
-        />
-      </div>
+      {ssoManaged && (
+        <p className="text-xs text-muted-foreground">
+          Account aziendale: nome ed email si cambiano su Keycloak (IT).
+        </p>
+      )}
+      {showPassword && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`password-${user.id}`}>
+            {ssoManaged ? "Password d'emergenza" : "Nuova password"}
+          </Label>
+          <Input
+            id={`password-${user.id}`}
+            name="password"
+            type="password"
+            placeholder="Lascia vuoto per non modificarla"
+          />
+        </div>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label>Ruolo</Label>
         <NativeSelectField
           name="role"
           defaultValue={user.role}
+          onValueChange={setRole}
           items={roles.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
         />
       </div>

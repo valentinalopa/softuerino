@@ -31,6 +31,13 @@ export function isOidcConfigured() {
   return Boolean(issuer && clientId && clientSecret && redirectUri);
 }
 
+// Utente "gestito da Keycloak": SSO attivo e account già collegato. Nome ed
+// email arrivano da Keycloak (si cambiano solo lì, dall'IT) e Softuerino non
+// gestisce la sua password, salvo per i super admin (accesso d'emergenza).
+export function isSsoManaged(user: { oidcSubject: string | null }) {
+  return isOidcConfigured() && Boolean(user.oidcSubject);
+}
+
 // Discovery una sola volta per processo; se fallisce (Keycloak giù) si
 // riprova alla richiesta successiva.
 let configPromise: Promise<client.Configuration> | null = null;
@@ -135,11 +142,25 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
     (typeof claims.preferred_username === "string" && claims.preferred_username) ||
     email;
 
-  // 1. Utente già legato a questo account Keycloak.
+  // 1. Utente già legato a questo account Keycloak: nome ed email si
+  // riallineano a Keycloak (l'email solo se verificata e non usata da altri).
   const linked = await prisma.user.findUnique({ where: { oidcSubject: subject } });
   if (linked) {
     if (!linked.active) throw new OidcError("inactive");
-    return { user: linked, tokens };
+    const sync: { name?: string; email?: string } = {};
+    if (name && name !== linked.name) sync.name = name;
+    if (email && claims.email_verified === true && email !== linked.email) {
+      const taken = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+      if (taken) {
+        console.error(`[oidc] email Keycloak di ${linked.id} già usata da un altro utente: non aggiornata`);
+      } else {
+        sync.email = email;
+      }
+    }
+    const user = Object.keys(sync).length
+      ? await prisma.user.update({ where: { id: linked.id }, data: sync })
+      : linked;
+    return { user, tokens };
   }
 
   // 2. Primo login: collegamento per email, solo se Keycloak la garantisce.
@@ -152,7 +173,10 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       throw new OidcError("account_conflict");
     }
     if (!byEmail.active) throw new OidcError("inactive");
-    const user = await prisma.user.update({ where: { id: byEmail.id }, data: { oidcSubject: subject } });
+    const user = await prisma.user.update({
+      where: { id: byEmail.id },
+      data: { oidcSubject: subject, ...(name ? { name } : {}) },
+    });
     return { user, tokens };
   }
 

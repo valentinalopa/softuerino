@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
+import { isSsoManaged } from "@/lib/auth/oidc";
 import { getLeaveBalance, remainingByLeaveType, type LeaveBalance } from "@/lib/leave-balance";
 import { formatAmount } from "@/lib/leave-format";
 import { assignableRoles, type EmploymentType, type Role } from "@/lib/constants";
@@ -136,6 +137,7 @@ async function InfoTab({
     role: string;
     employmentType: string;
     active: boolean;
+    oidcSubject: string | null;
   };
   isSelf: boolean;
   roles: readonly Role[];
@@ -158,7 +160,12 @@ async function InfoTab({
         <CardContent>
           {/* Un admin non modifica gli account dei super admin. */}
           {roles.includes(member.role as Role) ? (
-            <EditTeamMemberForm user={member} isSelf={isSelf} roles={roles} />
+            <EditTeamMemberForm
+              user={member}
+              isSelf={isSelf}
+              roles={roles}
+              ssoManaged={isSsoManaged(member)}
+            />
           ) : (
             <p className="text-sm text-muted-foreground">
               Solo un super admin può modificare l&apos;account di un super admin.
