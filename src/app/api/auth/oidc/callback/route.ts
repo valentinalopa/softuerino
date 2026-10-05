@@ -37,15 +37,15 @@ export async function GET(request: NextRequest) {
   // Login annullato o negato su Keycloak.
   if (request.nextUrl.searchParams.has("error")) redirect("/login?error=sso_failed");
 
-  let user: Awaited<ReturnType<typeof completeOidcLogin>>;
+  let result: Awaited<ReturnType<typeof completeOidcLogin>>;
   try {
-    user = await completeOidcLogin(request.nextUrl.searchParams, flow);
+    result = await completeOidcLogin(request.nextUrl.searchParams, flow);
   } catch (err) {
     const code = err instanceof OidcError ? err.code : "failed";
     console.error(`[oidc] login rifiutato (${code}):`, err instanceof Error ? err.message : err);
     redirect(`/login?error=sso_${code}`);
   }
 
-  await createSession(user.id);
-  redirect(homePathFor(user.role));
+  await createSession(result.user.id, { authMethod: "oidc", idToken: result.idToken });
+  redirect(homePathFor(result.user.role));
 }
