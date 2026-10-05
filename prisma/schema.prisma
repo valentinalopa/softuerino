@@ -49,6 +49,12 @@ model Session {
   // Come è nata la sessione: "password" o "oidc" (null = creata prima che si
   // registrasse). Per le sessioni "oidc" "Esci" passa anche da Keycloak.
   authMethod String?
+  // Solo sessioni "oidc", cifrati con SETTINGS_ENCRYPTION_KEY: l'id_token serve
+  // come id_token_hint per il logout, il refresh_token per verificare ogni 5
+  // minuti che la sessione SSO sia ancora attiva (ssoCheckedAt = ultima verifica).
+  idToken      String?
+  refreshToken String?
+  ssoCheckedAt DateTime?
 
   // Impersonificazione in sola lettura (solo super admin): finché è
   // valorizzato, l'app mostra le pagine come le vede questo utente. Nessuna
