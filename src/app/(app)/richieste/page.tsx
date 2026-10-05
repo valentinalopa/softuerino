@@ -2,7 +2,7 @@ import { Clock3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
-import { getLeaveBalance } from "@/lib/leave-balance";
+import { getLeaveBalance, remainingByLeaveType } from "@/lib/leave-balance";
 import { getRecoveryCreditsForUsers, toOpenRecoveryCredits } from "@/lib/recovery-credits";
 import { formatAmount, formatToRecover } from "@/lib/leave-format";
 import { formatRange } from "@/lib/leave-format";
@@ -62,6 +62,7 @@ export default async function RichiestePage({
             scheda membro in /team/[id]. */}
         <NewLeaveRequestDialog
           employmentType={user.employmentType as EmploymentType}
+          remaining={remainingByLeaveType(balance)}
           recoveryCredits={toOpenRecoveryCredits(ownCredits)}
         />
       </div>
@@ -98,16 +99,19 @@ export default async function RichiestePage({
         {balance.kind === "assenze" ? (
           <BalanceCard
             label="Assenze rimanenti"
+            negative={balance.assenzeRemaining < 0}
             value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(balance.assenzeAllowance)} giorni`}
           />
         ) : (
           <>
             <BalanceCard
               label="Ferie rimanenti"
+              negative={balance.ferieRemaining < 0}
               value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieAllowance)} giorni`}
             />
             <BalanceCard
               label="Permesso rimanente"
+              negative={balance.permessoRemaining < 0}
               value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(balance.permessoAllowance)} ore`}
             />
             <BalanceCard
@@ -162,12 +166,23 @@ export default async function RichiestePage({
   );
 }
 
-function BalanceCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
+function BalanceCard({
+  label,
+  value,
+  detail,
+  negative = false,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  negative?: boolean;
+}) {
   return (
     <Card>
       <CardContent>
         <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="mt-1 text-lg font-semibold">{value}</p>
+        <p className={`mt-1 text-lg font-semibold ${negative ? "text-destructive" : ""}`}>{value}</p>
+        {negative && <p className="mt-0.5 text-xs font-medium text-destructive">In negativo</p>}
         {detail && <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>}
       </CardContent>
     </Card>

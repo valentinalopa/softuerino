@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
-import { getLeaveBalance, type LeaveBalance } from "@/lib/leave-balance";
+import { getLeaveBalance, remainingByLeaveType, type LeaveBalance } from "@/lib/leave-balance";
 import { formatAmount } from "@/lib/leave-format";
 import { assignableRoles, type EmploymentType, type Role } from "@/lib/constants";
 import { RoleBadge } from "@/components/team/RoleBadge";
@@ -177,13 +177,14 @@ async function RichiesteTab({
   memberId: string;
   employmentType: EmploymentType;
 }) {
-  const [leaveRequests, recoveryCredits] = await Promise.all([
+  const [leaveRequests, recoveryCredits, balance] = await Promise.all([
     prisma.leaveRequest.findMany({
       where: { userId: memberId },
       include: { recoveryCredit: { select: { reason: true, amount: true, unit: true } } },
       orderBy: { startDate: "desc" },
     }),
     getOpenRecoveryCredits(memberId),
+    getLeaveBalance(memberId, employmentType),
   ]);
 
   return (
@@ -193,6 +194,7 @@ async function RichiesteTab({
         <NewLeaveRequestDialog
           employmentType={employmentType}
           targetUserId={memberId}
+          remaining={remainingByLeaveType(balance)}
           recoveryCredits={recoveryCredits}
         />
       </div>
@@ -214,6 +216,7 @@ function BalanceCards({ balance }: { balance: LeaveBalance }) {
     return (
       <BalanceCard
         label="Assenze rimanenti"
+        negative={balance.assenzeRemaining < 0}
         value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(balance.assenzeAllowance)} giorni`}
       />
     );
@@ -222,10 +225,12 @@ function BalanceCards({ balance }: { balance: LeaveBalance }) {
     <>
       <BalanceCard
         label="Ferie rimanenti"
+        negative={balance.ferieRemaining < 0}
         value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieAllowance)} giorni`}
       />
       <BalanceCard
         label="Permesso rimanente"
+        negative={balance.permessoRemaining < 0}
         value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(balance.permessoAllowance)} ore`}
       />
       <BalanceCard
@@ -236,12 +241,21 @@ function BalanceCards({ balance }: { balance: LeaveBalance }) {
   );
 }
 
-function BalanceCard({ label, value }: { label: string; value: string }) {
+function BalanceCard({
+  label,
+  value,
+  negative = false,
+}: {
+  label: string;
+  value: string;
+  negative?: boolean;
+}) {
   return (
     <Card>
       <CardContent>
         <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="mt-1 text-lg font-semibold">{value}</p>
+        <p className={`mt-1 text-lg font-semibold ${negative ? "text-destructive" : ""}`}>{value}</p>
+        {negative && <p className="mt-0.5 text-xs font-medium text-destructive">In negativo</p>}
       </CardContent>
     </Card>
   );

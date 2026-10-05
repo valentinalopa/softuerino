@@ -7,6 +7,7 @@ import {
   buildHoursByClientByMonth,
   buildLeaveTotals,
 } from "@/lib/panoramica-utils";
+import { getPendingOverdrafts } from "@/lib/leave-balance";
 import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
@@ -42,7 +43,7 @@ export default async function PanoramicaPage() {
     prisma.leaveRequest.findMany({
       where: { userId: { not: user.id }, status: "pending" },
       include: {
-        user: { select: { name: true } },
+        user: { select: { name: true, employmentType: true } },
         recoveryCredit: { select: { reason: true, amount: true, unit: true } },
       },
       orderBy: { startDate: "asc" },
@@ -52,6 +53,7 @@ export default async function PanoramicaPage() {
       where: { userId: { not: user.id }, status: "pending" },
     }),
   ]);
+  const overdrafts = await getPendingOverdrafts(teamPending);
 
   const hoursEntries = timeEntries.map((entry) => ({
     date: entry.date,
@@ -79,7 +81,7 @@ export default async function PanoramicaPage() {
           title={`${teamPendingCount} richiest${teamPendingCount === 1 ? "a" : "e"} da approvare`}
         >
           {teamPending.map((request) => (
-            <TeamPendingItem key={request.id} request={request} />
+            <TeamPendingItem key={request.id} request={request} overdraft={overdrafts.get(request.id)} />
           ))}
           <li className="pt-1">
             <Link href="/richieste-team" className="text-xs text-muted-foreground hover:underline">

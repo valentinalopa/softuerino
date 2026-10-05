@@ -4,7 +4,8 @@ import {
   type BalanceKind,
   type EmploymentType,
 } from "@/lib/constants";
-import { clippedDaysInRange } from "@/lib/leave-days";
+import { clippedDaysInRange, countedLeaveDays } from "@/lib/leave-days";
+import { formatAmount } from "@/lib/leave-format";
 
 export type LeaveTally = {
   ferieUsed: number;
@@ -289,4 +290,59 @@ export async function getLeaveBalancesForUsers(
       computeBalance(subjects.get(user.id)!, byUser.get(user.id) ?? [], year),
     ])
   );
+}
+
+// Residuo per tipo di richiesta che scala un monte (ferie, permesso, assenza):
+// i tipi fuori monte (malattia, recupero, assenza extra) non ci sono. Oggetto
+// semplice, così arriva anche al form di richiesta (client).
+export type RemainingByLeaveType = Partial<Record<"ferie" | "permesso" | "assenza", number>>;
+
+export function remainingByLeaveType(balance: LeaveBalance): RemainingByLeaveType {
+  return balance.kind === "assenze"
+    ? { assenza: balance.assenzeRemaining }
+    : { ferie: balance.ferieRemaining, permesso: balance.permessoRemaining };
+}
+
+// Saldo che un tipo di richiesta scala (residuo e unità), o null se il tipo è
+// fuori monte.
+function chargedBalance(balance: LeaveBalance, type: string) {
+  const remaining = remainingByLeaveType(balance)[type as keyof RemainingByLeaveType];
+  if (remaining === undefined) return null;
+  return { remaining, unit: type === "permesso" ? "h" : "gg" };
+}
+
+type PendingRequest = {
+  id: string;
+  type: string;
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  userId: string;
+  user: { employmentType: string };
+};
+
+// Richieste in attesa che, se approvate, portano il saldo in negativo: non si
+// bloccano, ma chi approva va avvisato. Le richieste dello stesso membro si
+// sommano nell'ordine in cui arrivano (di solito per data di inizio).
+export async function getPendingOverdrafts(requests: PendingRequest[]) {
+  const users = [...new Map(requests.map((r) => [r.userId, r.user.employmentType])).entries()];
+  const balances = await getLeaveBalancesForUsers(
+    users.map(([id, employmentType]) => ({ id, employmentType: employmentType as EmploymentType }))
+  );
+
+  const projected = new Map<string, number>();
+  const warnings = new Map<string, string>();
+  for (const request of requests) {
+    const charged = chargedBalance(balances.get(request.userId)!, request.type);
+    if (!charged) continue;
+    const key = `${request.userId}:${charged.unit}`;
+    const before = projected.get(key) ?? charged.remaining;
+    const amount = request.hours ?? countedLeaveDays(request.startDate, request.endDate);
+    const after = round2(before - amount);
+    projected.set(key, after);
+    if (after < 0) {
+      warnings.set(request.id, `Se approvata, il saldo va in negativo: ${formatAmount(after)} ${charged.unit}`);
+    }
+  }
+  return warnings;
 }

@@ -19,12 +19,14 @@ export function DateField({
   defaultValue,
   placeholder = "Seleziona data",
   className,
+  onValueChange,
 }: {
   name: string;
   id?: string;
   defaultValue?: string;
   placeholder?: string;
   className?: string;
+  onValueChange?: (date: Date | undefined) => void;
 }) {
   const [date, setDate] = useState<Date | undefined>(
     defaultValue ? parse(defaultValue, "yyyy-MM-dd", new Date()) : undefined
@@ -64,6 +66,7 @@ export function DateField({
             locale={it}
             onSelect={(next) => {
               setDate(next);
+              onValueChange?.(next);
               setOpen(false);
             }}
           />

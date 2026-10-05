@@ -10,7 +10,7 @@ import {
   LeaveBalancesEditor,
   type BalanceRow,
 } from "@/components/richieste/LeaveBalancesEditor";
-import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
+import { getLeaveBalancesForUsers, getPendingOverdrafts } from "@/lib/leave-balance";
 import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
 import type { EmploymentType } from "@/lib/constants";
 
@@ -39,7 +39,7 @@ export default async function RichiesteTeamPage({
         : "in_corso";
 
   const include = {
-    user: { select: { id: true, name: true } },
+    user: { select: { id: true, name: true, employmentType: true } },
     recoveryCredit: { select: { reason: true, amount: true, unit: true } },
   } as const;
   const [teamPending, currentRequests, pastRequests] = await Promise.all([
@@ -59,6 +59,7 @@ export default async function RichiesteTeamPage({
       orderBy: [{ user: { name: "asc" } }, { startDate: "desc" }],
     }),
   ]);
+  const overdrafts = await getPendingOverdrafts(teamPending);
 
   return (
     <div className="space-y-8">
@@ -75,7 +76,7 @@ export default async function RichiesteTeamPage({
           title={`${teamPending.length} richiest${teamPending.length === 1 ? "a" : "e"} in attesa di approvazione`}
         >
           {teamPending.map((request) => (
-            <TeamPendingItem key={request.id} request={request} />
+            <TeamPendingItem key={request.id} request={request} overdraft={overdrafts.get(request.id)} />
           ))}
         </NotificationCard>
       )}

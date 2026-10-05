@@ -168,8 +168,11 @@ function StatCard({
       <Card className="transition-colors hover:border-foreground/30">
         <CardContent>
           <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-3xl font-semibold">{formatAmount(value)}</p>
+          <p className={`mt-1 text-3xl font-semibold ${value < 0 ? "text-destructive" : ""}`}>
+            {formatAmount(value)}
+          </p>
           {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+          {value < 0 && <p className="text-xs font-medium text-destructive">In negativo</p>}
         </CardContent>
       </Card>
     </Link>

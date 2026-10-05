@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, TriangleAlert } from "lucide-react";
 import { createLeaveRequest } from "@/lib/actions";
 import {
   LEAVE_TYPE_HINTS,
@@ -12,6 +12,9 @@ import {
   type LeaveType,
 } from "@/lib/constants";
 import type { OpenRecoveryCredit } from "@/lib/recovery-credits";
+import type { RemainingByLeaveType } from "@/lib/leave-balance";
+import { countedLeaveDays } from "@/lib/leave-days";
+import { formatAmount } from "@/lib/leave-format";
 import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -32,6 +35,7 @@ export function NewLeaveRequestDialog({
   employmentType,
   targetUserId,
   recoveryCredits = [],
+  remaining = {},
 }: {
   // Tipo di rapporto della persona per cui si registra la richiesta.
   employmentType: EmploymentType;
@@ -40,6 +44,8 @@ export function NewLeaveRequestDialog({
   targetUserId?: string;
   // Recuperi da fare ancora aperti, tra cui scegliere per una richiesta di recupero.
   recoveryCredits?: OpenRecoveryCredit[];
+  // Residuo dei monti, per avvisare se la richiesta manda il saldo in negativo.
+  remaining?: RemainingByLeaveType;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +64,22 @@ export function NewLeaveRequestDialog({
 
   const isHourly = type === "permesso" || (type === "recupero" && effectiveUnit === "ore");
   const noteRequired = NOTE_REQUIRED_LEAVE_TYPES.includes(type) && !credit;
+
+  // Saldo dopo questa richiesta, se il tipo scala un monte: andare in
+  // negativo è permesso, ma va detto prima di inviare.
+  const [startDate, setStartDate] = useState<Date | undefined>();
+  const [endDate, setEndDate] = useState<Date | undefined>();
+  const [hours, setHours] = useState("");
+  const typeRemaining = remaining[type as keyof RemainingByLeaveType];
+  const requested = isHourly
+    ? Number(hours) || 0
+    : startDate && endDate && endDate >= startDate
+      ? countedLeaveDays(startDate, endDate)
+      : 0;
+  const after =
+    typeRemaining !== undefined && requested > 0
+      ? Math.round((typeRemaining - requested) * 100) / 100
+      : null;
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -86,6 +108,9 @@ export function NewLeaveRequestDialog({
           setType(types[0]);
           setUnit("giorni");
           setCreditId(recoveryCredits[0]?.id ?? "");
+          setStartDate(undefined);
+          setEndDate(undefined);
+          setHours("");
         }
       }}
     >
@@ -160,7 +185,12 @@ export function NewLeaveRequestDialog({
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-request-startDate">{isHourly ? "Data" : "Dal"}</Label>
-              <DateField id="new-request-startDate" name="startDate" className="w-full" />
+              <DateField
+                id="new-request-startDate"
+                name="startDate"
+                className="w-full"
+                onValueChange={setStartDate}
+              />
             </div>
 
             {isHourly ? (
@@ -173,12 +203,19 @@ export function NewLeaveRequestDialog({
                   min="0.5"
                   step="0.5"
                   required
+                  value={hours}
+                  onChange={(event) => setHours(event.target.value)}
                 />
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="new-request-endDate">Al</Label>
-                <DateField id="new-request-endDate" name="endDate" className="w-full" />
+                <DateField
+                  id="new-request-endDate"
+                  name="endDate"
+                  className="w-full"
+                  onValueChange={setEndDate}
+                />
               </div>
             )}
 
@@ -193,6 +230,14 @@ export function NewLeaveRequestDialog({
                 placeholder={noteRequired ? "Es. trasferta Milano 12/10" : undefined}
               />
             </div>
+
+            {after !== null && after < 0 && (
+              <p className="flex items-start gap-1.5 text-sm text-destructive">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                Con questa richiesta il saldo va in negativo: {formatAmount(after)}{" "}
+                {type === "permesso" ? "h" : "gg"}. Puoi comunque inviarla.
+              </p>
+            )}
 
             {error && <p className="text-sm text-destructive">{error}</p>}
           </SheetBody>

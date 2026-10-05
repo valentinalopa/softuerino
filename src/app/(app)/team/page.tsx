@@ -120,13 +120,13 @@ function BalanceDaysCell({ balance }: { balance?: LeaveBalance }) {
   if (balance.kind === "assenze") {
     return (
       <>
-        {formatAmount(balance.assenzeRemaining)} / {formatAmount(balance.assenzeAllowance)}
+        <Remaining value={balance.assenzeRemaining} /> / {formatAmount(balance.assenzeAllowance)}
       </>
     );
   }
   return (
     <>
-      {formatAmount(balance.ferieRemaining)} / {formatAmount(balance.ferieAllowance)}
+      <Remaining value={balance.ferieRemaining} /> / {formatAmount(balance.ferieAllowance)}
     </>
   );
 }
@@ -136,7 +136,17 @@ function BalanceHoursCell({ balance }: { balance?: LeaveBalance }) {
   if (!balance || balance.kind === "assenze") return <>—</>;
   return (
     <>
-      {formatAmount(balance.permessoRemaining)} / {formatAmount(balance.permessoAllowance)}
+      <Remaining value={balance.permessoRemaining} /> / {formatAmount(balance.permessoAllowance)}
     </>
+  );
+}
+
+// Residuo in rosso quando è in negativo (richieste oltre il monte).
+function Remaining({ value }: { value: number }) {
+  if (value >= 0) return <>{formatAmount(value)}</>;
+  return (
+    <span className="font-medium text-destructive" title="In negativo">
+      {formatAmount(value)}
+    </span>
   );
 }

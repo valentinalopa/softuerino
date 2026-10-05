@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import { TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
 import { formatRange, formatRecoveryCredit, type RecoveryCreditRef } from "@/lib/leave-format";
@@ -54,7 +54,10 @@ export function NotificationItem({
 // team): chi, cosa, quando, la nota se c'è, e i pulsanti per decidere.
 export function TeamPendingItem({
   request,
+  overdraft,
 }: {
+  // Avviso se l'approvazione manda il saldo in negativo (getPendingOverdrafts).
+  overdraft?: string;
   request: {
     id: string;
     type: string;
@@ -82,6 +85,12 @@ export function TeamPendingItem({
         )}
         {request.note && (
           <p className="mt-0.5 text-xs text-muted-foreground">Nota: {request.note}</p>
+        )}
+        {overdraft && (
+          <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-danger-soft-foreground">
+            <TriangleAlert className="size-3.5 shrink-0" />
+            {overdraft}
+          </p>
         )}
       </div>
       <ApproveRejectActions requestId={request.id} />
