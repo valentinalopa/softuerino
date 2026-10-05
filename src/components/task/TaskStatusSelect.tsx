@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export const TASK_STATUS_TONES: Record<TaskStatus, Tone> = {
   not_started: "neutral",
   in_progress: "accent",
-  in_pausa: "warning",
+  in_pausa: "aqua",
   done: "success",
 };
 
