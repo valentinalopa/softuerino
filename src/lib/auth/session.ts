@@ -52,6 +52,7 @@ export async function createSession(
       idToken: sealToken(tokens?.idToken),
       refreshToken: sealToken(tokens?.refreshToken),
       ssoCheckedAt: authMethod === "oidc" ? new Date() : null,
+      oidcSid: tokens?.sid ?? null,
     },
   });
 
@@ -67,7 +68,9 @@ export async function createSession(
   });
 }
 
-const SSO_CHECK_INTERVAL_MS = 5 * 60 * 1000; // durata dell'access token Keycloak
+// Rete di sicurezza del back-channel logout (Keycloak lo invia una volta sola):
+// al massimo ogni 5 minuti, la durata dell'access token Keycloak.
+const SSO_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 // Per le sessioni SSO: al massimo ogni 5 minuti verifica con il refresh_token
 // che la sessione Keycloak sia ancora attiva. Se è finita altrove (logout da
@@ -299,4 +302,20 @@ export async function destroySession(): Promise<{ sso: boolean; idToken: string 
 
   cookieStore.delete(SESSION_COOKIE_NAME);
   return { sso, idToken };
+}
+
+// Back-channel logout: chiude tutte le sessioni Softuerino della sessione
+// Keycloak indicata (sid). Restituisce quante ne ha chiuse.
+export async function revokeOidcSessions(sid: string) {
+  const sessions = await prisma.session.findMany({ where: { oidcSid: sid }, select: { id: true } });
+  if (sessions.length === 0) return 0;
+  const ids = sessions.map((session) => session.id);
+  await prisma.$transaction([
+    prisma.impersonationLog.updateMany({
+      where: { sessionId: { in: ids }, endedAt: null },
+      data: { endedAt: new Date() },
+    }),
+    prisma.session.deleteMany({ where: { id: { in: ids } } }),
+  ]);
+  return ids.length;
 }

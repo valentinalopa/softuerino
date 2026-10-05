@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "crypto";
 import * as client from "openid-client";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
 
@@ -80,7 +81,8 @@ export async function startOidcLogin() {
   return { url, flow };
 }
 
-export type OidcTokens = { idToken: string | null; refreshToken: string | null };
+// sid: identificativo della sessione Keycloak, per il back-channel logout.
+export type OidcTokens = { idToken: string | null; refreshToken: string | null; sid?: string | null };
 
 export type OidcLoginError =
   | "not_allowed" // non appartiene al gruppo richiesto
@@ -106,7 +108,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
   currentUrl.search = callbackParams.toString();
 
   let claims: client.IDToken | undefined;
-  let tokens: OidcTokens = { idToken: null, refreshToken: null };
+  let tokens: OidcTokens = { idToken: null, refreshToken: null, sid: null };
   try {
     const response = await client.authorizationCodeGrant(config, currentUrl, {
       pkceCodeVerifier: flow.verifier,
@@ -117,7 +119,11 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
     claims = response.claims();
     // Conservati (cifrati) nella sessione, mai nei log: id_token per il logout,
     // refresh_token per la verifica periodica della sessione SSO.
-    tokens = { idToken: response.id_token ?? null, refreshToken: response.refresh_token ?? null };
+    tokens = {
+      idToken: response.id_token ?? null,
+      refreshToken: response.refresh_token ?? null,
+      sid: typeof claims?.sid === "string" ? claims.sid : null,
+    };
   } catch (err) {
     throw new OidcError("failed", err instanceof Error ? err.message : String(err));
   }
@@ -240,4 +246,54 @@ export async function refreshOidcSession(
     console.error("[oidc] verifica sessione SSO non riuscita, riprovo più tardi:", err instanceof Error ? err.message : err);
     return { status: "unavailable" };
   }
+}
+
+// --- Back-Channel Logout (OIDC Back-Channel Logout 1.0) ---
+// Keycloak chiama l'endpoint quando una sessione SSO finisce (Esci da
+// un'altra app, scadenza, chiusura dalla console): si valida il logout token e
+// si chiudono le sessioni Softuerino con quel sid.
+
+const BACKCHANNEL_EVENT = "http://schemas.openid.net/event/backchannel-logout";
+const ASYMMETRIC_ALGS = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA"];
+
+let jwks: { url: string; set: ReturnType<typeof createRemoteJWKSet> } | null = null;
+
+// jti già visti negli ultimi minuti: lo stesso logout token non vale due volte.
+const seenJti = new Map<string, number>();
+
+function rememberJti(jti: string, ttlMs: number) {
+  const now = Date.now();
+  for (const [key, until] of seenJti) if (until < now) seenJti.delete(key);
+  if (seenJti.has(jti)) return false;
+  seenJti.set(jti, now + ttlMs);
+  return true;
+}
+
+// Restituisce il sid da chiudere; lancia se il token non è valido.
+export async function verifyBackchannelLogoutToken(logoutToken: string) {
+  const config = await getConfig();
+  const metadata = config.serverMetadata();
+  if (!metadata.jwks_uri) throw new Error("jwks_uri assente nella discovery");
+  if (!jwks || jwks.url !== metadata.jwks_uri) {
+    jwks = { url: metadata.jwks_uri, set: createRemoteJWKSet(new URL(metadata.jwks_uri)) };
+  }
+
+  const { payload } = await jwtVerify(logoutToken, jwks.set, {
+    issuer: metadata.issuer,
+    audience: env().clientId,
+    algorithms: ASYMMETRIC_ALGS,
+    maxTokenAge: "2 minutes", // iat recente
+    clockTolerance: 30,
+  });
+
+  const events = payload.events;
+  if (!events || typeof events !== "object" || !(BACKCHANNEL_EVENT in events)) {
+    throw new Error("claim events senza backchannel-logout");
+  }
+  if ("nonce" in payload) throw new Error("un logout token non deve avere nonce");
+  if (typeof payload.sid !== "string" || !payload.sid) throw new Error("sid assente");
+  if (typeof payload.jti !== "string" || !rememberJti(payload.jti, 5 * 60 * 1000)) {
+    throw new Error("jti assente o già usato");
+  }
+  return payload.sid;
 }
