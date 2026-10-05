@@ -26,7 +26,7 @@ export default async function TaskPage({
   const purgeCutoff = new Date();
   purgeCutoff.setDate(purgeCutoff.getDate() - TASK_DONE_RETENTION_DAYS);
 
-  const [tasks, users, clients] = await Promise.all([
+  const [tasks, users, clients, clientsByAge] = await Promise.all([
     prisma.task.findMany({
       where: {
         ...(userParam ? { assignees: { some: { userId: userParam } } } : {}),
@@ -53,6 +53,9 @@ export default async function TaskPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    // Tutti i clienti, dal più vecchio: l'ordine assegna i colori delle
+    // etichette, e un cliente nuovo non cambia il colore degli altri.
+    prisma.client.findMany({ orderBy: { createdAt: "asc" }, select: { id: true } }),
     purgeExpiredDoneTasks(),
   ]);
 
@@ -97,6 +100,7 @@ export default async function TaskPage({
         <CardContent>
           <TasksTable
             tasks={tasks}
+            clientOrder={clientsByAge.map((c) => c.id)}
             emptyMessage={
               userParam || clientParam
                 ? "Nessun task corrisponde ai filtri selezionati."

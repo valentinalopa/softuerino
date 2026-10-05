@@ -1,7 +1,7 @@
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/lib/constants";
 import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
-import type { Tone } from "@/lib/tones";
+import { CLIENT_TAG_COLORS, type Tone } from "@/lib/tones";
 import { TaskStatusSelect } from "@/components/task/TaskStatusSelect";
 import { DeleteTaskButton } from "@/components/task/DeleteTaskButton";
 import {
@@ -35,11 +35,19 @@ export function PriorityBadge({ priority }: { priority: TaskPriority }) {
 
 export function TasksTable({
   tasks,
+  clientOrder,
   emptyMessage = "Nessun task ancora.",
 }: {
   tasks: TaskRow[];
+  // Id di tutti i clienti in ordine di creazione: la posizione dà il colore
+  // dell'etichetta, fisso per cliente e diverso finché bastano i colori.
+  clientOrder: string[];
   emptyMessage?: string;
 }) {
+  const clientIndex = new Map(clientOrder.map((id, index) => [id, index]));
+  const clientTagColor = (clientId: string) =>
+    CLIENT_TAG_COLORS[(clientIndex.get(clientId) ?? 0) % CLIENT_TAG_COLORS.length];
+
   return (
     <Table>
       <TableHeader>
@@ -58,7 +66,13 @@ export function TasksTable({
           <TableRow key={task.id}>
             <TableCell className="font-medium">{task.title}</TableCell>
             <TableCell className="text-muted-foreground">
-              {task.client?.name ?? "—"}
+              {task.client ? (
+                <Badge variant={null} className={clientTagColor(task.client.id)}>
+                  {task.client.name}
+                </Badge>
+              ) : (
+                "—"
+              )}
             </TableCell>
             <TableCell className="text-muted-foreground">
               {task.assignees.length > 0

@@ -7,10 +7,12 @@ import { cn } from "@/lib/utils";
 export function NativeSelect({
   className,
   containerClassName,
+  iconClassName,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement> & {
   // Per i form verticali (sheet/dialog): "w-full" allarga campo e wrapper.
   containerClassName?: string;
+  iconClassName?: string;
 }) {
   return (
     // w-fit: nei layout flex/grid il wrapper non deve stirarsi oltre la select,
@@ -25,7 +27,12 @@ export function NativeSelect({
           className
         )}
       />
-      <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3.5 size-4.5 -translate-y-1/2 text-muted-foreground" />
+      <ChevronDownIcon
+        className={cn(
+          "pointer-events-none absolute top-1/2 right-3.5 size-4.5 -translate-y-1/2 text-muted-foreground",
+          iconClassName
+        )}
+      />
     </div>
   );
 }

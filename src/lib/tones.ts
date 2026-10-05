@@ -60,3 +60,19 @@ export const TONE_TEXT: Record<Tone, string> = {
   warning: "text-warning-soft-foreground",
   danger: "text-danger-soft-foreground",
 };
+
+// Etichette dei clienti (tabella task): ai toni non semantici del DS si
+// aggiungono altre tinte, così clienti diversi hanno di rado lo stesso colore.
+// Niente warning/danger, che restano alla priorità.
+export const CLIENT_TAG_COLORS: string[] = [
+  TONE_SOFT.accent,
+  TONE_SOFT.aqua,
+  TONE_SOFT.teal,
+  TONE_SOFT.success,
+  TONE_SOFT.neutral,
+  "bg-pink-100 text-pink-800 dark:bg-pink-500/18 dark:text-pink-200",
+  "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-500/18 dark:text-fuchsia-200",
+  "bg-lime-100 text-lime-800 dark:bg-lime-500/18 dark:text-lime-200",
+  "bg-orange-100 text-orange-800 dark:bg-orange-500/18 dark:text-orange-200",
+  "bg-stone-200 text-stone-800 dark:bg-stone-500/25 dark:text-stone-200",
+];
