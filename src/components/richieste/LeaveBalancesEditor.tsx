@@ -6,6 +6,7 @@ import { setLeaveBalances } from "@/lib/actions";
 import { formatAmount as formatNumber, formatDate, formatToRecover } from "@/lib/leave-format";
 import {
   EMPLOYMENT_TYPE_LABELS,
+  LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE,
   type BalanceKind,
   type EmploymentType,
 } from "@/lib/constants";
@@ -56,10 +57,14 @@ function toRecover(credits: RecoveryCreditView[]) {
   return formatToRecover(credits);
 }
 
-const KINDS: { kind: BalanceKind; label: string; fieldLabel: string; unit: string }[] = [
-  { kind: "ferie", label: "Ferie", fieldLabel: "Ferie residue", unit: "gg" },
-  { kind: "permesso", label: "Permessi", fieldLabel: "Permessi residui", unit: "h" },
-  { kind: "assenze", label: "Assenze", fieldLabel: "Assenze residue", unit: "gg" },
+const { dipendente, partita_iva } = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE;
+
+// perYear: monte annuale, riferimento della barra (il disponibile, dopo una
+// rettifica, coincide col residuo e la barra risulterebbe sempre piena).
+const KINDS: { kind: BalanceKind; label: string; fieldLabel: string; unit: string; perYear: number }[] = [
+  { kind: "ferie", label: "Ferie", fieldLabel: "Ferie residue", unit: "gg", perYear: dipendente.ferieDaysPerYear },
+  { kind: "permesso", label: "Permessi", fieldLabel: "Permessi residui", unit: "h", perYear: dipendente.permessoHoursPerYear },
+  { kind: "assenze", label: "Assenze", fieldLabel: "Assenze residue", unit: "gg", perYear: partita_iva.assenzeDaysPerYear },
 ];
 
 
@@ -123,7 +128,13 @@ export function LeaveBalancesEditor({ rows, year }: { rows: BalanceRow[]; year: 
               <TableCell>
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
                   {KINDS.filter((k) => row.balances[k.kind]).map((k) => (
-                    <BalanceMeter key={k.kind} label={k.label} unit={k.unit} figures={row.balances[k.kind]!} />
+                    <BalanceMeter
+                      key={k.kind}
+                      label={k.label}
+                      unit={k.unit}
+                      perYear={k.perYear}
+                      remaining={row.balances[k.kind]!.remaining}
+                    />
                   ))}
                   {toRecover(row.recoveryCredits) && (
                     <div>
@@ -174,37 +185,37 @@ export function LeaveBalancesEditor({ rows, year }: { rows: BalanceRow[]; year: 
   );
 }
 
-// Residuo in evidenza, disponibile accanto e una barra di quanto resta.
+// Residuo in evidenza rispetto al monte annuale, con una barra di quanto
+// resta. In negativo la barra è rossa e mostra di quanto si è sotto.
 function BalanceMeter({
   label,
   unit,
-  figures,
+  perYear,
+  remaining,
 }: {
   label: string;
   unit: string;
-  figures: BalanceFigures;
+  perYear: number;
+  remaining: number;
 }) {
-  const negative = figures.remaining < 0;
-  const ratio =
-    figures.allowance > 0 ? Math.min(Math.max(figures.remaining / figures.allowance, 0), 1) : 0;
+  const negative = remaining < 0;
+  const ratio = perYear > 0 ? Math.min(Math.abs(remaining) / perYear, 1) : 0;
   return (
     <div className="w-32">
       <span className="block text-xs text-muted-foreground">{label}</span>
       <span className="block whitespace-nowrap">
-        <span
-          className={`text-base font-semibold ${negative ? "text-destructive" : "text-foreground"}`}
-        >
-          {formatNumber(figures.remaining)}
+        <span className={`text-base font-semibold ${negative ? "text-destructive" : "text-foreground"}`}>
+          {formatNumber(remaining)}
         </span>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground" title="Monte annuale">
           {" "}
-          / {formatNumber(figures.allowance)} {unit}
+          / {formatNumber(perYear)} {unit}
         </span>
       </span>
       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
         <div
           className={`h-full rounded-full ${negative ? "bg-destructive" : "bg-primary"}`}
-          style={{ width: `${negative ? 100 : ratio * 100}%` }}
+          style={{ width: `${ratio * 100}%` }}
         />
       </div>
     </div>
