@@ -39,7 +39,11 @@ function getConfig() {
   if (!configPromise) {
     const { issuer, clientId, clientSecret } = env();
     configPromise = client
-      .discovery(new URL(issuer), clientId, undefined, client.ClientSecretBasic(clientSecret))
+      // timeout (secondi) anche per le richieste successive: se Keycloak è lento
+      // una pagina non resta appesa (vedi refreshOidcSession).
+      .discovery(new URL(issuer), clientId, undefined, client.ClientSecretBasic(clientSecret), {
+        timeout: 5,
+      })
       .catch((err) => {
         configPromise = null;
         throw err;
@@ -69,6 +73,8 @@ export async function startOidcLogin() {
   return { url, flow };
 }
 
+export type OidcTokens = { idToken: string | null; refreshToken: string | null };
+
 export type OidcLoginError =
   | "not_allowed" // non appartiene al gruppo richiesto
   | "email_unverified" // email assente o non verificata da Keycloak
@@ -93,14 +99,18 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
   currentUrl.search = callbackParams.toString();
 
   let claims: client.IDToken | undefined;
+  let tokens: OidcTokens = { idToken: null, refreshToken: null };
   try {
-    const tokens = await client.authorizationCodeGrant(config, currentUrl, {
+    const response = await client.authorizationCodeGrant(config, currentUrl, {
       pkceCodeVerifier: flow.verifier,
       expectedState: flow.state,
       expectedNonce: flow.nonce,
       idTokenExpected: true,
     });
-    claims = tokens.claims();
+    claims = response.claims();
+    // Conservati (cifrati) nella sessione, mai nei log: id_token per il logout,
+    // refresh_token per la verifica periodica della sessione SSO.
+    tokens = { idToken: response.id_token ?? null, refreshToken: response.refresh_token ?? null };
   } catch (err) {
     throw new OidcError("failed", err instanceof Error ? err.message : String(err));
   }
@@ -129,7 +139,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
   const linked = await prisma.user.findUnique({ where: { oidcSubject: subject } });
   if (linked) {
     if (!linked.active) throw new OidcError("inactive");
-    return linked;
+    return { user: linked, tokens };
   }
 
   // 2. Primo login: collegamento per email, solo se Keycloak la garantisce.
@@ -142,13 +152,14 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       throw new OidcError("account_conflict");
     }
     if (!byEmail.active) throw new OidcError("inactive");
-    return prisma.user.update({ where: { id: byEmail.id }, data: { oidcSubject: subject } });
+    const user = await prisma.user.update({ where: { id: byEmail.id }, data: { oidcSubject: subject } });
+    return { user, tokens };
   }
 
   // 3. Nuovo utente: membro, con una password locale casuale e mai comunicata
   // (il login locale è riservato ai super admin). Ruolo e tipo di rapporto li
   // sistema un admin dalla pagina Team.
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       name,
       email,
@@ -158,16 +169,17 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       passwordHash: await hashPassword(randomBytes(32).toString("base64")),
     },
   });
+  return { user, tokens };
 }
 
 // "Esci" per una sessione nata da SSO: URL dell'end_session_endpoint di
-// Keycloak (RP-Initiated Logout). Volutamente senza id_token_hint: così
-// Keycloak mostra sempre la sua pagina di conferma, che fa capire all'utente
-// che sta uscendo da tutte le applicazioni collegate; dopo la conferma chiude
-// la sessione SSO e riporta a /login. post_logout_redirect_uri deve coincidere
-// con quello registrato sul client: è l'origine di OIDC_REDIRECT_URI + /login.
+// Keycloak (RP-Initiated Logout) che chiude la sessione SSO, quindi tutte le
+// app collegate, e riporta a /login. Con id_token_hint Keycloak esce senza
+// chiedere conferma; senza (sessioni nate prima che lo si salvasse) chiede
+// "Vuoi uscire?". post_logout_redirect_uri deve coincidere con quello
+// registrato sul client: è l'origine di OIDC_REDIRECT_URI + /login.
 // Null se Keycloak non è configurato o non risponde: si esce solo da Softuerino.
-export async function buildOidcLogoutUrl() {
+export async function buildOidcLogoutUrl(idToken: string | null) {
   if (!isOidcConfigured()) return null;
   try {
     const config = await getConfig();
@@ -175,9 +187,33 @@ export async function buildOidcLogoutUrl() {
     return client.buildEndSessionUrl(config, {
       client_id: clientId,
       post_logout_redirect_uri: new URL("/login", redirectUri).href,
+      ...(idToken ? { id_token_hint: idToken } : {}),
     }).href;
   } catch (err) {
     console.error("[oidc] logout SSO non disponibile, esco solo da Softuerino:", err instanceof Error ? err.message : err);
     return null;
+  }
+}
+
+// Verifica che la sessione SSO sia ancora attiva rinnovando il refresh_token.
+// "ended": Keycloak risponde invalid_grant (logout da un'altra app, sessione
+// scaduta o revocata). "unavailable": Keycloak irraggiungibile o in errore,
+// si riproverà: non è un motivo per buttare fuori l'utente.
+export async function refreshOidcSession(
+  refreshToken: string
+): Promise<{ status: "ok"; tokens: OidcTokens } | { status: "ended" } | { status: "unavailable" }> {
+  try {
+    const config = await getConfig();
+    const response = await client.refreshTokenGrant(config, refreshToken);
+    return {
+      status: "ok",
+      tokens: { idToken: response.id_token ?? null, refreshToken: response.refresh_token ?? refreshToken },
+    };
+  } catch (err) {
+    if (err instanceof client.ResponseBodyError && err.error === "invalid_grant") {
+      return { status: "ended" };
+    }
+    console.error("[oidc] verifica sessione SSO non riuscita, riprovo più tardi:", err instanceof Error ? err.message : err);
+    return { status: "unavailable" };
   }
 }

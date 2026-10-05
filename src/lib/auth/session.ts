@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { refreshOidcSession, type OidcTokens } from "@/lib/auth/oidc";
+import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
 import { isAdminRole } from "@/lib/constants";
 
 const SESSION_DURATION_DAYS = 30; // placeholder, nessun requisito specifico ricevuto
@@ -17,14 +19,40 @@ function hashToken(token: string) {
 
 export type AuthMethod = "password" | "oidc";
 
-export async function createSession(userId: string, { authMethod }: { authMethod: AuthMethod }) {
+// I token SSO si salvano solo cifrati; senza chiave non si salvano (niente
+// verifica periodica e logout con conferma di Keycloak).
+function sealToken(value: string | null | undefined) {
+  return value && isEncryptionConfigured() ? encryptSecret(value) : null;
+}
+
+function openToken(value: string | null) {
+  if (!value) return null;
+  try {
+    return decryptSecret(value);
+  } catch {
+    return null; // chiave cambiata o valore illeggibile
+  }
+}
+
+export async function createSession(
+  userId: string,
+  { authMethod, tokens }: { authMethod: AuthMethod; tokens?: OidcTokens }
+) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(
     Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
   );
 
   await prisma.session.create({
-    data: { userId, token: hashToken(token), expiresAt, authMethod },
+    data: {
+      userId,
+      token: hashToken(token),
+      expiresAt,
+      authMethod,
+      idToken: sealToken(tokens?.idToken),
+      refreshToken: sealToken(tokens?.refreshToken),
+      ssoCheckedAt: authMethod === "oidc" ? new Date() : null,
+    },
   });
 
   const cookieStore = await cookies();
@@ -33,8 +61,59 @@ export async function createSession(userId: string, { authMethod }: { authMethod
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    expires: expiresAt,
+    // Login SSO: cookie di sessione, come quello di Keycloak. Chiudendo il
+    // browser si esce; chiudendo solo la scheda si resta dentro.
+    ...(authMethod === "oidc" ? {} : { expires: expiresAt }),
   });
+}
+
+const SSO_CHECK_INTERVAL_MS = 5 * 60 * 1000; // durata dell'access token Keycloak
+
+// Per le sessioni SSO: al massimo ogni 5 minuti verifica con il refresh_token
+// che la sessione Keycloak sia ancora attiva. Se è finita altrove (logout da
+// un'altra app, scadenza) cancella la sessione Softuerino e restituisce false.
+// Se Keycloak non risponde lascia la sessione e riprova alla richiesta dopo.
+async function verifySsoSession(session: {
+  id: string;
+  authMethod: string | null;
+  refreshToken: string | null;
+  ssoCheckedAt: Date | null;
+}) {
+  if (session.authMethod !== "oidc" || !session.refreshToken) return true;
+  const last = session.ssoCheckedAt;
+  if (last && Date.now() - last.getTime() < SSO_CHECK_INTERVAL_MS) return true;
+
+  // Una sola richiesta alla volta fa la verifica: le altre (es. richieste in
+  // parallelo della stessa pagina) proseguono, senza riusare lo stesso token.
+  const claimed = await prisma.session.updateMany({
+    where: { id: session.id, ssoCheckedAt: last },
+    data: { ssoCheckedAt: new Date() },
+  });
+  if (claimed.count === 0) return true;
+
+  const refreshToken = openToken(session.refreshToken);
+  if (!refreshToken) return true;
+
+  const result = await refreshOidcSession(refreshToken);
+  if (result.status === "ended") {
+    await prisma.$transaction([
+      closeImpersonationLogs(session.id),
+      prisma.session.deleteMany({ where: { id: session.id } }),
+    ]);
+    return false;
+  }
+  if (result.status === "unavailable") {
+    await prisma.session.updateMany({ where: { id: session.id }, data: { ssoCheckedAt: last } });
+    return true;
+  }
+  await prisma.session.updateMany({
+    where: { id: session.id },
+    data: {
+      refreshToken: sealToken(result.tokens.refreshToken),
+      ...(result.tokens.idToken ? { idToken: sealToken(result.tokens.idToken) } : {}),
+    },
+  });
+  return true;
 }
 
 export const getSession = cache(async () => {
@@ -50,8 +129,14 @@ export const getSession = cache(async () => {
   if (!session || session.expiresAt < new Date()) {
     return null;
   }
+  if (!(await verifySsoSession(session))) {
+    return null;
+  }
 
-  return session;
+  // I token SSO restano qui: non servono alle pagine.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { idToken, refreshToken, ...rest } = session;
+  return rest;
 });
 
 // Chi sta davvero usando l'app (realUser) e per conto di chi la sta vedendo
@@ -185,23 +270,26 @@ export async function revokeSessions(
 }
 
 // Chiude la sessione corrente e dice se va chiusa anche quella Keycloak: sì
-// per le sessioni nate da SSO e per quelle nate prima che si registrasse il
-// metodo, se l'utente è collegato a Keycloak. No per il login con password.
-export async function destroySession(): Promise<{ sso: boolean }> {
+// per le sessioni nate da SSO (con il loro id_token, se c'è) e per quelle nate
+// prima che si registrasse il metodo, se l'utente è collegato a Keycloak. No
+// per il login con password.
+export async function destroySession(): Promise<{ sso: boolean; idToken: string | null }> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   let sso = false;
+  let idToken: string | null = null;
 
   if (token) {
     // Il logout chiude anche un'impersonificazione in corso nel registro.
     const session = await prisma.session.findUnique({
       where: { token: hashToken(token) },
-      select: { id: true, authMethod: true, user: { select: { oidcSubject: true } } },
+      select: { id: true, authMethod: true, idToken: true, user: { select: { oidcSubject: true } } },
     });
     if (session) {
       sso =
         session.authMethod === "oidc" ||
         (session.authMethod === null && session.user.oidcSubject !== null);
+      idToken = openToken(session.idToken);
       await prisma.$transaction([
         closeImpersonationLogs(session.id),
         prisma.session.delete({ where: { id: session.id } }),
@@ -210,5 +298,5 @@ export async function destroySession(): Promise<{ sso: boolean }> {
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);
-  return { sso };
+  return { sso, idToken };
 }
