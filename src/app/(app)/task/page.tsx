@@ -101,6 +101,8 @@ export default async function TaskPage({
           <TasksTable
             tasks={tasks}
             clientOrder={clientsByAge.map((c) => c.id)}
+            users={users}
+            clients={clients}
             emptyMessage={
               userParam || clientParam
                 ? "Nessun task corrisponde ai filtri selezionati."

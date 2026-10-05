@@ -1026,10 +1026,18 @@ export async function saveDailyTimeEntries(formData: FormData) {
 
 // --- Task ---
 
-export async function createTask(formData: FormData) {
-  const user = await requireWritableUser();
-  if (!user) return READ_ONLY_ERROR;
+// Campi del form task (nuovo e modifica), già validati.
+type TaskFormData = {
+  title: string;
+  clientId: string | null;
+  status: string;
+  priority: string | null;
+  dueDate: Date | null;
+};
 
+function parseTaskForm(
+  formData: FormData
+): { error: string } | { data: TaskFormData; assigneeIds: string[] } {
   const title = String(formData.get("title") ?? "").trim();
   const clientIdRaw = String(formData.get("clientId") ?? "").trim();
   const clientId = clientIdRaw && clientIdRaw !== "none" ? clientIdRaw : null;
@@ -1037,7 +1045,7 @@ export async function createTask(formData: FormData) {
   const priorityRaw = String(formData.get("priority") ?? "").trim();
   const priority = priorityRaw || null;
   const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
-  const assigneeIds = formData.getAll("assigneeIds").map(String);
+  const assigneeIds = [...new Set(formData.getAll("assigneeIds").map(String))];
 
   if (!title) {
     return { error: "Il task è obbligatorio" };
@@ -1052,7 +1060,7 @@ export async function createTask(formData: FormData) {
     return { error: "Scadenza non valida" };
   }
 
-  const task = await prisma.task.create({
+  return {
     data: {
       title,
       clientId,
@@ -1061,7 +1069,23 @@ export async function createTask(formData: FormData) {
       // localDate, non new Date(): una stringa data-only verrebbe letta come
       // mezzanotte UTC e mostrata un giorno prima nei fusi negativi.
       dueDate: dueDateRaw ? localDate(dueDateRaw) : null,
-      completedAt: status === "done" ? new Date() : null,
+    },
+    assigneeIds,
+  };
+}
+
+export async function createTask(formData: FormData) {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+
+  const parsed = parseTaskForm(formData);
+  if ("error" in parsed) return { error: parsed.error };
+  const { data, assigneeIds } = parsed;
+
+  const task = await prisma.task.create({
+    data: {
+      ...data,
+      completedAt: data.status === "done" ? new Date() : null,
       assignees: {
         create: assigneeIds.map((userId) => ({ userId })),
       },
@@ -1100,6 +1124,48 @@ export async function updateTaskStatus(
     data: { status, completedAt: status === "done" ? new Date() : null },
   });
   revalidatePath("/task");
+}
+
+// Modifica dal pannello della riga: tutti i campi, assegnatari compresi.
+export async function updateTask(taskId: string, formData: FormData): Promise<ActionResult> {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+  if (!(await hasTaskAccess(taskId))) {
+    return { error: "Non autorizzato" };
+  }
+
+  const parsed = parseTaskForm(formData);
+  if ("error" in parsed) return { error: parsed.error };
+  const { data, assigneeIds } = parsed;
+
+  const current = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { status: true, completedAt: true, assignees: { select: { userId: true } } },
+  });
+  if (!current) return { error: "Task non trovato" };
+
+  // completedAt fa partire il conto per l'eliminazione: si azzera solo se il
+  // task esce da "done", e non si sposta se ci resta.
+  const completedAt =
+    data.status !== "done" ? null : current.status === "done" ? current.completedAt : new Date();
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      ...data,
+      completedAt,
+      assignees: {
+        deleteMany: {},
+        create: assigneeIds.map((userId) => ({ userId })),
+      },
+    },
+  });
+
+  revalidatePath("/task");
+  // Avvisa solo chi è stato aggiunto adesso.
+  const previous = new Set(current.assignees.map((a) => a.userId));
+  const added = assigneeIds.filter((id) => !previous.has(id));
+  if (added.length > 0) after(() => notifyTaskAssigned(taskId, added, user.id));
 }
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
