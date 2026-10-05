@@ -55,6 +55,9 @@ model Session {
   idToken      String?
   refreshToken String?
   ssoCheckedAt DateTime?
+  // "sid" della sessione Keycloak (dall'id_token): il back-channel logout
+  // chiude tutte le sessioni Softuerino con quel sid.
+  oidcSid      String?
 
   // Impersonificazione in sola lettura (solo super admin): finché è
   // valorizzato, l'app mostra le pagine come le vede questo utente. Nessuna
@@ -63,6 +66,8 @@ model Session {
 
   user             User  @relation("SessionOwner", fields: [userId], references: [id], onDelete: Cascade)
   impersonatedUser User? @relation("SessionImpersonated", fields: [impersonatedUserId], references: [id], onDelete: SetNull)
+
+  @@index([oidcSid])
 }
 
 // Registro delle impersonificazioni: chi ha visto l'app come chi, e per quanto.
