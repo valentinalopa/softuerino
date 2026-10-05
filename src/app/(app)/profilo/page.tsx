@@ -3,7 +3,7 @@ import { ROLE_LABELS, EMPLOYMENT_TYPE_LABELS, type Role, type EmploymentType } f
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileForm } from "@/components/profilo/ProfileForm";
 import { PasswordForm } from "@/components/profilo/PasswordForm";
-import { isOidcConfigured } from "@/lib/auth/oidc";
+import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 
 export default async function ProfiloPage() {
   const user = await requireUser();
@@ -25,7 +25,7 @@ export default async function ProfiloPage() {
             <CardTitle>Informazioni personali</CardTitle>
           </CardHeader>
           <CardContent>
-            <ProfileForm user={{ name: user.name, email: user.email }} />
+            <ProfileForm user={{ name: user.name, email: user.email }} ssoManaged={isSsoManaged(user)} />
           </CardContent>
         </Card>
 

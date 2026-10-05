@@ -25,8 +25,17 @@ import {
 
 // `roles`: i ruoli che l'utente corrente può assegnare (un admin non crea
 // super admin).
-export function NewTeamMemberDialog({ roles }: { roles: readonly Role[] }) {
+export function NewTeamMemberDialog({
+  roles,
+  ssoEnabled,
+}: {
+  roles: readonly Role[];
+  // Con Keycloak attivo la password locale serve solo ai super admin.
+  ssoEnabled: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [role, setRole] = useState<string>("membro");
+  const showPassword = !ssoEnabled || role === "super_admin";
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -73,16 +82,26 @@ export function NewTeamMemberDialog({ roles }: { roles: readonly Role[] }) {
               <Label htmlFor="new-user-email">Email</Label>
               <Input id="new-user-email" name="email" type="email" required />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-user-password">Password</Label>
-              <Input id="new-user-password" name="password" type="password" required />
-            </div>
+            {showPassword ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="new-user-password">
+                  {ssoEnabled ? "Password d'emergenza" : "Password"}
+                </Label>
+                <Input id="new-user-password" name="password" type="password" required />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Entrerà con l&apos;account aziendale: nessuna password da impostare. Al primo
+                accesso l&apos;account viene collegato per email.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               <Label>Ruolo</Label>
               <NativeSelectField
                 fullWidth
                 name="role"
                 defaultValue="membro"
+                onValueChange={setRole}
                 items={roles.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
               />
             </div>

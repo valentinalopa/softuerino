@@ -12,7 +12,8 @@ import {
 } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import { isOidcConfigured } from "@/lib/auth/oidc";
+import { randomBytes } from "crypto";
+import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import { absenceConflict } from "@/lib/absence-conflicts";
 import {
   notifyEventInvite,
@@ -83,12 +84,19 @@ export async function createUser(formData: FormData) {
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
-  const password = String(formData.get("password") ?? "");
   const role = String(formData.get("role") ?? "membro");
   const employmentType = String(formData.get("employmentType") ?? "dipendente");
+  // Con Keycloak la password locale serve solo ai super admin (emergenza): per
+  // gli altri se ne genera una casuale mai comunicata, entreranno con l'SSO.
+  const localPassword = !isOidcConfigured() || role === "super_admin";
+  const password = localPassword
+    ? String(formData.get("password") ?? "")
+    : randomBytes(32).toString("base64");
 
   if (!name || !email || !password) {
-    return { error: "Nome, email e password sono obbligatori" };
+    return {
+      error: localPassword ? "Nome, email e password sono obbligatori" : "Nome ed email sono obbligatori",
+    };
   }
   if (!ROLES.includes(role as (typeof ROLES)[number])) {
     return { error: "Ruolo non valido" };
@@ -143,7 +151,7 @@ export async function updateUser(userId: string, formData: FormData) {
 
   const target = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: { role: true, name: true, email: true, oidcSubject: true },
   });
   if (!target) {
     return { error: "Utente non trovato" };
@@ -156,12 +164,19 @@ export async function updateUser(userId: string, formData: FormData) {
     return SUPER_ADMIN_ONLY_ERROR;
   }
 
+  // Utente gestito da Keycloak: nome ed email restano quelli di Keycloak e la
+  // password locale si imposta solo per un super admin (accesso d'emergenza).
+  const ssoManaged = isSsoManaged(target);
+  if (ssoManaged && password && role !== "super_admin") {
+    return { error: "La password degli utenti con account aziendale si gestisce su Keycloak" };
+  }
+
   try {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        name,
-        email,
+        name: ssoManaged ? target.name : name,
+        email: ssoManaged ? target.email : email,
         role,
         employmentType,
         active,
@@ -225,6 +240,9 @@ export async function deleteUser(userId: string) {
 export async function updateOwnProfile(formData: FormData) {
   const currentUser = await requireWritableUser();
   if (!currentUser) return READ_ONLY_ERROR;
+  if (isSsoManaged(currentUser)) {
+    return { error: "Nome ed email arrivano dall'account aziendale: per cambiarli contatta l'IT" };
+  }
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")

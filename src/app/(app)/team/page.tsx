@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
+import { isOidcConfigured } from "@/lib/auth/oidc";
 import { getLeaveBalancesForUsers, type LeaveBalance } from "@/lib/leave-balance";
 import { formatAmount } from "@/lib/leave-format";
 import {
@@ -47,7 +48,7 @@ export default async function TeamPage() {
             Membri del team, ruolo e saldo ferie/permessi.
           </p>
         </div>
-        <NewTeamMemberDialog roles={roles} />
+        <NewTeamMemberDialog roles={roles} ssoEnabled={isOidcConfigured()} />
       </div>
 
       <Card>
