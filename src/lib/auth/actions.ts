@@ -13,8 +13,14 @@ import {
 } from "@/lib/auth/session";
 import { homePathFor, isAdminRole } from "@/lib/constants";
 import { buildOidcLogoutUrl, isOidcConfigured } from "@/lib/auth/oidc";
+import { isPublicRequest, requestHost } from "@/lib/network";
 
 export async function loginAction(formData: FormData) {
+  // Il login con password (accesso d'emergenza) non è disponibile da internet:
+  // da lì si entra solo con Keycloak (password + OTP/passkey).
+  if (await isPublicRequest()) {
+    redirect("/login?error=local_public");
+  }
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
@@ -53,7 +59,7 @@ export async function loginAction(formData: FormData) {
 // collegato a Keycloak, come prima.
 export async function logoutAction() {
   const ended = await destroySession();
-  const ssoLogoutUrl = ended.sso ? await buildOidcLogoutUrl(ended.idToken) : null;
+  const ssoLogoutUrl = ended.sso ? await buildOidcLogoutUrl(ended.idToken, await requestHost()) : null;
   redirect(ssoLogoutUrl ?? "/login");
 }
 

@@ -11,6 +11,9 @@ import { hashPassword } from "@/lib/auth/password";
 //   OIDC_CLIENT_ID       es. softuerino
 //   OIDC_CLIENT_SECRET   segreto del client confidenziale
 //   OIDC_REDIRECT_URI    es. https://softuerino.esempio.it/api/auth/oidc/callback
+//                        (anche più d'uno separati da virgola, uno per ogni nome
+//                        con cui si raggiunge l'app: si usa quello del nome della
+//                        richiesta; tutti vanno registrati sul client Keycloak)
 //   OIDC_ALLOWED_GROUP   (opzionale) gruppo Keycloak richiesto per entrare
 // Senza le prime quattro il login SSO non compare.
 
@@ -22,14 +25,24 @@ function env() {
     issuer: process.env.OIDC_ISSUER ?? "",
     clientId: process.env.OIDC_CLIENT_ID ?? "",
     clientSecret: process.env.OIDC_CLIENT_SECRET ?? "",
-    redirectUri: process.env.OIDC_REDIRECT_URI ?? "",
+    redirectUris: (process.env.OIDC_REDIRECT_URI ?? "")
+      .split(",")
+      .map((uri) => uri.trim())
+      .filter(Boolean),
     allowedGroup: (process.env.OIDC_ALLOWED_GROUP ?? "").replace(/^\/+/, ""),
   };
 }
 
 export function isOidcConfigured() {
-  const { issuer, clientId, clientSecret, redirectUri } = env();
-  return Boolean(issuer && clientId && clientSecret && redirectUri);
+  const { issuer, clientId, clientSecret, redirectUris } = env();
+  return Boolean(issuer && clientId && clientSecret && redirectUris.length > 0);
+}
+
+// Redirect URI per il nome con cui è arrivata la richiesta (header Host), tra
+// quelli ammessi; altrimenti il primo dell'elenco.
+function redirectUriFor(host: string | null) {
+  const { redirectUris } = env();
+  return redirectUris.find((uri) => new URL(uri).host === host) ?? redirectUris[0];
 }
 
 // Utente "gestito da Keycloak": SSO attivo e account già collegato. Nome ed
@@ -60,18 +73,20 @@ function getConfig() {
   return configPromise;
 }
 
-// Dati del flusso salvati nel cookie temporaneo tra login e callback.
-export type OidcFlow = { state: string; nonce: string; verifier: string };
+// Dati del flusso salvati nel cookie temporaneo tra login e callback, compreso
+// il redirect_uri usato (lo scambio del codice deve ripetere lo stesso).
+export type OidcFlow = { state: string; nonce: string; verifier: string; redirectUri: string };
 
-export async function startOidcLogin() {
+export async function startOidcLogin(host: string | null) {
   const config = await getConfig();
   const flow: OidcFlow = {
     state: client.randomState(),
     nonce: client.randomNonce(),
     verifier: client.randomPKCECodeVerifier(),
+    redirectUri: redirectUriFor(host),
   };
   const url = client.buildAuthorizationUrl(config, {
-    redirect_uri: env().redirectUri,
+    redirect_uri: flow.redirectUri,
     scope: "openid email profile",
     state: flow.state,
     nonce: flow.nonce,
@@ -103,8 +118,11 @@ export class OidcError extends Error {
 export async function completeOidcLogin(callbackParams: URLSearchParams, flow: OidcFlow) {
   const config = await getConfig();
   // L'URL pubblico (dietro Nginx l'app vede 127.0.0.1): stesso redirect_uri
-  // registrato su Keycloak, con i parametri ricevuti.
-  const currentUrl = new URL(env().redirectUri);
+  // usato all'avvio, purché sia ancora tra quelli ammessi, con i parametri ricevuti.
+  if (!env().redirectUris.includes(flow.redirectUri)) {
+    throw new OidcError("failed", "redirect_uri del flusso non ammesso");
+  }
+  const currentUrl = new URL(flow.redirectUri);
   currentUrl.search = callbackParams.toString();
 
   let claims: client.IDToken | undefined;
@@ -207,16 +225,16 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
 // app collegate, e riporta a /login. Con id_token_hint Keycloak esce senza
 // chiedere conferma; senza (sessioni nate prima che lo si salvasse) chiede
 // "Vuoi uscire?". post_logout_redirect_uri deve coincidere con quello
-// registrato sul client: è l'origine di OIDC_REDIRECT_URI + /login.
+// registrato sul client: è l'origine del redirect URI del nome usato + /login.
 // Null se Keycloak non è configurato o non risponde: si esce solo da Softuerino.
-export async function buildOidcLogoutUrl(idToken: string | null) {
+export async function buildOidcLogoutUrl(idToken: string | null, host: string | null) {
   if (!isOidcConfigured()) return null;
   try {
     const config = await getConfig();
-    const { clientId, redirectUri } = env();
+    const { clientId } = env();
     return client.buildEndSessionUrl(config, {
       client_id: clientId,
-      post_logout_redirect_uri: new URL("/login", redirectUri).href,
+      post_logout_redirect_uri: new URL("/login", redirectUriFor(host)).href,
       ...(idToken ? { id_token_hint: idToken } : {}),
     }).href;
   } catch (err) {

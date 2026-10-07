@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isOidcConfigured, OIDC_FLOW_COOKIE, startOidcLogin } from "@/lib/auth/oidc";
 
@@ -9,7 +9,7 @@ export async function GET() {
 
   let start: Awaited<ReturnType<typeof startOidcLogin>>;
   try {
-    start = await startOidcLogin();
+    start = await startOidcLogin((await headers()).get("host"));
   } catch (err) {
     console.error("[oidc] avvio login non riuscito:", err);
     redirect("/login?error=sso_failed");
