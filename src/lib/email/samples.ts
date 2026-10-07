@@ -4,6 +4,7 @@ import {
   leaveDecisionEmail,
   smtpTestEmail,
   taskAssignedEmail,
+  licenseExpiryEmail,
   type Mail,
   type Recipient,
 } from "@/lib/email/templates";
@@ -11,7 +12,7 @@ import {
 // Email di esempio per l'anteprima e le prove di Sistema → Email: stessi
 // template delle notifiche vere, con dati inventati.
 
-export const SAMPLE_KINDS = ["smtp", "leave", "event", "task"] as const;
+export const SAMPLE_KINDS = ["smtp", "leave", "event", "task", "license"] as const;
 export type SampleKind = (typeof SAMPLE_KINDS)[number];
 
 export const SAMPLE_LABELS: Record<SampleKind, string> = {
@@ -19,6 +20,7 @@ export const SAMPLE_LABELS: Record<SampleKind, string> = {
   leave: "Esito di una richiesta",
   event: "Invito a un evento",
   task: "Task assegnato",
+  license: "Licenza in scadenza",
 };
 
 function inDays(n: number, hour = 0) {
@@ -54,6 +56,15 @@ export function buildSample(kind: SampleKind, recipient: Recipient, appUrl: stri
         clientName: "Cliente di esempio",
         dueDate: inDays(10),
         priority: "high",
+      });
+    case "license":
+      return licenseExpiryEmail(recipient, appUrl, {
+        licenseId: "esempio",
+        name: "Breakdance (esempio)",
+        kind: "licenza",
+        department: "IT",
+        expiresAt: inDays(7),
+        daysLeft: 7,
       });
   }
 }

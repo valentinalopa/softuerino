@@ -195,3 +195,29 @@ export function smtpTestEmail(recipient: Recipient, appUrl: string): Mail {
     link: { path: "/impostazioni/email", label: "Apri le impostazioni email" },
   });
 }
+
+export function licenseExpiryEmail(
+  recipient: Recipient,
+  appUrl: string,
+  data: {
+    licenseId: string;
+    name: string;
+    kind: string; // licenza | abbonamento
+    department: string;
+    expiresAt: Date;
+    daysLeft: number;
+  }
+): Mail {
+  const what = data.kind === "abbonamento" ? "L'abbonamento" : "La licenza";
+  const when = data.daysLeft <= 0 ? "oggi" : data.daysLeft === 1 ? "domani" : `tra ${data.daysLeft} giorni`;
+  return render(recipient, appUrl, {
+    subject: `${data.daysLeft <= 1 ? "Scade " + when : "In scadenza"}: ${data.name}`,
+    intro: [`${what} `, { strong: data.name }, ` scade ${when}.`],
+    details: [
+      ["Scadenza", formatFullDate(data.expiresAt)],
+      ["Reparto", data.department],
+      ["Tipo", data.kind === "abbonamento" ? "Abbonamento" : "Licenza"],
+    ],
+    link: { path: `/utilita/licenze/${data.licenseId}`, label: "Apri la licenza" },
+  });
+}

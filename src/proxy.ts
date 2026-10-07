@@ -18,7 +18,9 @@ export function proxy(request: NextRequest) {
   // Le route del login con Keycloak servono proprio a chi non ha una sessione.
   const isPublicPath =
     PUBLIC_PATHS.includes(request.nextUrl.pathname) ||
-    request.nextUrl.pathname.startsWith("/api/auth/oidc/");
+    request.nextUrl.pathname.startsWith("/api/auth/oidc/") ||
+    // Avvisi giornalieri: autenticati con CRON_SECRET, non con la sessione.
+    request.nextUrl.pathname.startsWith("/api/cron/");
 
   if (!hasSession && !isPublicPath) {
     return NextResponse.redirect(new URL("/login", request.url));

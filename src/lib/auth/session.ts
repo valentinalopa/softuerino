@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 import { refreshOidcSession, type OidcTokens } from "@/lib/auth/oidc";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
-import { isAdminRole } from "@/lib/constants";
+import { IMPERSONATABLE_ROLES, isAdminRole } from "@/lib/constants";
 
 const SESSION_DURATION_DAYS = 30; // placeholder, nessun requisito specifico ricevuto
 
@@ -146,7 +146,7 @@ export const getSession = cache(async () => {
 // (user). Coincidono, tranne quando un admin o super admin impersona un membro:
 // allora `user` è il membro e tutte le pagine si comportano come per lui.
 // L'impersonificazione vale solo se fatta da un admin o super admin verso un
-// membro attivo con ruolo "membro".
+// utente attivo con ruolo membro o manager.
 export const getAuthContext = cache(async () => {
   const session = await getSession();
   if (!session || !session.user.active) return null;
@@ -157,7 +157,7 @@ export const getAuthContext = cache(async () => {
     isAdminRole(realUser.role) &&
     target !== null &&
     target.active &&
-    target.role === "membro";
+    IMPERSONATABLE_ROLES.includes(target.role);
 
   return {
     realUser,
@@ -207,7 +207,7 @@ export async function requireSuperAdmin() {
 
 // Avvia (targetUserId) o chiude (null) l'impersonificazione sulla sessione
 // corrente, annotandola nel registro. Il controllo dei permessi (admin o super
-// admin, verso un membro attivo con ruolo "membro") sta nella server action che
+// admin, verso un utente attivo membro o manager) sta nella server action che
 // la chiama.
 export async function setImpersonation(targetUserId: string | null) {
   const session = await getSession();

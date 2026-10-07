@@ -4,6 +4,7 @@ import * as client from "openid-client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
+import { syncUserDepartments } from "@/lib/departments";
 
 // Login con Keycloak (OpenID Connect, Authorization Code + PKCE, client
 // confidenziale). Configurazione solo da ambiente:
@@ -184,6 +185,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
     const user = Object.keys(sync).length
       ? await prisma.user.update({ where: { id: linked.id }, data: sync })
       : linked;
+    await syncUserDepartments(user.id, claims.groups);
     return { user, tokens };
   }
 
@@ -201,6 +203,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       where: { id: byEmail.id },
       data: { oidcSubject: subject, ...(name ? { name } : {}) },
     });
+    await syncUserDepartments(user.id, claims.groups);
     return { user, tokens };
   }
 
@@ -217,6 +220,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       passwordHash: await hashPassword(randomBytes(32).toString("base64")),
     },
   });
+  await syncUserDepartments(user.id, claims.groups);
   return { user, tokens };
 }
 
