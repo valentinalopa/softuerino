@@ -6,7 +6,12 @@ import { requireAdmin } from "@/lib/auth/session";
 import { isSsoManaged } from "@/lib/auth/oidc";
 import { getLeaveBalance, remainingByLeaveType, type LeaveBalance } from "@/lib/leave-balance";
 import { formatAmount } from "@/lib/leave-format";
-import { assignableRoles, type EmploymentType, type Role } from "@/lib/constants";
+import {
+  assignableRoles,
+  IMPERSONATABLE_ROLES,
+  type EmploymentType,
+  type Role,
+} from "@/lib/constants";
 import { RoleBadge } from "@/components/team/RoleBadge";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { EditTeamMemberForm } from "@/components/team/EditTeamMemberForm";
@@ -64,7 +69,7 @@ export default async function TeamMemberPage({
             <p className="text-sm text-muted-foreground">{member.email}</p>
           </div>
           {/* "Vedi come": solo verso membri attivi, mai verso admin o super admin. */}
-          {member.active && member.role === "membro" && (
+          {member.active && IMPERSONATABLE_ROLES.includes(member.role) && (
             <StartImpersonationButton userId={member.id} userName={member.name} />
           )}
         </div>
@@ -142,6 +147,11 @@ async function InfoTab({
   isSelf: boolean;
   roles: readonly Role[];
 }) {
+  const departments = await prisma.userDepartment.findMany({
+    where: { userId: member.id },
+    include: { department: { select: { name: true } } },
+    orderBy: { department: { name: "asc" } },
+  });
   const balance = await getLeaveBalance(
     member.id,
     member.employmentType as EmploymentType
@@ -152,6 +162,22 @@ async function InfoTab({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <BalanceCards balance={balance} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Reparti</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm">
+          {departments.length > 0 ? (
+            <p>{departments.map((d) => d.department.name).join(", ")}</p>
+          ) : (
+            <p className="text-muted-foreground">Nessun reparto.</p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            Dai gruppi Keycloak, aggiornati a ogni accesso con l&apos;account aziendale.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

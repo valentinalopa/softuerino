@@ -3,14 +3,25 @@
 // super_admin: tutto, comprese le operazioni di sistema (aggiornamenti, SMTP).
 // admin: gestisce la piattaforma come un super admin, ma non le operazioni di
 // sistema e non gli account dei super admin.
-export const ROLES = ["super_admin", "admin", "membro"] as const;
+// manager: come un membro, più gli strumenti dei propri reparti (Utilità →
+// Licenze e abbonamenti dei reparti di cui fa parte).
+export const ROLES = ["super_admin", "admin", "manager", "membro"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
   admin: "Admin",
+  manager: "Manager",
   membro: "Membro",
 };
+
+// Manager, admin e super admin: accesso alla sezione Utilità.
+export function isManagerOrAbove(role: string) {
+  return role === "manager" || isAdminRole(role);
+}
+
+// Ruoli che admin e super admin possono "vedere come" (in sola lettura).
+export const IMPERSONATABLE_ROLES: readonly string[] = ["membro", "manager"];
 
 // Ruoli con accesso all'amministrazione della piattaforma (team, richieste,
 // clienti, panoramica...).
@@ -225,3 +236,15 @@ export const EMAIL_SECURITY_LABELS: Record<EmailSecurity, string> = {
   tls: "TLS (porta 465)",
   none: "Nessuna",
 };
+
+// --- Licenze e abbonamenti ---
+
+export const LICENSE_KINDS = ["licenza", "abbonamento"] as const;
+export type LicenseKind = (typeof LICENSE_KINDS)[number];
+
+export const LICENSE_KIND_LABELS: Record<LicenseKind, string> = {
+  licenza: "Licenza",
+  abbonamento: "Abbonamento",
+};
+
+export const LICENSE_REMINDER_DAYS_DEFAULT = 7;

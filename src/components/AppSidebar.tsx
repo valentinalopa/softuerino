@@ -22,10 +22,11 @@ import {
   RefreshCw,
   Cloud,
   ExternalLink,
+  KeyRound,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
-import { ROLE_LABELS, homePathFor, isAdminRole, type Role } from "@/lib/constants";
+import { ROLE_LABELS, homePathFor, isAdminRole, isManagerOrAbove, type Role } from "@/lib/constants";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -52,6 +53,11 @@ const OPERATIVITA_LINKS: NavLink[] = [
   { href: "/calendario", label: "Calendario", icon: CalendarDays },
   { href: "/task", label: "Task", icon: ListTodo },
   { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true },
+];
+
+// Strumenti per manager e superiori (dati limitati ai propri reparti).
+const UTILITY_LINKS: NavLink[] = [
+  { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound },
 ];
 
 const ADMIN_LINKS: NavLink[] = [
@@ -128,20 +134,13 @@ export function AppSidebar({
     writeCollapsed(!collapsed);
   }
 
-  const sections =
-    isAdminRole(currentUser.role)
-      ? [
-          { label: null, links: COMMON_LINKS },
-          { label: "Operatività", links: OPERATIVITA_LINKS },
-          { label: "Amministrazione", links: ADMIN_LINKS },
-          ...(currentUser.role === "super_admin"
-            ? [{ label: "Sistema", links: SYSTEM_LINKS }]
-            : []),
-        ]
-      : [
-          { label: null, links: COMMON_LINKS },
-          { label: "Operatività", links: OPERATIVITA_LINKS },
-        ];
+  const sections = [
+    { label: null, links: COMMON_LINKS },
+    { label: "Operatività", links: OPERATIVITA_LINKS },
+    ...(isManagerOrAbove(currentUser.role) ? [{ label: "Utilità", links: UTILITY_LINKS }] : []),
+    ...(isAdminRole(currentUser.role) ? [{ label: "Amministrazione", links: ADMIN_LINKS }] : []),
+    ...(currentUser.role === "super_admin" ? [{ label: "Sistema", links: SYSTEM_LINKS }] : []),
+  ];
 
   return (
     <aside
