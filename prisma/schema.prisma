@@ -16,13 +16,16 @@ model User {
   name           String
   email          String   @unique
   passwordHash   String
-  role           String   @default("membro") // super_admin | admin | manager | membro (da non confondere con employmentType)
+  role           String   @default("membro") // super_admin | admin | membro (da non confondere con employmentType)
   employmentType String   @default("dipendente") // dipendente | partita_iva
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
   // "sub" dell'account Keycloak (OIDC). Valorizzato al primo login SSO: da lì
   // l'utente è legato a quell'account, non più all'email.
   oidcSubject    String?  @unique
+  // Reparti a cui fanno capo i reparti dell'utente (claim "reports_to" di
+  // Keycloak, nomi separati da virgola); vuoto = vertice dell'organigramma.
+  reportsTo      String   @default("")
 
   sessions               Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")
@@ -271,8 +274,9 @@ model EmailSettings {
   updatedAt         DateTime @updatedAt
 }
 
-// --- Reparti (gruppi Keycloak) ---
-// Sincronizzati dal claim "groups" a ogni login SSO: Keycloak è la fonte.
+// --- Reparti e organigramma (gruppi Keycloak) ---
+// Sincronizzati dai claim "groups", "manager_of" e "reports_to" a ogni login
+// SSO e a ogni refresh del token: l'organigramma si gestisce in Keycloak.
 model Department {
   id        String   @id @default(cuid())
   name      String   @unique // nome del gruppo Keycloak (es. "IT")
@@ -285,6 +289,7 @@ model Department {
 model UserDepartment {
   userId       String
   departmentId String
+  isManager    Boolean @default(false) // claim "manager_of" di Keycloak
 
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
@@ -294,7 +299,7 @@ model UserDepartment {
 }
 
 // --- Licenze e abbonamenti (Utilità) ---
-// Visibili ai manager del reparto, agli admin e ai super admin.
+// Visibili ai manager del reparto (da Keycloak), agli admin e ai super admin.
 model License {
   id              String    @id @default(cuid())
   name            String

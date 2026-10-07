@@ -1,19 +1,20 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
-import { userDepartmentIds } from "@/lib/departments";
-import { isAdminRole, isManagerOrAbove } from "@/lib/constants";
+import { managedDepartmentIds } from "@/lib/departments";
+import { isAdminRole } from "@/lib/constants";
 
 // Chi vede le licenze di quali reparti:
 // - admin e super admin: tutte;
-// - manager: quelle dei reparti di cui fa parte (gruppi Keycloak);
-// - membro: nessuna.
+// - manager di un reparto (organigramma Keycloak, claim manager_of): quelle
+//   dei reparti di cui è manager;
+// - gli altri: nessuna.
 export type LicenseScope = { all: true } | { all: false; departmentIds: string[] };
 
 export async function licenseScopeFor(user: { id: string; role: string }): Promise<LicenseScope | null> {
   if (isAdminRole(user.role)) return { all: true };
-  if (user.role === "manager") return { all: false, departmentIds: await userDepartmentIds(user.id) };
-  return null;
+  const departmentIds = await managedDepartmentIds(user.id);
+  return departmentIds.length > 0 ? { all: false, departmentIds } : null;
 }
 
 export function canAccessDepartment(scope: LicenseScope, departmentId: string) {
@@ -25,10 +26,9 @@ export function licenseWhere(scope: LicenseScope) {
   return scope.all ? {} : { departmentId: { in: scope.departmentIds } };
 }
 
-// Pagine della sezione Utilità: manager e superiori.
+// Pagine della sezione Utilità: manager di un reparto, admin e super admin.
 export async function requireLicenseAccess() {
   const user = await requireUser();
-  if (!isManagerOrAbove(user.role)) redirect("/");
   const scope = await licenseScopeFor(user);
   if (!scope) redirect("/");
   return { user, scope };

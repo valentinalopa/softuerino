@@ -4,7 +4,7 @@ import * as client from "openid-client";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
-import { syncUserDepartments } from "@/lib/departments";
+import { syncUserOrg } from "@/lib/departments";
 
 // Login con Keycloak (OpenID Connect, Authorization Code + PKCE, client
 // confidenziale). Configurazione solo da ambiente:
@@ -185,7 +185,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
     const user = Object.keys(sync).length
       ? await prisma.user.update({ where: { id: linked.id }, data: sync })
       : linked;
-    await syncUserDepartments(user.id, claims.groups);
+    await syncUserOrg(user.id, claims);
     return { user, tokens };
   }
 
@@ -203,7 +203,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       where: { id: byEmail.id },
       data: { oidcSubject: subject, ...(name ? { name } : {}) },
     });
-    await syncUserDepartments(user.id, claims.groups);
+    await syncUserOrg(user.id, claims);
     return { user, tokens };
   }
 
@@ -220,7 +220,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       passwordHash: await hashPassword(randomBytes(32).toString("base64")),
     },
   });
-  await syncUserDepartments(user.id, claims.groups);
+  await syncUserOrg(user.id, claims);
   return { user, tokens };
 }
 
@@ -253,13 +253,20 @@ export async function buildOidcLogoutUrl(idToken: string | null, host: string | 
 // si riproverà: non è un motivo per buttare fuori l'utente.
 export async function refreshOidcSession(
   refreshToken: string
-): Promise<{ status: "ok"; tokens: OidcTokens } | { status: "ended" } | { status: "unavailable" }> {
+): Promise<
+  | { status: "ok"; tokens: OidcTokens; claims: Record<string, unknown> | null }
+  | { status: "ended" }
+  | { status: "unavailable" }
+> {
   try {
     const config = await getConfig();
     const response = await client.refreshTokenGrant(config, refreshToken);
     return {
       status: "ok",
       tokens: { idToken: response.id_token ?? null, refreshToken: response.refresh_token ?? refreshToken },
+      // Claim aggiornati (reparti e incarichi): l'organigramma segue Keycloak
+      // anche durante la sessione.
+      claims: (response.claims() ?? null) as Record<string, unknown> | null,
     };
   } catch (err) {
     if (err instanceof client.ResponseBodyError && err.error === "invalid_grant") {

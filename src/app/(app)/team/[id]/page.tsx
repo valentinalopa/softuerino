@@ -143,6 +143,7 @@ async function InfoTab({
     employmentType: string;
     active: boolean;
     oidcSubject: string | null;
+    reportsTo: string;
   };
   isSelf: boolean;
   roles: readonly Role[];
@@ -169,12 +170,19 @@ async function InfoTab({
         </CardHeader>
         <CardContent className="text-sm">
           {departments.length > 0 ? (
-            <p>{departments.map((d) => d.department.name).join(", ")}</p>
+            <p>
+              {departments
+                .map((d) => (d.isManager ? `${d.department.name} (manager)` : d.department.name))
+                .join(", ")}
+            </p>
           ) : (
             <p className="text-muted-foreground">Nessun reparto.</p>
           )}
+          {member.reportsTo && (
+            <p className="mt-1">Fa capo a: {member.reportsTo.split(",").join(", ")}</p>
+          )}
           <p className="mt-1 text-xs text-muted-foreground">
-            Dai gruppi Keycloak, aggiornati a ogni accesso con l&apos;account aziendale.
+            Organigramma gestito in Keycloak dall&apos;IT, aggiornato a ogni accesso.
           </p>
         </CardContent>
       </Card>

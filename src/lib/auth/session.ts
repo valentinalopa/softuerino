@@ -6,6 +6,7 @@ import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 import { refreshOidcSession, type OidcTokens } from "@/lib/auth/oidc";
+import { syncUserOrg } from "@/lib/departments";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
 import { IMPERSONATABLE_ROLES, isAdminRole } from "@/lib/constants";
 
@@ -78,6 +79,7 @@ const SSO_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 // Se Keycloak non risponde lascia la sessione e riprova alla richiesta dopo.
 async function verifySsoSession(session: {
   id: string;
+  userId: string;
   authMethod: string | null;
   refreshToken: string | null;
   ssoCheckedAt: Date | null;
@@ -116,6 +118,8 @@ async function verifySsoSession(session: {
       ...(result.tokens.idToken ? { idToken: sealToken(result.tokens.idToken) } : {}),
     },
   });
+  // Reparti e incarichi aggiornati da Keycloak anche a sessione aperta.
+  if (result.claims) await syncUserOrg(session.userId, result.claims);
   return true;
 }
 
@@ -146,7 +150,7 @@ export const getSession = cache(async () => {
 // (user). Coincidono, tranne quando un admin o super admin impersona un membro:
 // allora `user` è il membro e tutte le pagine si comportano come per lui.
 // L'impersonificazione vale solo se fatta da un admin o super admin verso un
-// utente attivo con ruolo membro o manager.
+// membro attivo.
 export const getAuthContext = cache(async () => {
   const session = await getSession();
   if (!session || !session.user.active) return null;
@@ -207,7 +211,7 @@ export async function requireSuperAdmin() {
 
 // Avvia (targetUserId) o chiude (null) l'impersonificazione sulla sessione
 // corrente, annotandola nel registro. Il controllo dei permessi (admin o super
-// admin, verso un utente attivo membro o manager) sta nella server action che
+// admin, verso un membro attivo) sta nella server action che
 // la chiama.
 export async function setImpersonation(targetUserId: string | null) {
   const session = await getSession();

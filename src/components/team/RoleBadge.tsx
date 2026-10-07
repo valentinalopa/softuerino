@@ -5,7 +5,7 @@ export function RoleBadge({ role }: { role: string }) {
   return (
     <Badge
       variant={
-        role === "super_admin" ? "accent" : role === "admin" ? "teal" : role === "manager" ? "aqua" : "neutral"
+        role === "super_admin" ? "accent" : role === "admin" ? "teal" : "neutral"
       }
     >
       {ROLE_LABELS[role as Role] ?? role}
