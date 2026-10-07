@@ -17,7 +17,8 @@ function readFlow(raw: string | undefined): OidcFlow | null {
     const flow = JSON.parse(raw);
     return typeof flow?.state === "string" &&
       typeof flow?.nonce === "string" &&
-      typeof flow?.verifier === "string"
+      typeof flow?.verifier === "string" &&
+      typeof flow?.redirectUri === "string"
       ? flow
       : null;
   } catch {

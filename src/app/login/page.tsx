@@ -12,6 +12,7 @@ import { LoginForm } from "@/components/auth/LoginForm";
 import { Marchio } from "@/components/brand/Marchio";
 import { TONE_SOFT } from "@/lib/tones";
 import { isOidcConfigured } from "@/lib/auth/oidc";
+import { isPublicRequest } from "@/lib/network";
 import { buttonVariants } from "@/components/ui/button";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -25,6 +26,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   sso_account_conflict:
     "Questa email è già collegata a un altro account aziendale: contatta l'amministratore.",
   sso_inactive: "Il tuo account Softuerino è disattivato.",
+  local_public:
+    "Da internet si accede solo con l'account aziendale. L'accesso con password è disponibile dalla rete aziendale o dalla VPN.",
 };
 
 export default async function LoginPage({
@@ -40,6 +43,8 @@ export default async function LoginPage({
   const { error } = await searchParams;
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? ERROR_MESSAGES.sso_failed) : null;
   const sso = isOidcConfigured();
+  // Da internet niente accesso con password: il form non si mostra nemmeno.
+  const localLogin = !(await isPublicRequest());
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
@@ -69,17 +74,23 @@ export default async function LoginPage({
               <a href="/api/auth/oidc/login" className={buttonVariants({ className: "w-full" })}>
                 Accedi con l&apos;account aziendale
               </a>
-              <details className="text-sm">
-                <summary className="cursor-pointer text-muted-foreground">
-                  Accesso di emergenza con password (solo super admin)
-                </summary>
-                <div className="mt-4">
-                  <LoginForm />
-                </div>
-              </details>
+              {localLogin && (
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">
+                    Accesso di emergenza con password (solo super admin)
+                  </summary>
+                  <div className="mt-4">
+                    <LoginForm />
+                  </div>
+                </details>
+              )}
             </div>
-          ) : (
+          ) : localLogin ? (
             <LoginForm />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Accesso disponibile solo dalla rete aziendale o dalla VPN.
+            </p>
           )}
         </CardContent>
       </Card>
