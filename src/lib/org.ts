@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { ensureConfiguredDepartments } from "@/lib/departments";
 
 export type OrgNode = {
   id: string;
@@ -14,6 +15,7 @@ export type OrgNode = {
 // suoi membri. Un reparto senza padre è un vertice. Si completa man mano che
 // le persone accedono a Softuerino.
 export async function loadOrgTree(): Promise<OrgNode[]> {
+  await ensureConfiguredDepartments();
   const departments = await prisma.department.findMany({
     orderBy: { name: "asc" },
     include: {
