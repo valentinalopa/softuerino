@@ -23,10 +23,11 @@ import {
   Cloud,
   ExternalLink,
   KeyRound,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
-import { ROLE_LABELS, homePathFor, isAdminRole, isManagerOrAbove, type Role } from "@/lib/constants";
+import { ROLE_LABELS, homePathFor, isAdminRole, type Role } from "@/lib/constants";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -55,7 +56,7 @@ const OPERATIVITA_LINKS: NavLink[] = [
   { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true },
 ];
 
-// Strumenti per manager e superiori (dati limitati ai propri reparti).
+// Strumenti per i manager di reparto (organigramma Keycloak), admin e super admin.
 const UTILITY_LINKS: NavLink[] = [
   { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound },
 ];
@@ -65,6 +66,7 @@ const ADMIN_LINKS: NavLink[] = [
   { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
   { href: "/team", label: "Team", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
+  { href: "/organigramma", label: "Organigramma", icon: Network },
 ];
 
 // Operazioni di sistema: solo super admin.
@@ -118,10 +120,13 @@ function writeCollapsed(value: boolean) {
 export function AppSidebar({
   currentUser,
   teamPendingCount = 0,
+  showUtility = false,
 }: {
   currentUser: { name: string; email: string; role: Role };
   // Richieste del team in attesa di approvazione (admin e super admin).
   teamPendingCount?: number;
+  // Sezione Utilità: manager di almeno un reparto, admin o super admin.
+  showUtility?: boolean;
 }) {
   const pathname = usePathname();
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
@@ -137,7 +142,7 @@ export function AppSidebar({
   const sections = [
     { label: null, links: COMMON_LINKS },
     { label: "Operatività", links: OPERATIVITA_LINKS },
-    ...(isManagerOrAbove(currentUser.role) ? [{ label: "Utilità", links: UTILITY_LINKS }] : []),
+    ...(showUtility ? [{ label: "Utilità", links: UTILITY_LINKS }] : []),
     ...(isAdminRole(currentUser.role) ? [{ label: "Amministrazione", links: ADMIN_LINKS }] : []),
     ...(currentUser.role === "super_admin" ? [{ label: "Sistema", links: SYSTEM_LINKS }] : []),
   ];

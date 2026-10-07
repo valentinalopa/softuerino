@@ -1,11 +1,14 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 
-// Reparti = gruppi Keycloak, letti dal claim "groups" dell'ID token a ogni
-// login SSO (mapper "Group Membership", full path off). Keycloak è la fonte:
-// i reparti dell'utente vengono riallineati a quelli ricevuti.
-// OIDC_DEPARTMENT_GROUPS (facoltativo, separati da virgola) limita quali
-// gruppi contano come reparti; vuoto = tutti.
+// Organigramma = Keycloak. A ogni login SSO e a ogni refresh del token si
+// riallineano, dai claim dell'ID token:
+//   groups      → reparti dell'utente
+//   manager_of  → reparti di cui è manager (assente = nessuno)
+//   reports_to  → reparti a cui fanno capo i suoi reparti (assente = vertice)
+// OIDC_DEPARTMENT_GROUPS (es. "IT,COM,Produzione") dice
+// quali gruppi sono reparti: gli altri (Manager, users, admin...) si ignorano.
+// Vuoto = tutti i gruppi.
 
 function allowedGroups() {
   return (process.env.OIDC_DEPARTMENT_GROUPS ?? "")
@@ -14,40 +17,53 @@ function allowedGroups() {
     .filter(Boolean);
 }
 
-export async function syncUserDepartments(userId: string, groupsClaim: unknown) {
-  // Claim assente (mapper non configurato): non si tocca nulla, così i reparti
-  // non si svuotano per un errore di configurazione.
-  if (!Array.isArray(groupsClaim)) return;
-
+function departmentNames(claim: unknown) {
+  if (!Array.isArray(claim)) return [];
   const allowed = allowedGroups();
-  const names = [
+  return [
     ...new Set(
-      groupsClaim
+      claim
         .filter((g): g is string => typeof g === "string")
         .map((g) => g.replace(/^\/+/, "").trim())
         .filter((g) => g && (allowed.length === 0 || allowed.includes(g)))
     ),
   ];
-
-  const departments = await Promise.all(
-    names.map((name) =>
-      prisma.department.upsert({ where: { name }, create: { name }, update: {}, select: { id: true } })
-    )
-  );
-  const ids = departments.map((d) => d.id);
-
-  await prisma.userDepartment.deleteMany({ where: { userId, departmentId: { notIn: ids } } });
-  for (const departmentId of ids) {
-    await prisma.userDepartment.upsert({
-      where: { userId_departmentId: { userId, departmentId } },
-      create: { userId, departmentId },
-      update: {},
-    });
-  }
 }
 
-// Reparti di un utente (id), per i permessi di manager.
-export async function userDepartmentIds(userId: string) {
-  const rows = await prisma.userDepartment.findMany({ where: { userId }, select: { departmentId: true } });
+export async function syncUserOrg(userId: string, claims: Record<string, unknown>) {
+  // Senza "groups" (mapper mancante o token senza claim) non si tocca nulla:
+  // un errore di configurazione non deve svuotare reparti e incarichi.
+  if (!Array.isArray(claims.groups)) return;
+
+  const groups = departmentNames(claims.groups);
+  const managerOf = new Set(departmentNames(claims.manager_of));
+  const reportsTo = departmentNames(claims.reports_to);
+
+  const departments = await Promise.all(
+    groups.map((name) =>
+      prisma.department.upsert({ where: { name }, create: { name }, update: {}, select: { id: true, name: true } })
+    )
+  );
+
+  await prisma.userDepartment.deleteMany({
+    where: { userId, departmentId: { notIn: departments.map((d) => d.id) } },
+  });
+  for (const d of departments) {
+    const isManager = managerOf.has(d.name);
+    await prisma.userDepartment.upsert({
+      where: { userId_departmentId: { userId, departmentId: d.id } },
+      create: { userId, departmentId: d.id, isManager },
+      update: { isManager },
+    });
+  }
+  await prisma.user.update({ where: { id: userId }, data: { reportsTo: reportsTo.join(",") } });
+}
+
+// Reparti di cui l'utente è manager (id), per i permessi sulle licenze.
+export async function managedDepartmentIds(userId: string) {
+  const rows = await prisma.userDepartment.findMany({
+    where: { userId, isManager: true },
+    select: { departmentId: true },
+  });
   return rows.map((r) => r.departmentId);
 }

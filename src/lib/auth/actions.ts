@@ -64,7 +64,7 @@ export async function logoutAction() {
 }
 
 // Solo admin e super admin (quelli reali, non quelli impersonati) possono
-// vedere l'app come un membro o un manager, in sola lettura. Mai verso un admin o super admin.
+// vedere l'app come un membro, in sola lettura. Mai verso un admin o super admin.
 export async function startImpersonationAction(targetUserId: string) {
   const context = await getAuthContext();
   if (!context) redirect("/login");
@@ -80,7 +80,7 @@ export async function startImpersonationAction(targetUserId: string) {
     return { error: "Membro non trovato o non attivo" };
   }
   if (!IMPERSONATABLE_ROLES.includes(target.role)) {
-    return { error: "Si può vedere l'app solo come un membro o un manager, non come un admin" };
+    return { error: "Si può vedere l'app solo come un membro, non come un admin" };
   }
   if (target.id === context.realUser.id) {
     return { error: "Stai già vedendo l'app come te stesso" };

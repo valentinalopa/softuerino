@@ -3,25 +3,19 @@
 // super_admin: tutto, comprese le operazioni di sistema (aggiornamenti, SMTP).
 // admin: gestisce la piattaforma come un super admin, ma non le operazioni di
 // sistema e non gli account dei super admin.
-// manager: come un membro, più gli strumenti dei propri reparti (Utilità →
-// Licenze e abbonamenti dei reparti di cui fa parte).
-export const ROLES = ["super_admin", "admin", "manager", "membro"] as const;
+// "Manager di un reparto" non è un ruolo di Softuerino: è un incarico
+// dell'organigramma gestito in Keycloak (claim manager_of), vedi departments.ts.
+export const ROLES = ["super_admin", "admin", "membro"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
   admin: "Admin",
-  manager: "Manager",
   membro: "Membro",
 };
 
-// Manager, admin e super admin: accesso alla sezione Utilità.
-export function isManagerOrAbove(role: string) {
-  return role === "manager" || isAdminRole(role);
-}
-
 // Ruoli che admin e super admin possono "vedere come" (in sola lettura).
-export const IMPERSONATABLE_ROLES: readonly string[] = ["membro", "manager"];
+export const IMPERSONATABLE_ROLES: readonly string[] = ["membro"];
 
 // Ruoli con accesso all'amministrazione della piattaforma (team, richieste,
 // clienti, panoramica...).
