@@ -59,6 +59,15 @@ export async function syncUserOrg(userId: string, claims: Record<string, unknown
   await prisma.user.update({ where: { id: userId }, data: { reportsTo: reportsTo.join(",") } });
 }
 
+// I reparti elencati in OIDC_DEPARTMENT_GROUPS esistono da subito, anche
+// prima che qualcuno di quel reparto abbia fatto login (es. per assegnargli
+// una licenza).
+export async function ensureConfiguredDepartments() {
+  for (const name of allowedGroups()) {
+    await prisma.department.upsert({ where: { name }, create: { name }, update: {} });
+  }
+}
+
 // Reparti di cui l'utente è manager (id), per i permessi sulle licenze.
 export async function managedDepartmentIds(userId: string) {
   const rows = await prisma.userDepartment.findMany({

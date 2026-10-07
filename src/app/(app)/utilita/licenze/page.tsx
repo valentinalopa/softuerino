@@ -1,17 +1,20 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { ensureConfiguredDepartments } from "@/lib/departments";
 import { licenseWhere, maskedKey, requireLicenseAccess } from "@/lib/licenses/access";
 import { expiryStatus, formatExpiry } from "@/lib/licenses/expiry";
 import { LICENSE_KINDS } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewLicenseDialog } from "@/components/utilita/NewLicenseDialog";
+import { LicenseQuickKey } from "@/components/utilita/LicenseQuickKey";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 // Utilità → Licenze e abbonamenti: manager (reparti propri), admin, super admin.
 export default async function LicenzePage() {
   const { scope } = await requireLicenseAccess();
 
+  if (scope.all) await ensureConfiguredDepartments();
   const [licenses, departments] = await Promise.all([
     prisma.license.findMany({
       where: licenseWhere(scope),
@@ -68,7 +71,13 @@ export default async function LicenzePage() {
                         </TableCell>
                         <TableCell>{l.department.name}</TableCell>
                         <TableCell>
-                          <code className="text-xs">{maskedKey(l.keyHint) ?? "—"}</code>
+                          <LicenseQuickKey
+                            licenseId={l.id}
+                            name={l.name}
+                            masked={maskedKey(l.keyHint)}
+                            used={l._count.activations}
+                            limit={l.activationLimit}
+                          />
                         </TableCell>
                         <TableCell>
                           {l._count.activations} / {l.activationLimit ?? "∞"}
