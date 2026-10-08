@@ -19,7 +19,7 @@ const MONTHS_BACK = 12;
 const PENDING_PREVIEW = 5;
 
 export default async function PanoramicaPage() {
-  const user = await requireAdmin();
+  await requireAdmin();
 
   const now = new Date();
   const windowStart = new Date(now.getFullYear(), now.getMonth() - (MONTHS_BACK - 1), 1);
@@ -39,9 +39,9 @@ export default async function PanoramicaPage() {
     prisma.leaveRequest.findMany({
       where: { startDate: { lte: yearEnd }, endDate: { gte: yearStart } },
     }),
-    // Stesso criterio di /richieste-team: le richieste degli altri membri.
+    // Stesso criterio di /richieste-team: tutte quelle in attesa.
     prisma.leaveRequest.findMany({
-      where: { userId: { not: user.id }, status: "pending" },
+      where: { status: "pending" },
       include: {
         user: { select: { name: true, employmentType: true } },
         recoveryCredit: { select: { reason: true, amount: true, unit: true } },
@@ -49,9 +49,7 @@ export default async function PanoramicaPage() {
       orderBy: { startDate: "asc" },
       take: PENDING_PREVIEW,
     }),
-    prisma.leaveRequest.count({
-      where: { userId: { not: user.id }, status: "pending" },
-    }),
+    prisma.leaveRequest.count({ where: { status: "pending" } }),
   ]);
   const overdrafts = await getPendingOverdrafts(teamPending);
 

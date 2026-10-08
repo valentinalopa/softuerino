@@ -32,21 +32,19 @@ export default async function RichiesteTeamPage({
   const view: View =
     params.view === "in_programma" || params.view === "storico" ? params.view : "da_approvare";
 
-  // Da approvare: le richieste degli altri (le proprie le decide un altro admin).
-  const pendingWhere: Prisma.LeaveRequestWhereInput = {
-    userId: { not: user.id },
-    status: "pending",
-  };
-  // In programma: assenze non ancora concluse e non rifiutate; le proprie in
-  // attesa stanno qui, dato che non compaiono tra quelle da approvare.
+  // Da approvare: tutte le richieste in attesa, comprese quelle di chi
+  // guarda (un admin può decidere anche le proprie).
+  const pendingWhere: Prisma.LeaveRequestWhereInput = { status: "pending" };
+  // In programma: richieste già decise (approvate, rifiutate, malattie
+  // registrate) non ancora concluse. Quelle aperte stanno in Da approvare.
   const upcomingWhere: Prisma.LeaveRequestWhereInput = {
     endDate: { gte: today },
-    OR: [{ status: { in: ["approved", "registrata"] } }, { status: "pending", userId: user.id }],
-  };
-  // Storico: concluse, più le rifiutate (anche future).
-  const historyWhere: Prisma.LeaveRequestWhereInput = {
     status: { not: "pending" },
-    OR: [{ endDate: { lt: today } }, { status: "rejected" }],
+  };
+  // Storico: richieste decise e concluse.
+  const historyWhere: Prisma.LeaveRequestWhereInput = {
+    endDate: { lt: today },
+    status: { not: "pending" },
   };
 
   const include = {
@@ -67,7 +65,7 @@ export default async function RichiesteTeamPage({
       <div>
         <h1>Richieste del team</h1>
         <p className="text-sm text-muted-foreground">
-          Approvazioni, assenze in programma e storico. Saldi e recuperi di una persona sono nella
+          Approvazioni, richieste in programma e storico. Saldi e recuperi di una persona sono nella
           sua scheda in Team.
         </p>
       </div>

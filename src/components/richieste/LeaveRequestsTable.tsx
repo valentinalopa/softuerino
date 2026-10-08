@@ -49,11 +49,17 @@ function typeLabel(type: string) {
 
 // Stato della richiesta: in attesa → Approva/Rifiuta, altrimenti la si può
 // riportare in attesa (solo admin, cioè dove showActions è attivo).
-function RequestActions({ request }: { request: LeaveRequestRow }) {
+function RequestActions({
+  request,
+  compact = false,
+}: {
+  request: LeaveRequestRow;
+  compact?: boolean;
+}) {
   return request.status === "pending" ? (
     <ApproveRejectActions requestId={request.id} />
   ) : (
-    <RevertToPendingAction requestId={request.id} />
+    <RevertToPendingAction requestId={request.id} compact={compact} />
   );
 }
 
@@ -162,7 +168,7 @@ export function LeaveRequestsTable({
                 onKeyDown={(event) => event.stopPropagation()}
               >
                 <div className="flex items-start justify-end gap-1">
-                  {showActions && <RequestActions request={request} />}
+                  {showActions && <RequestActions request={request} compact />}
                   {canDelete && <DeleteRequestButton request={request} />}
                 </div>
               </TableCell>
