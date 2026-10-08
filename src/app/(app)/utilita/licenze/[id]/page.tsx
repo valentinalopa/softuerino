@@ -2,7 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { canAccessDepartment, maskedKey, requireLicenseAccess } from "@/lib/licenses/access";
+import {
+  accountForViewer,
+  canAccessLicense,
+  licenseScopeFor,
+  maskedAccount,
+  maskedKey,
+  requireLicenseAccess,
+} from "@/lib/licenses/access";
 import { updateLicense } from "@/lib/licenses/actions";
 import { formatExpiry } from "@/lib/licenses/expiry";
 import { LICENSE_KIND_LABELS, type LicenseKind } from "@/lib/constants";
@@ -22,13 +29,15 @@ function isoDate(date: Date | null) {
 }
 
 export default async function LicenzaPage({ params }: { params: Promise<{ id: string }> }) {
-  const { scope } = await requireLicenseAccess();
+  const { user, scope } = await requireLicenseAccess();
+  const manageScope = await licenseScopeFor(user, "gestire");
   const { id } = await params;
 
   const license = await prisma.license.findUnique({
     where: { id },
     include: {
       department: { select: { name: true } },
+      sharedDepartments: { select: { departmentId: true, department: { select: { name: true } } } },
       activations: {
         orderBy: { createdAt: "asc" },
         include: { createdBy: { select: { name: true } } },
@@ -40,11 +49,19 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
       },
     },
   });
-  // Licenza di un reparto non accessibile: come se non esistesse.
-  if (!license || !canAccessDepartment(scope, license.departmentId)) notFound();
+  // Licenza non accessibile: come se non esistesse.
+  if (!license || !canAccessLicense(scope, license, "vedere")) notFound();
 
+  // Chi può solo vederla: dati in sola lettura, niente modifiche né registro.
+  const canManage = canAccessLicense(manageScope, license, "gestire");
+  const account = accountForViewer(user, license.accountEncrypted);
+  const activations = license.activations.map((a) => ({ id: a.id, label: a.label, note: a.note }));
+  const allDepartments = await prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
+  const departmentsText = license.visibleToAll
+    ? "Visibile a tutti"
+    : [license.department.name, ...license.sharedDepartments.map((d) => d.department.name)].join(", ");
   const departments = await prisma.department.findMany({
-    where: scope.all ? {} : { id: { in: scope.departmentIds } },
+    where: !manageScope ? { id: { in: [] } } : manageScope.all ? {} : { id: { in: manageScope.departmentIds } },
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });
@@ -61,12 +78,12 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
             <h1>{license.name}</h1>
             <p className="text-sm text-muted-foreground">
               {LICENSE_KIND_LABELS[license.kind as LicenseKind] ?? license.kind} ·{" "}
-              {license.department.name}
+              {departmentsText}
               {license.vendor ? ` · ${license.vendor}` : ""} · Scadenza:{" "}
               {formatExpiry(license.expiresAt)}
             </p>
           </div>
-          <DeleteLicenseButton licenseId={license.id} name={license.name} />
+          {canManage && <DeleteLicenseButton licenseId={license.id} name={license.name} />}
         </div>
       </div>
 
@@ -76,41 +93,103 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
             <CardTitle>Dati</CardTitle>
           </CardHeader>
           <CardContent>
-            <LicenseForm
-              departments={departments}
-              submitLabel="Salva modifiche"
-              onSubmit={updateLicense.bind(null, license.id)}
-              initial={{
-                name: license.name,
-                kind: license.kind,
-                vendor: license.vendor,
-                departmentId: license.departmentId,
-                activationLimit: license.activationLimit,
-                expiresAt: isoDate(license.expiresAt),
-                reminderDays: license.reminderDays,
-                notes: license.notes,
-                hasKey: Boolean(license.keyEncrypted),
-              }}
-            />
+            {canManage ? (
+              <LicenseForm
+                departments={departments}
+                allDepartments={allDepartments}
+                submitLabel="Salva modifiche"
+                onSubmit={updateLicense.bind(null, license.id)}
+                initial={{
+                  name: license.name,
+                  kind: license.kind,
+                  vendor: license.vendor,
+                  departmentId: license.departmentId,
+                  activationLimit: license.activationLimit,
+                  expiresAt: isoDate(license.expiresAt),
+                  reminderDays: license.reminderDays,
+                  notes: license.notes,
+                  hasKey: Boolean(license.keyEncrypted),
+                  sharedDepartmentIds: license.sharedDepartments.map((d) => d.departmentId),
+                  visibleToAll: license.visibleToAll,
+                  hasAccount: Boolean(license.accountEncrypted),
+                  hasPassword: Boolean(license.passwordEncrypted),
+                }}
+              />
+            ) : (
+              <dl className="space-y-2 text-sm">
+                {[
+                  ["Tipo", LICENSE_KIND_LABELS[license.kind as LicenseKind] ?? license.kind],
+                  ["Reparti", departmentsText],
+                  ["Fornitore", license.vendor ?? "—"],
+                  ["Scadenza", formatExpiry(license.expiresAt)],
+                  [
+                    license.kind === "licenza" ? "Attivazioni massime" : "Utenti/posti",
+                    license.activationLimit === null ? "Illimitate" : String(license.activationLimit),
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-3 border-b border-border pb-2">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="text-right">{value}</dd>
+                  </div>
+                ))}
+                {license.notes && <p className="pt-1 whitespace-pre-line text-muted-foreground">{license.notes}</p>}
+              </dl>
+            )}
           </CardContent>
         </Card>
 
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Chiave</CardTitle>
+              <CardTitle>{license.passwordEncrypted || license.accountEncrypted ? "Chiave e accesso" : "Chiave"}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <LicenseQuickKey
-                licenseId={license.id}
-                name={license.name}
-                masked={maskedKey(license.keyHint)}
-                activations={license.activations.map((a) => ({ id: a.id, label: a.label, note: a.note }))}
-                limit={license.activationLimit}
-                withLabels
-              />
-              <p className="mt-2 text-xs text-muted-foreground">
-                Per vederla o copiarla si indica dove viene usata: ogni accesso viene registrato.
+            <CardContent className="space-y-4">
+              {(license.keyHint || (!license.passwordEncrypted && !license.accountEncrypted)) && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Chiave di licenza</p>
+                  <LicenseQuickKey
+                    licenseId={license.id}
+                    name={license.name}
+                    masked={maskedKey(license.keyHint)}
+                    activations={activations}
+                    limit={license.activationLimit}
+                    withLabels
+                  />
+                </div>
+              )}
+              {(license.accountEncrypted || license.passwordEncrypted) && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Account di acquisto / accesso</p>
+                  {license.accountEncrypted &&
+                    (account ? (
+                      // Super admin: in chiaro.
+                      <code className="block w-fit rounded-md bg-muted px-2 py-1 text-sm break-all">{account}</code>
+                    ) : (
+                      <LicenseQuickKey
+                        licenseId={license.id}
+                        name={license.name}
+                        masked={maskedAccount(license.accountHint)}
+                        activations={activations}
+                        limit={license.activationLimit}
+                        withLabels
+                        field="account"
+                      />
+                    ))}
+                  {license.passwordEncrypted && (
+                    <LicenseQuickKey
+                      licenseId={license.id}
+                      name={license.name}
+                      masked="••••••••"
+                      activations={activations}
+                      limit={license.activationLimit}
+                      withLabels
+                      field="password"
+                    />
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Per vederle o copiarle si indica dove vengono usate: ogni accesso viene registrato.
               </p>
             </CardContent>
           </Card>
@@ -122,6 +201,7 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
             <CardContent>
               <LicenseActivations
                 licenseId={license.id}
+                readOnly={!canManage}
                 limit={license.activationLimit}
                 activations={license.activations.map((a) => ({
                   id: a.id,
@@ -134,36 +214,41 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Accessi alla chiave</CardTitle>
-              <CardDescription>Gli ultimi 20: chi l&apos;ha vista o copiata, e per cosa.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {license.keyAccesses.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Nessuno ha ancora visto o copiato la chiave.
-                </p>
-              ) : (
-                <ul className="divide-y divide-border-subtle text-sm">
-                  {license.keyAccesses.map((a) => (
-                    <li key={a.id} className="flex items-center justify-between gap-3 py-2">
-                      <span className="text-foreground">
-                        {a.user.name}{" "}
-                        <span className="text-muted-foreground">
-                          · {a.action === "copy" ? "copiata" : "mostrata"}
-                          {a.usedFor && ` per ${a.usedFor}`}
+          {canManage && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Accessi alla chiave</CardTitle>
+                <CardDescription>Gli ultimi 20: chi l&apos;ha vista o copiata, e per cosa.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {license.keyAccesses.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nessuno ha ancora visto o copiato la chiave.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border-subtle text-sm">
+                    {license.keyAccesses.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3 py-2">
+                        <span className="text-foreground">
+                          {a.user.name}{" "}
+                          <span className="text-muted-foreground">
+                            ·{" "}
+                            {a.field === "account"
+                              ? `account ${a.action === "copy" ? "copiato" : "mostrato"}`
+                              : `${a.field === "password" ? "password" : "chiave"} ${a.action === "copy" ? "copiata" : "mostrata"}`}
+                            {a.usedFor && ` per ${a.usedFor}`}
+                          </span>
                         </span>
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatDate(a.createdAt)} {formatTime(a.createdAt)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {formatDate(a.createdAt)} {formatTime(a.createdAt)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

@@ -189,6 +189,54 @@ export function newLeaveRequestEmail(
   });
 }
 
+// Richiesta di un nuovo utente, a chi gestisce gli account (da creare in Keycloak).
+export function accountRequestEmail(
+  recipient: Recipient,
+  appUrl: string,
+  data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    department: string | null;
+    requester: string;
+    note: string | null;
+  }
+): Mail {
+  const details: Array<[string, string]> = [
+    ["Nome", data.firstName],
+    ["Cognome", data.lastName],
+    ["Email", data.email],
+  ];
+  if (data.department) details.push(["Reparto", data.department]);
+  details.push(["Richiesto da", data.requester]);
+  return render(recipient, appUrl, {
+    subject: `Richiesta nuovo utente: ${data.firstName} ${data.lastName}`,
+    intro: [{ strong: data.requester }, " chiede di creare un account per ", { strong: `${data.firstName} ${data.lastName}` }, ": va creato in Keycloak, al primo accesso comparirà in Softuerino."],
+    details,
+    note: data.note ?? undefined,
+    link: { path: "/ruoli", label: "Apri le richieste di nuovi utenti" },
+  });
+}
+
+// Esito della richiesta, a chi l'ha fatta.
+export function accountRequestOutcomeEmail(
+  recipient: Recipient,
+  appUrl: string,
+  data: { firstName: string; lastName: string; email: string; status: string }
+): Mail | null {
+  if (data.status !== "done" && data.status !== "rejected") return null;
+  const done = data.status === "done";
+  const who = `${data.firstName} ${data.lastName}`;
+  return render(recipient, appUrl, {
+    subject: done ? `Nuovo utente pronto: ${who}` : `Richiesta nuovo utente non accolta: ${who}`,
+    intro: done
+      ? ["l'account di ", { strong: who }, " è stato creato: può accedere a Softuerino con l'account aziendale."]
+      : ["la richiesta di un account per ", { strong: who }, " non è stata accolta. Per chiarimenti scrivi all'amministrazione."],
+    details: [["Email", data.email]],
+    link: { path: "/reparto", label: "Apri Il mio reparto" },
+  });
+}
+
 export function eventInviteEmail(
   recipient: Recipient,
   appUrl: string,
@@ -236,6 +284,10 @@ export function smtpTestEmail(recipient: Recipient, appUrl: string): Mail {
   });
 }
 
+function capitalize(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 export function licenseExpiryEmail(
   recipient: Recipient,
   appUrl: string,
@@ -243,7 +295,13 @@ export function licenseExpiryEmail(
     licenseId: string;
     name: string;
     kind: string; // licenza | abbonamento
-    department: string;
+    // Reparto principale e condivisi, oppure "Visibile a tutti".
+    departments: string;
+    vendor: string | null;
+    activations: string | null; // es. "2 su 3", "4 (illimitate)"
+    // Chiave, account o password salvati: solo il richiamo, mai i dati
+    // (le email non sono un posto sicuro).
+    secrets: string[];
     expiresAt: Date;
     daysLeft: number;
   }
@@ -255,9 +313,17 @@ export function licenseExpiryEmail(
     intro: [`${what} `, { strong: data.name }, ` scade ${when}.`],
     details: [
       ["Scadenza", formatFullDate(data.expiresAt)],
-      ["Reparto", data.department],
       ["Tipo", data.kind === "abbonamento" ? "Abbonamento" : "Licenza"],
+      ...(data.vendor ? ([["Fornitore", data.vendor]] as Array<[string, string]>) : []),
+      ["Reparti", data.departments],
+      ...(data.activations
+        ? ([[data.kind === "abbonamento" ? "Utenti/posti" : "Attivazioni", data.activations]] as Array<[string, string]>)
+        : []),
     ],
-    link: { path: `/utilita/licenze/${data.licenseId}`, label: "Apri la licenza" },
+    note:
+      data.secrets.length > 0
+        ? `${capitalize(data.secrets.join(", "))} salvat${data.secrets.length > 1 ? "i" : data.secrets[0] === "account" ? "o" : "a"} in Softuerino: per il rinnovo si vedono dalla scheda, indicando dove si usano.`
+        : undefined,
+    link: { path: `/utilita/licenze/${data.licenseId}`, label: `Apri ${data.kind === "abbonamento" ? "l'abbonamento" : "la licenza"}` },
   });
 }

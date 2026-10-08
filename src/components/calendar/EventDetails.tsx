@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { CalendarPlus, ExternalLink, X } from "lucide-react";
+import { googleCalendarUrl } from "@/lib/ics";
 import { deleteEvent } from "@/lib/actions";
 import { EVENT_TYPE_LABELS } from "@/lib/constants";
 import {
@@ -12,43 +13,68 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { formatFullDate, formatTime } from "@/lib/calendar-utils";
 import { eventTypeStyle, type CalendarEventData } from "./types";
 
+// Dettaglio di un evento: riquadro accanto al calendario su schermi larghi,
+// popup a tutta larghezza su mobile (inDialog).
 export function EventDetails({
   event,
   onClose,
   canDelete,
+  inDialog = false,
 }: {
   event: CalendarEventData;
   onClose: () => void;
   canDelete: boolean;
+  inDialog?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Card className="w-72 shrink-0 self-start">
+    <Card
+      className={
+        inDialog ? "w-full gap-4 rounded-none border-0 bg-transparent py-0 shadow-none [--card-spacing:0]" : "w-72 shrink-0 self-start"
+      }
+    >
       <CardHeader>
-        <CardTitle>{event.title}</CardTitle>
-        <CardAction>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={onClose}>
-            <X className="size-4" />
-          </Button>
-        </CardAction>
+        <CardTitle className="pr-8 break-words">{event.title}</CardTitle>
+        {!inDialog && (
+          <CardAction>
+            <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Chiudi">
+              <X className="size-4" />
+            </Button>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         <Badge variant={eventTypeStyle(event.type).tone}>
           {EVENT_TYPE_LABELS[event.type as keyof typeof EVENT_TYPE_LABELS] ??
             event.type}
         </Badge>
-        <p className="text-sm text-muted-foreground capitalize">
-          {formatFullDate(event.startAt)}
+        <p className="text-sm text-muted-foreground">
+          <span className="capitalize">{formatFullDate(event.startAt)}</span>
           <br />
           {formatTime(event.startAt)} – {formatTime(event.endAt)}
-          {event.location ? ` · ${event.location}` : ""}
         </p>
-        {event.description && <p className="text-sm">{event.description}</p>}
+        {event.location && <p className="text-sm break-words text-muted-foreground">{event.location}</p>}
+        {event.description && <p className="text-sm break-words whitespace-pre-line">{event.description}</p>}
+        <div className="flex flex-wrap gap-2">
+          <a href={`/api/calendario/${event.id}/ics`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <CalendarPlus className="size-4" />
+            Aggiungi al calendario
+          </a>
+          <a
+            href={googleCalendarUrl(event)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
+          >
+            Google Calendar
+            <ExternalLink className="size-3.5" />
+          </a>
+        </div>
         {event.participants.length > 0 && (
           <p className="text-xs text-muted-foreground">
             Partecipanti:{" "}

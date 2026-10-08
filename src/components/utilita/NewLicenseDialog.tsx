@@ -15,7 +15,13 @@ import {
 } from "@/components/ui/sheet";
 import { LicenseForm } from "@/components/utilita/LicenseForm";
 
-export function NewLicenseDialog({ departments }: { departments: { id: string; name: string }[] }) {
+export function NewLicenseDialog({
+  departments,
+  allDepartments,
+}: {
+  departments: { id: string; name: string }[];
+  allDepartments: { id: string; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -32,6 +38,7 @@ export function NewLicenseDialog({ departments }: { departments: { id: string; n
         <SheetBody>
           <LicenseForm
             departments={departments}
+            allDepartments={allDepartments}
             submitLabel="Aggiungi"
             onSubmit={async (formData) => {
               const result = await createLicense(formData);

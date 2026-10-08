@@ -8,7 +8,7 @@ import { balanceFigures, getLeaveBalance, outsideAllowance } from "@/lib/leave-b
 import { formatToRecover } from "@/lib/leave-format";
 import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
 import { managedDepartmentNames } from "@/lib/departments";
-import { managerCan } from "@/lib/permissions";
+import { canOnPerson } from "@/lib/permissions";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { UserLevelBadges } from "@/components/team/UserLevel";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
@@ -19,8 +19,8 @@ import { MemberBalances } from "@/components/team/MemberBalances";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
-// Una persona del reparto vista dal suo responsabile: solo le schede che i
-// permessi del reparto consentono, in sola lettura (tranne Approva/Rifiuta).
+// Una persona vista da chi ha permessi su di lei (es. il responsabile del suo
+// reparto): solo le schede consentite, in sola lettura (tranne Approva/Rifiuta).
 const TAB_LABELS = { presenze: "Presenze", ore: "Ore", richieste: "Richieste", saldi: "Saldi" } as const;
 type Tab = keyof typeof TAB_LABELS;
 
@@ -35,11 +35,13 @@ export default async function RepartoMembroPage({
   const { id } = await params;
   const { tab: tabParam, month: monthParam, ...oreParams } = await searchParams;
 
-  const [seeAttendance, seeRequests, canApprove] = await Promise.all([
-    managerCan(user.id, id, "presenze_ore"),
-    managerCan(user.id, id, "richieste"),
-    managerCan(user.id, id, "approvare"),
+  const [seeAttendance, seeRequestsOnly, canApprove] = await Promise.all([
+    canOnPerson(user, "presenze_ore", id),
+    canOnPerson(user, "richieste", id),
+    canOnPerson(user, "approvare", id),
   ]);
+  // Chi approva vede anche le richieste e i saldi.
+  const seeRequests = seeRequestsOnly || canApprove;
   const tabs: Tab[] = [
     ...(seeAttendance ? (["presenze", "ore"] as const) : []),
     ...(seeRequests ? (["richieste", "saldi"] as const) : []),

@@ -132,6 +132,7 @@ async function TeamAttendance({
           prevHref={`/presenze?view=generale&month=${monthQuery(addMonths(current, -1))}`}
           nextHref={`/presenze?view=generale&month=${monthQuery(addMonths(current, 1))}`}
           monthLabel={formatMonthYear(current)}
+          current={monthQuery(current)}
         />
       </div>
       <AttendanceTeamMonthCalendar

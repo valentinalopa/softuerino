@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth/session";
+import { byName } from "@/lib/utils";
+import { redirect } from "next/navigation";
+import { requireUser } from "@/lib/auth/session";
+import { isAdminRole } from "@/lib/constants";
+import { can } from "@/lib/permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { ClientCategoryBadges } from "@/components/clienti/ClientCategoryBadges";
@@ -16,11 +20,14 @@ import {
 } from "@/components/ui/table";
 
 export default async function ClientiPage() {
-  await requireAdmin();
+  // Admin e super admin gestiscono; chi ha il permesso "Aggiungere clienti"
+  // vede l'elenco e ne aggiunge, senza modificare o eliminare.
+  const user = await requireUser();
+  const isAdmin = isAdminRole(user.role);
+  if (!isAdmin && !(await can(user, "clienti"))) redirect("/");
 
-  const clients = await prisma.client.findMany({
-    orderBy: { createdAt: "asc" },
-  });
+  const clients = (await prisma.client.findMany({
+  })).sort(byName);
 
   return (
     <div className="space-y-8">
@@ -41,7 +48,7 @@ export default async function ClientiPage() {
               <MobileListItem key={client.id}>
                 <div className="flex items-start justify-between gap-2">
                   <p className="min-w-0 pt-1.5 font-medium break-words text-foreground">{client.name}</p>
-                  <ClientRowActions client={client} />
+                  {isAdmin && <ClientRowActions client={client} />}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <ActiveBadge active={client.active} />
@@ -73,7 +80,7 @@ export default async function ClientiPage() {
                     <ClientCategoryBadges categories={client.categories} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <ClientRowActions client={client} />
+                    {isAdmin && <ClientRowActions client={client} />}
                   </TableCell>
                 </TableRow>
               ))}

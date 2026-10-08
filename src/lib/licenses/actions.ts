@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireWritableUser } from "@/lib/auth/session";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
-import { canAccessDepartment, licenseScopeFor } from "@/lib/licenses/access";
+import { canAccessDepartment, canAccessLicense, licenseScopeFor, type LicenseMode } from "@/lib/licenses/access";
 import { LICENSE_KINDS, type LicenseKind } from "@/lib/constants";
 
 type ActionResult = { error: string } | undefined;
@@ -15,19 +15,23 @@ const READ_ONLY_ERROR = {
 const NOT_ALLOWED = { error: "Non hai accesso alle licenze di questo reparto" };
 
 // Utente che può scrivere + reparti accessibili; null se non autorizzato.
-async function writableScope() {
+// "gestire" per creare, modificare, eliminare e togliere attivazioni;
+// "vedere" per mostrare o copiare la chiave (registrando dove la si usa).
+async function writableScope(mode: LicenseMode = "gestire") {
   const user = await requireWritableUser();
   if (!user) return { user: null, scope: null } as const;
-  return { user, scope: await licenseScopeFor(user) } as const;
+  return { user, scope: await licenseScopeFor(user, mode) } as const;
 }
 
-async function findAccessibleLicense(licenseId: string) {
-  const { user, scope } = await writableScope();
+async function findAccessibleLicense(licenseId: string, mode: LicenseMode = "gestire") {
+  const { user, scope } = await writableScope(mode);
   if (!user) return { error: READ_ONLY_ERROR } as const;
-  if (!scope) return { error: NOT_ALLOWED } as const;
-  const license = await prisma.license.findUnique({ where: { id: licenseId } });
-  if (!license || !canAccessDepartment(scope, license.departmentId)) {
-    return { error: { error: "Licenza non trovata" } } as const;
+  const license = await prisma.license.findUnique({
+    where: { id: licenseId },
+    include: { sharedDepartments: { select: { departmentId: true } } },
+  });
+  if (!license || !canAccessLicense(scope, license, mode)) {
+    return { error: scope ? { error: "Licenza non trovata" } : NOT_ALLOWED } as const;
   }
   return { user, scope, license } as const;
 }
@@ -47,8 +51,15 @@ function parseLicenseForm(formData: FormData) {
   const expiresRaw = String(formData.get("expiresAt") ?? "").trim();
   const reminderRaw = String(formData.get("reminderDays") ?? "7").trim();
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const visibleToAll = formData.get("visibleToAll") === "true";
+
+  // Reparti con cui è condivisa, oltre al principale.
+  const sharedDepartmentIds = [
+    ...new Set(formData.getAll("sharedDepartmentIds").map(String).filter((id) => id && id !== departmentId)),
+  ];
 
   if (!name) return { error: "Il nome è obbligatorio" } as const;
+  if (String(formData.get("account") ?? "").trim().length > 200) return { error: "Account troppo lungo" } as const;
   if (!LICENSE_KINDS.includes(kind as LicenseKind)) return { error: "Tipo non valido" } as const;
   if (!departmentId) return { error: "Scegli il reparto" } as const;
 
@@ -77,8 +88,34 @@ function parseLicenseForm(formData: FormData) {
       expiresAt: expiresRaw ? localDate(expiresRaw) : null,
       reminderDays,
       notes,
+      visibleToAll,
     },
+    sharedDepartmentIds,
   } as const;
+}
+
+// Account e password (cifrati): vuoti = invariati, "clear..." = rimuovili.
+function credentialsData(formData: FormData) {
+  const account = String(formData.get("account") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  return {
+    ...(formData.get("clearAccount") === "true"
+      ? { accountEncrypted: null, accountHint: null }
+      : account
+        ? { accountEncrypted: encryptSecret(account), accountHint: account.slice(0, 3) }
+        : {}),
+    ...(formData.get("clearPassword") === "true"
+      ? { passwordEncrypted: null }
+      : password
+        ? { passwordEncrypted: encryptSecret(password) }
+        : {}),
+  };
+}
+
+async function existingDepartmentIds(ids: string[]) {
+  if (ids.length === 0) return [];
+  const rows = await prisma.department.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  return rows.map((r) => r.id);
 }
 
 function sealKey(key: string) {
@@ -98,12 +135,18 @@ export async function createLicense(formData: FormData): Promise<ActionResult | 
   }
 
   const key = String(formData.get("key") ?? "").trim();
-  if (key && !isEncryptionConfigured()) {
-    return { error: "Manca SETTINGS_ENCRYPTION_KEY sul server: la chiave non può essere salvata cifrata" };
+  if ((key || formData.get("password") || formData.get("account")) && !isEncryptionConfigured()) {
+    return { error: "Manca SETTINGS_ENCRYPTION_KEY sul server: chiave, account e password non possono essere salvati cifrati" };
   }
 
+  const shared = await existingDepartmentIds(parsed.sharedDepartmentIds);
   const license = await prisma.license.create({
-    data: { ...parsed.data, ...(key ? sealKey(key) : {}) },
+    data: {
+      ...parsed.data,
+      ...(key ? sealKey(key) : {}),
+      ...credentialsData(formData),
+      sharedDepartments: { create: shared.map((departmentId) => ({ departmentId })) },
+    },
   });
   revalidatePath("/utilita/licenze");
   return { id: license.id };
@@ -115,8 +158,15 @@ export async function updateLicense(licenseId: string, formData: FormData): Prom
 
   const parsed = parseLicenseForm(formData);
   if ("error" in parsed) return { error: parsed.error! };
-  // Spostare la licenza in un altro reparto: anche quello deve essere accessibile.
-  if (!canAccessDepartment(found.scope, parsed.data.departmentId)) return NOT_ALLOWED;
+  // Spostare la licenza in un altro reparto principale: anche quello deve
+  // essere nel proprio ambito (chi la gestisce da un reparto condiviso può
+  // modificarla, non spostarla).
+  if (
+    parsed.data.departmentId !== found.license.departmentId &&
+    (!found.scope || !canAccessDepartment(found.scope, parsed.data.departmentId))
+  ) {
+    return NOT_ALLOWED;
+  }
 
   const activations = await prisma.licenseActivation.count({ where: { licenseId } });
   if (parsed.data.activationLimit !== null && activations > parsed.data.activationLimit) {
@@ -126,12 +176,24 @@ export async function updateLicense(licenseId: string, formData: FormData): Prom
   // Chiave: vuota = invariata, "clearKey" = rimuovila.
   const key = String(formData.get("key") ?? "").trim();
   const clearKey = formData.get("clearKey") === "true";
-  if (key && !isEncryptionConfigured()) {
-    return { error: "Manca SETTINGS_ENCRYPTION_KEY sul server: la chiave non può essere salvata cifrata" };
+  if ((key || formData.get("password") || formData.get("account")) && !isEncryptionConfigured()) {
+    return { error: "Manca SETTINGS_ENCRYPTION_KEY sul server: chiave, account e password non possono essere salvati cifrati" };
   }
   const keyData = clearKey ? { keyEncrypted: null, keyHint: null } : key ? sealKey(key) : {};
 
-  await prisma.license.update({ where: { id: licenseId }, data: { ...parsed.data, ...keyData } });
+  const shared = await existingDepartmentIds(parsed.sharedDepartmentIds);
+  await prisma.$transaction([
+    prisma.licenseDepartment.deleteMany({ where: { licenseId } }),
+    prisma.license.update({
+      where: { id: licenseId },
+      data: {
+        ...parsed.data,
+        ...keyData,
+        ...credentialsData(formData),
+        sharedDepartments: { create: shared.map((departmentId) => ({ departmentId })) },
+      },
+    }),
+  ]);
   revalidatePath("/utilita/licenze");
   revalidatePath(`/utilita/licenze/${licenseId}`);
 }
@@ -189,9 +251,17 @@ export async function revealLicenseKey(
   formData: FormData
 ): Promise<{ error: string } | { key: string }> {
   if (action !== "show" && action !== "copy") return { error: "Azione non valida" };
-  const found = await findAccessibleLicense(licenseId);
+  const found = await findAccessibleLicense(licenseId, "vedere");
   if ("error" in found) return found.error!;
-  if (!found.license.keyEncrypted) return { error: "Nessuna chiave salvata" };
+  // Cosa mostrare: la chiave di licenza, l'account o la sua password.
+  const requested = String(formData.get("field") ?? "key");
+  const field = requested === "password" || requested === "account" ? requested : "key";
+  const sealed = {
+    key: found.license.keyEncrypted,
+    password: found.license.passwordEncrypted,
+    account: found.license.accountEncrypted,
+  }[field];
+  if (!sealed) return { error: `Nessun${field === "key" ? "a chiave salvata" : field === "password" ? "a password salvata" : " account salvato"}` };
 
   const activationId = String(formData.get("activationId") ?? "new");
   const label = String(formData.get("label") ?? "").trim();
@@ -218,15 +288,15 @@ export async function revealLicenseKey(
 
   let key: string;
   try {
-    key = decryptSecret(found.license.keyEncrypted);
+    key = decryptSecret(sealed);
   } catch {
-    return { error: "Chiave non leggibile (chiave di cifratura del server cambiata?)" };
+    return { error: "Dato non leggibile (chiave di cifratura del server cambiata?)" };
   }
   await prisma.$transaction(async (tx) => {
     const activation =
       existing ?? (await tx.licenseActivation.create({ data: { licenseId, label, note, createdById: found.user.id } }));
     await tx.licenseKeyAccess.create({
-      data: { licenseId, userId: found.user.id, action, activationId: activation.id, usedFor: activation.label },
+      data: { licenseId, userId: found.user.id, action, field, activationId: activation.id, usedFor: activation.label },
     });
   });
   revalidatePath("/utilita/licenze");

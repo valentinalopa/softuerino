@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NewEventDialog } from "./NewEventDialog";
@@ -21,8 +21,21 @@ import {
   startOfWeek,
 } from "@/lib/calendar-utils";
 import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { MonthYearPicker } from "./MonthYearPicker";
 
 type ViewMode = "month" | "week" | "day";
+
+// Schermo largo (lg): dettaglio evento accanto al calendario invece che in un popup.
+const WIDE_QUERY = "(min-width: 1024px)";
+function subscribeWide(onChange: () => void) {
+  const mq = window.matchMedia(WIDE_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+function readWide() {
+  return window.matchMedia(WIDE_QUERY).matches;
+}
 
 const VIEW_LABELS: Record<ViewMode, string> = {
   day: "Giorno",
@@ -47,6 +60,15 @@ export function CalendarView({
   const [view, setView] = useState<ViewMode>("month");
   const [current, setCurrent] = useState(() => startOfDay(new Date()));
   const [selected, setSelected] = useState<CalendarEventData | null>(null);
+  const isWide = useSyncExternalStore(subscribeWide, readWide, () => true);
+
+  function canDelete(event: CalendarEventData) {
+    return (
+      isAdmin ||
+      event.createdById === currentUserId ||
+      event.participants.some((p) => p.user.id === currentUserId)
+    );
+  }
 
   function goToday() {
     setCurrent(startOfDay(new Date()));
@@ -98,7 +120,16 @@ export function CalendarView({
               <ChevronRight className="size-4" />
             </Button>
           </div>
-          <h2 className="capitalize">{periodLabel}</h2>
+          {/* Titolo cliccabile: scelta di mese e anno, poi vista del mese. */}
+          <MonthYearPicker
+            label={periodLabel}
+            year={current.getFullYear()}
+            month={current.getMonth()}
+            onSelect={(y, m) => {
+              setCurrent(new Date(y, m, 1));
+              setView("month");
+            }}
+          />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -144,18 +175,20 @@ export function CalendarView({
             />
           )}
         </div>
-        {selected && (
-          <EventDetails
-            event={selected}
-            onClose={() => setSelected(null)}
-            canDelete={
-              isAdmin ||
-              selected.createdById === currentUserId ||
-              selected.participants.some((p) => p.user.id === currentUserId)
-            }
-          />
+        {selected && isWide && (
+          <EventDetails event={selected} onClose={() => setSelected(null)} canDelete={canDelete(selected)} />
         )}
       </div>
+
+      {/* Mobile e tablet: il dettaglio in un popup, il calendario resta intero. */}
+      <Dialog open={selected !== null && !isWide} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+          <DialogTitle className="sr-only">{selected?.title ?? "Evento"}</DialogTitle>
+          {selected && (
+            <EventDetails event={selected} onClose={() => setSelected(null)} canDelete={canDelete(selected)} inDialog />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

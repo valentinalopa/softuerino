@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { byName } from "@/lib/utils";
 import { requireUser } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VpnSectionDialog } from "@/components/utilita/vpn/VpnSectionDialog";
@@ -12,7 +13,7 @@ export default async function VpnPage() {
   const user = await requireUser();
   const canManage = user.role === "super_admin";
   // Il contenuto cifrato del file non serve alla pagina: resta nel DB.
-  const sections = await prisma.vpnSection.findMany({
+  const sections = (await prisma.vpnSection.findMany({
     orderBy: [{ name: "asc" }],
     select: {
       id: true,
@@ -27,7 +28,7 @@ export default async function VpnPage() {
         select: { id: true, createdAt: true, user: { select: { name: true } } },
       },
     },
-  });
+  })).sort(byName);
 
   return (
     <div className="space-y-8">

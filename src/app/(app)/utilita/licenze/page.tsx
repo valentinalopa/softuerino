@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { byName } from "@/lib/utils";
 import { ensureConfiguredDepartments } from "@/lib/departments";
-import { licenseWhere, maskedKey, requireLicenseAccess } from "@/lib/licenses/access";
+import { accountForViewer, licenseScopeFor, licenseWhere, maskedAccount, maskedKey, requireLicenseAccess } from "@/lib/licenses/access";
 import { expiryStatus, formatExpiry } from "@/lib/licenses/expiry";
 import { LICENSE_KINDS, type LicenseKind } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,7 @@ import { MobileList, MobileListItem } from "@/components/MobileList";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { NewLicenseDialog } from "@/components/utilita/NewLicenseDialog";
 import { LicenseQuickKey } from "@/components/utilita/LicenseQuickKey";
+import { Users } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -30,30 +32,42 @@ export default async function LicenzePage({
 }: {
   searchParams: Promise<{ tipo?: string }>;
 }) {
-  const { scope } = await requireLicenseAccess();
+  const { user, scope } = await requireLicenseAccess();
+  // Reparti in cui può aggiungere licenze (permesso "Gestire le licenze").
+  const manageScope = await licenseScopeFor(user, "gestire");
   const { tipo } = await searchParams;
   const kind: LicenseKind = LICENSE_KINDS.includes(tipo as LicenseKind)
     ? (tipo as LicenseKind)
     : "licenza";
 
-  if (scope.all) await ensureConfiguredDepartments();
-  const [licenses, departments] = await Promise.all([
+  if (scope?.all || manageScope?.all) await ensureConfiguredDepartments();
+  const [licenses, departments, viewDepartments, allDepartments] = await Promise.all([
     prisma.license.findMany({
       where: licenseWhere(scope),
-      orderBy: [{ expiresAt: { sort: "asc", nulls: "last" } }, { name: "asc" }],
+      orderBy: { name: "asc" },
       include: {
         department: { select: { name: true } },
+        sharedDepartments: { select: { department: { select: { name: true } } } },
         _count: { select: { activations: true } },
         activations: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, note: true } },
       },
     }),
     prisma.department.findMany({
-      where: scope.all ? {} : { id: { in: scope.departmentIds } },
+      where: !manageScope ? { id: { in: [] } } : manageScope.all ? {} : { id: { in: manageScope.departmentIds } },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    !scope || scope.all
+      ? Promise.resolve([])
+      : prisma.department.findMany({
+          where: { id: { in: scope.departmentIds } },
+          orderBy: { name: "asc" },
+          select: { name: true },
+        }),
+    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
-  const rows = licenses.filter((l) => l.kind === kind);
+  // Sempre per nome (le scadenze vicine si vedono dall'etichetta colorata).
+  const rows = licenses.filter((l) => l.kind === kind).sort(byName);
 
   return (
     <div className="space-y-8">
@@ -61,14 +75,16 @@ export default async function LicenzePage({
         <div>
           <h1>Licenze e abbonamenti</h1>
           <p className="text-sm text-muted-foreground">
-            {scope.all
+            {scope?.all
               ? "Tutti i reparti."
-              : `Reparti: ${departments.map((d) => d.name).join(", ") || "nessuno"}.`}{" "}
+              : viewDepartments.length > 0
+                ? `Reparti: ${viewDepartments.map((d) => d.name).join(", ")}, più quelle visibili a tutti.`
+                : "Quelle visibili a tutti."}{" "}
             Prima di una scadenza i super admin ricevono un&apos;email (con il preavviso impostato
             su ogni voce) e un&apos;altra il giorno prima.
           </p>
         </div>
-        <NewLicenseDialog departments={departments} />
+        {departments.length > 0 && <NewLicenseDialog departments={departments} allDepartments={allDepartments} />}
       </div>
 
       <div className="space-y-4">
@@ -90,15 +106,13 @@ export default async function LicenzePage({
                     <div>
                       <p className="font-medium break-words text-foreground">{l.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {[l.vendor, l.department.name].filter(Boolean).join(" · ")}
+                        {[l.vendor, departmentsLabel(l)].filter(Boolean).join(" · ")}
                       </p>
                     </div>
-                    <LicenseQuickKey
-                      licenseId={l.id}
-                      name={l.name}
-                      masked={maskedKey(l.keyHint)}
+                    <LicenseSecrets
+                      viewer={user}
+                      license={l}
                       activations={l.activations}
-                      limit={l.activationLimit}
                     />
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <span>
@@ -143,14 +157,12 @@ export default async function LicenzePage({
                           <span className="block text-xs text-muted-foreground">{l.vendor}</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{l.department.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{departmentsLabel(l)}</TableCell>
                       <TableCell>
-                        <LicenseQuickKey
-                          licenseId={l.id}
-                          name={l.name}
-                          masked={maskedKey(l.keyHint)}
+                        <LicenseSecrets
+                          viewer={user}
+                          license={l}
                           activations={l.activations}
-                          limit={l.activationLimit}
                         />
                       </TableCell>
                       <TableCell className="text-muted-foreground">
@@ -180,6 +192,56 @@ export default async function LicenzePage({
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+// Reparti di una licenza: principale, condivisi, o "Tutti".
+function departmentsLabel(l: {
+  visibleToAll: boolean;
+  department: { name: string };
+  sharedDepartments: { department: { name: string } }[];
+}) {
+  if (l.visibleToAll) return "Visibile a tutti";
+  return [l.department.name, ...l.sharedDepartments.map((d) => d.department.name)].join(", ");
+}
+
+// Chiave, account e password, con Mostra/Copia (uso obbligatorio). L'account
+// in chiaro solo ai super admin.
+function LicenseSecrets({
+  viewer,
+  license: l,
+  activations,
+}: {
+  viewer: { role: string };
+  license: {
+    id: string;
+    name: string;
+    keyHint: string | null;
+    activationLimit: number | null;
+    accountEncrypted: string | null;
+    accountHint: string | null;
+    passwordEncrypted: string | null;
+  };
+  activations: { id: string; label: string; note: string | null }[];
+}) {
+  const hasPassword = Boolean(l.passwordEncrypted);
+  const hasAccount = Boolean(l.accountEncrypted);
+  const account = accountForViewer(viewer, l.accountEncrypted);
+  const common = { licenseId: l.id, name: l.name, activations, limit: l.activationLimit };
+  return (
+    <div className="space-y-1">
+      {(l.keyHint || (!hasPassword && !hasAccount)) && <LicenseQuickKey {...common} masked={maskedKey(l.keyHint)} />}
+      {hasAccount &&
+        (account ? (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Users className="size-3" aria-hidden="true" />
+            {account}
+          </span>
+        ) : (
+          <LicenseQuickKey {...common} masked={maskedAccount(l.accountHint)} field="account" />
+        ))}
+      {hasPassword && <LicenseQuickKey {...common} masked="••••••••" field="password" />}
     </div>
   );
 }

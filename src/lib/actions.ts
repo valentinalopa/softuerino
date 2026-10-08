@@ -17,7 +17,7 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import { absenceConflict } from "@/lib/absence-conflicts";
-import { managerCan, managerCaps } from "@/lib/permissions";
+import { can, canOnPerson } from "@/lib/permissions";
 import {
   notifyEventInvite,
   notifyLeaveDecision,
@@ -82,14 +82,9 @@ const SUPER_ADMIN_ONLY_ERROR = {
 };
 
 export async function createUser(formData: FormData) {
-  // Admin e super admin; oppure un responsabile di reparto con il permesso
-  // "Creare nuovi membri" (solo ruolo Membro).
-  const currentUser = await requireWritableUser();
-  if (!currentUser) return READ_ONLY_ERROR;
-  const asManager = !isAdminRole(currentUser.role);
-  if (asManager && !(await managerCaps(currentUser.id)).has("nuovi_membri")) {
-    return { error: "Non autorizzato" };
-  }
+  // Solo admin e super admin. Gli altri, se hanno il permesso, chiedono un
+  // nuovo utente (requestAccount): l'account si crea in Keycloak.
+  const currentUser = await requireAdmin();
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")
@@ -112,10 +107,7 @@ export async function createUser(formData: FormData) {
   if (!ROLES.includes(role as (typeof ROLES)[number])) {
     return { error: "Ruolo non valido" };
   }
-  if (asManager && role !== "membro") {
-    return { error: "Un responsabile di reparto può creare solo membri" };
-  }
-  if (!asManager && !assignableRoles(currentUser.role).includes(role as (typeof ROLES)[number])) {
+  if (!assignableRoles(currentUser.role).includes(role as (typeof ROLES)[number])) {
     return SUPER_ADMIN_ONLY_ERROR;
   }
   if (!EMPLOYMENT_TYPES.includes(employmentType as (typeof EMPLOYMENT_TYPES)[number])) {
@@ -179,10 +171,11 @@ export async function updateUser(userId: string, formData: FormData) {
     return SUPER_ADMIN_ONLY_ERROR;
   }
 
-  // Utente gestito da Keycloak: nome ed email restano quelli di Keycloak e la
-  // password locale si imposta solo per un super admin (accesso d'emergenza).
+  // Utente gestito da Keycloak: nome ed email restano quelli di Keycloak. Con
+  // l'SSO attivo la password locale si imposta solo per un super admin
+  // (accesso d'emergenza): gli altri entrano solo con l'account aziendale.
   const ssoManaged = isSsoManaged(target);
-  if (ssoManaged && password && role !== "super_admin") {
+  if (isOidcConfigured() && password && role !== "super_admin") {
     return { error: "La password degli utenti con account aziendale si gestisce su Keycloak" };
   }
 
@@ -465,8 +458,8 @@ export async function updateLeaveStatus(
   requestId: string,
   status: "approved" | "rejected"
 ): Promise<ActionResult> {
-  // Admin e super admin; oppure il responsabile del reparto di chi ha fatto la
-  // richiesta, se lì ha il permesso "Approvare le richieste".
+  // Admin e super admin; oppure chi ha il permesso "Approvare le richieste"
+  // sulla persona (es. il responsabile del suo reparto), mai sulle proprie.
   const currentUser = await requireWritableUser();
   if (!currentUser) return READ_ONLY_ERROR;
 
@@ -479,7 +472,7 @@ export async function updateLeaveStatus(
   }
   if (!isAdminRole(currentUser.role)) {
     // Il responsabile non vede le malattie (dato sanitario): non le gestisce.
-    if (request.type === "malattia" || !(await managerCan(currentUser.id, request.userId, "approvare"))) {
+    if (request.type === "malattia" || !(await canOnPerson(currentUser, "approvare", request.userId))) {
       return { error: "Non autorizzato" };
     }
   }
@@ -970,7 +963,10 @@ export async function deletePresenceEntries({
 // --- Clienti (admin e super admin) ---
 
 export async function createClient(formData: FormData) {
-  await requireAdmin();
+  // Admin e super admin, o chi ha il permesso "Aggiungere clienti".
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+  if (!isAdminRole(user.role) && !(await can(user, "clienti"))) return { error: "Non autorizzato" };
 
   const name = String(formData.get("name") ?? "").trim();
   const categories = formData.getAll("categories").map(String);

@@ -2,20 +2,26 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { MonthYearPicker } from "@/components/calendar/MonthYearPicker";
 
 export function MonthNav({
   todayHref,
   prevHref,
   nextHref,
   monthLabel,
+  current,
 }: {
   todayHref: string;
   prevHref: string;
   nextHref: string;
   monthLabel: string;
+  // Mese mostrato (AAAA-MM): il titolo apre la scelta di mese e anno, che
+  // porta a todayHref + ?month=...
+  current?: string;
 }) {
+  const [year, month] = (current ?? "").split("-").map(Number);
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       <Link
         href={todayHref}
         className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
@@ -38,7 +44,11 @@ export function MonthNav({
           <ChevronRight className="size-4" />
         </Link>
       </div>
-      <h2 className="capitalize">{monthLabel}</h2>
+      {current ? (
+        <MonthYearPicker label={monthLabel} year={year} month={month - 1} baseHref={todayHref} />
+      ) : (
+        <h2 className="capitalize">{monthLabel}</h2>
+      )}
     </div>
   );
 }

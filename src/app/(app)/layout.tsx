@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { getAuthContext } from "@/lib/auth/session";
 import { managedDepartmentNames } from "@/lib/departments";
-import { managerCaps, membersWithCap } from "@/lib/permissions";
+import { can, peopleWhere } from "@/lib/permissions";
+import { hasLicenseAccess } from "@/lib/licenses/access";
 import { ssoAccountUrl } from "@/lib/auth/oidc";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -33,14 +34,22 @@ export default async function AppLayout({
   // Reparti di cui è responsabile: simbolo nel menu e, secondo i permessi
   // del reparto, licenze e "Il mio reparto".
   const managed = (await managedDepartmentNames([user.id])).get(user.id) ?? [];
-  const caps = await managerCaps(user.id);
-  const showReparto =
-    !isAdminRole(user.role) && (caps.has("presenze_ore") || caps.has("richieste") || caps.has("nuovi_membri"));
-  // Richieste in attesa che il responsabile può approvare.
-  const approvable = caps.has("approvare") ? await membersWithCap(user.id, "approvare") : [];
+  // Voci del menu secondo i permessi (Ruoli e permessi). Gli admin hanno già
+  // Team e Clienti in Amministrazione.
+  const isAdmin = isAdminRole(user.role);
+  const [seePresence, seeRequests, approve, requestUsers, addClients, showLicenses] = await Promise.all([
+    can(user, "presenze_ore"),
+    can(user, "richieste"),
+    can(user, "approvare"),
+    can(user, "utenti"),
+    can(user, "clienti"),
+    hasLicenseAccess(user),
+  ]);
+  const showReparto = !isAdmin && (seePresence || seeRequests || approve || requestUsers);
+  // Richieste in attesa che può approvare.
   const repartoPendingCount =
-    !isAdminRole(user.role) && approvable.length > 0
-      ? await prisma.leaveRequest.count({ where: { status: "pending", userId: { in: approvable } } })
+    !isAdmin && approve
+      ? await prisma.leaveRequest.count({ where: { status: "pending", user: await peopleWhere(user, "approvare") } })
       : 0;
 
   return (
@@ -53,7 +62,8 @@ export default async function AppLayout({
           managedDepartments: managed,
         }}
         teamPendingCount={teamPendingCount}
-        showLicenses={isAdminRole(user.role) || caps.has("licenze")}
+        showLicenses={showLicenses}
+        showClients={!isAdmin && addClients}
         showReparto={showReparto}
         repartoPendingCount={repartoPendingCount}
         ssoAccountUrl={ssoAccountUrl()}

@@ -18,7 +18,11 @@ export async function sendLicenseReminders(now = new Date()) {
   });
   const licenses = await prisma.license.findMany({
     where: { expiresAt: { not: null } },
-    include: { department: { select: { name: true } } },
+    include: {
+      department: { select: { name: true } },
+      sharedDepartments: { select: { department: { select: { name: true } } } },
+      _count: { select: { activations: true } },
+    },
   });
 
   const sent: string[] = [];
@@ -42,7 +46,19 @@ export async function sendLicenseReminders(now = new Date()) {
             licenseId: license.id,
             name: license.name,
             kind: license.kind,
-            department: license.department.name,
+            departments: license.visibleToAll
+              ? "Visibile a tutti"
+              : [license.department.name, ...license.sharedDepartments.map((d) => d.department.name)].join(", "),
+            vendor: license.vendor,
+            activations:
+              license.activationLimit === null
+                ? `${license._count.activations} (illimitate)`
+                : `${license._count.activations} su ${license.activationLimit}`,
+            secrets: [
+              ...(license.keyEncrypted ? ["chiave"] : []),
+              ...(license.accountEncrypted ? ["account"] : []),
+              ...(license.passwordEncrypted ? ["password"] : []),
+            ],
             expiresAt,
             daysLeft: left,
           })
