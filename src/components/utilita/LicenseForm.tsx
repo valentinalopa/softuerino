@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { DateField } from "@/components/form/date-field";
 import { TONE_TEXT } from "@/lib/tones";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 export type LicenseFormValues = {
   name: string;
@@ -68,7 +69,7 @@ export function LicenseForm({
   }
 
   return (
-    <form action={handleSubmit} className="space-y-3">
+    <form onSubmit={submitKeepingValues(handleSubmit)} className="space-y-3">
       <input type="hidden" name="unlimited" value={unlimited ? "true" : "false"} />
       <input type="hidden" name="clearKey" value={clearKey ? "true" : "false"} />
 
@@ -119,8 +120,8 @@ export function LicenseForm({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label htmlFor="license-limit">Attivazioni massime</Label>
           <Input
             id="license-limit"
@@ -137,7 +138,13 @@ export function LicenseForm({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="license-expires">Scadenza</Label>
-          <DateField id="license-expires" name="expiresAt" defaultValue={initial?.expiresAt ?? undefined} placeholder="Nessuna" />
+          <DateField
+            id="license-expires"
+            name="expiresAt"
+            defaultValue={initial?.expiresAt ?? undefined}
+            placeholder="Nessuna"
+            className="w-full"
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="license-reminder">Avviso (giorni prima)</Label>

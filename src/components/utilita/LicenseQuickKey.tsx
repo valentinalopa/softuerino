@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TONE_TEXT } from "@/lib/tones";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 // Mostra/Copia dall'elenco, senza aprire la licenza. La chiave arriva dal
 // server (ogni accesso è registrato) e si apre un popup per segnare dove la si
@@ -139,7 +140,7 @@ export function LicenseQuickKey({
               Limite raggiunto: {used} attivazioni su {limit}. Libera un&apos;attivazione dalla scheda della licenza.
             </p>
           ) : (
-            <form id={`activation-${licenseId}`} action={register} className="space-y-2">
+            <form id={`activation-${licenseId}`} onSubmit={submitKeepingValues(register)} className="space-y-2">
               <p className="font-medium">Dove la stai usando?</p>
               <Input name="label" required placeholder="Sito, PC, account..." autoFocus />
               <Input name="note" placeholder="Note (facoltative)" />

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { TONE_TEXT } from "@/lib/tones";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 type Settings = {
   enabled: boolean;
@@ -67,7 +68,7 @@ export function EmailSettingsForm({
 
   return (
     <div className="space-y-6">
-      <form action={handleSave} className="space-y-4">
+      <form onSubmit={submitKeepingValues(handleSave)} className="space-y-4">
         <input type="hidden" name="enabled" value={enabled ? "true" : "false"} />
         <input type="hidden" name="clearPassword" value={clearPassword ? "true" : "false"} />
 

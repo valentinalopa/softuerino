@@ -13,6 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 export type EditableTask = TaskFieldValues & { id: string };
 
@@ -81,7 +82,7 @@ function EditTaskForm({
       <SheetHeader>
         <SheetTitle>Modifica task</SheetTitle>
       </SheetHeader>
-      <form action={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
         <SheetBody className="space-y-3">
           <TaskFields idPrefix="edit-task" users={users} clients={clients} values={task} />
           {error && <p className="text-sm text-destructive">{error}</p>}

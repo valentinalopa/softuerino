@@ -5,6 +5,7 @@ import { updateOwnProfile } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { NameEmailFields } from "@/components/form/name-email-fields";
 import { TONE_TEXT } from "@/lib/tones";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 export function ProfileForm({
   user,
@@ -48,7 +49,7 @@ export function ProfileForm({
   }
 
   return (
-    <form action={handleSubmit} className="space-y-3">
+    <form onSubmit={submitKeepingValues(handleSubmit)} className="space-y-3">
       <NameEmailFields idPrefix="profile" defaultName={user.name} defaultEmail={user.email} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       {success && <p className={`text-sm ${TONE_TEXT.success}`}>Modifiche salvate.</p>}

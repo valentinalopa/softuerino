@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { addLicenseActivation, removeLicenseActivation } from "@/lib/licenses/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 type Activation = { id: string; label: string; note: string | null; createdAt: string; createdBy: string | null };
 
@@ -17,18 +18,17 @@ export function LicenseActivations({
   activations: Activation[];
   limit: number | null; // null = illimitate
 }) {
-  const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const full = limit !== null && activations.length >= limit;
 
-  function run(action: () => Promise<{ error: string } | undefined>, reset = false) {
+  function run(action: () => Promise<{ error: string } | undefined>, resetForm?: HTMLFormElement) {
     setError(null);
     startTransition(async () => {
       try {
         const result = await action();
         if (result?.error) setError(result.error);
-        else if (reset) formRef.current?.reset();
+        else resetForm?.reset();
       } catch {
         setError("Errore imprevisto");
       }
@@ -76,8 +76,7 @@ export function LicenseActivations({
 
       {!full && (
         <form
-          ref={formRef}
-          action={(formData) => run(() => addLicenseActivation(licenseId, formData), true)}
+          onSubmit={submitKeepingValues((formData, form) => run(() => addLicenseActivation(licenseId, formData), form))}
           className="flex flex-wrap items-end gap-2"
         >
           <Input name="label" required placeholder="Dove (sito, PC, account...)" className="min-w-48 flex-1" />

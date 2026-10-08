@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { NameEmailFields } from "@/components/form/name-email-fields";
 import { TONE_TEXT } from "@/lib/tones";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 type TeamUser = {
   id: string;
@@ -65,7 +66,7 @@ export function EditTeamMemberForm({
   }
 
   return (
-    <form action={handleSubmit} className="space-y-3">
+    <form onSubmit={submitKeepingValues(handleSubmit)} className="space-y-3">
       <NameEmailFields
         idPrefix={`member-${user.id}`}
         defaultName={user.name}
