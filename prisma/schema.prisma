@@ -346,8 +346,9 @@ model LicenseActivation {
   createdById String?
   createdAt   DateTime @default(now())
 
-  license   License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
-  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  license    License            @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  createdBy  User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  keyAccesses LicenseKeyAccess[]
 
   @@index([licenseId])
 }
@@ -358,10 +359,16 @@ model LicenseKeyAccess {
   licenseId String
   userId    String
   action    String // show | copy
+  // Dove viene usata: la chiave si vede solo indicando un'attivazione (nuova
+  // o già registrata). usedFor ne conserva il nome anche se l'attivazione
+  // viene poi rimossa.
+  activationId String?
+  usedFor      String?
   createdAt DateTime @default(now())
 
-  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  license    License            @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activation LicenseActivation? @relation(fields: [activationId], references: [id], onDelete: SetNull)
 
   @@index([licenseId, createdAt])
 }

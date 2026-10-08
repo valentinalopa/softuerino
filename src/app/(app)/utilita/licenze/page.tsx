@@ -44,6 +44,7 @@ export default async function LicenzePage({
       include: {
         department: { select: { name: true } },
         _count: { select: { activations: true } },
+        activations: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, note: true } },
       },
     }),
     prisma.department.findMany({
@@ -96,7 +97,7 @@ export default async function LicenzePage({
                       licenseId={l.id}
                       name={l.name}
                       masked={maskedKey(l.keyHint)}
-                      used={l._count.activations}
+                      activations={l.activations}
                       limit={l.activationLimit}
                     />
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -148,7 +149,7 @@ export default async function LicenzePage({
                           licenseId={l.id}
                           name={l.name}
                           masked={maskedKey(l.keyHint)}
-                          used={l._count.activations}
+                          activations={l.activations}
                           limit={l.activationLimit}
                         />
                       </TableCell>
