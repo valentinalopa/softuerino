@@ -49,6 +49,13 @@ function redirectUriFor(host: string | null) {
 // Utente "gestito da Keycloak": SSO attivo e account già collegato. Nome ed
 // email arrivano da Keycloak (si cambiano solo lì, dall'IT) e Softuerino non
 // gestisce la sua password, salvo per i super admin (accesso d'emergenza).
+// Console account di Keycloak (password, sessioni, dispositivi): per tutti,
+// dalla sidebar. Null se l'SSO non è configurato.
+export function ssoAccountUrl() {
+  if (!isOidcConfigured()) return null;
+  return `${env().issuer.replace(/\/+$/, "")}/account`;
+}
+
 export function isSsoManaged(user: { oidcSubject: string | null }) {
   return isOidcConfigured() && Boolean(user.oidcSubject);
 }

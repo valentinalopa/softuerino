@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getAuthContext } from "@/lib/auth/session";
 import { managedDepartmentIds } from "@/lib/departments";
+import { ssoAccountUrl } from "@/lib/auth/oidc";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
@@ -37,7 +38,8 @@ export default async function AppLayout({
           role: user.role as Role,
         }}
         teamPendingCount={teamPendingCount}
-        showUtility={isAdminRole(user.role) || (await managedDepartmentIds(user.id)).length > 0}
+        showLicenses={isAdminRole(user.role) || (await managedDepartmentIds(user.id)).length > 0}
+        ssoAccountUrl={ssoAccountUrl()}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {impersonating && <ImpersonationBanner userName={user.name} />}
