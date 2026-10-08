@@ -11,7 +11,23 @@ import { VpnGuide } from "@/components/utilita/vpn/VpnGuide";
 export default async function VpnPage() {
   const user = await requireUser();
   const canManage = user.role === "super_admin";
-  const sections = await prisma.vpnSection.findMany({ orderBy: [{ name: "asc" }] });
+  // Il contenuto cifrato del file non serve alla pagina: resta nel DB.
+  const sections = await prisma.vpnSection.findMany({
+    orderBy: [{ name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      notes: true,
+      configFileName: true,
+      // Registro dei download: mostrato solo ai super admin.
+      _count: { select: { downloads: true } },
+      downloads: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { id: true, createdAt: true, user: { select: { name: true } } },
+      },
+    },
+  });
 
   return (
     <div className="space-y-8">
@@ -43,14 +59,43 @@ export default async function VpnPage() {
                 <CardTitle>{section.name}</CardTitle>
                 {canManage && (
                   <div className="flex items-center gap-1">
-                    <VpnSectionDialog initial={section} />
+                    <VpnSectionDialog
+                      initial={{
+                        id: section.id,
+                        name: section.name,
+                        notes: section.notes,
+                        configFileName: section.configFileName,
+                      }}
+                    />
                     <DeleteVpnSectionButton id={section.id} name={section.name} />
                   </div>
                 )}
               </CardHeader>
               <CardContent className="space-y-3">
                 {section.notes && <p className="text-sm whitespace-pre-line text-muted-foreground">{section.notes}</p>}
-                <VpnDownloadActions name={section.name} configUrl={section.configUrl} />
+                <VpnDownloadActions id={section.id} name={section.name} fileName={section.configFileName} />
+                {canManage && (
+                  <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+                    <p>
+                      Scaricata {section._count.downloads === 1 ? "1 volta" : `${section._count.downloads} volte`}
+                      {section._count.downloads > 0 && " · ultimi download:"}
+                    </p>
+                    {section.downloads.length > 0 && (
+                      <ul className="space-y-0.5">
+                        {section.downloads.map((d) => (
+                          <li key={d.id}>
+                            {d.user.name} ·{" "}
+                            {new Intl.DateTimeFormat("it-IT", {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                              timeZone: "Europe/Rome",
+                            }).format(d.createdAt)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
