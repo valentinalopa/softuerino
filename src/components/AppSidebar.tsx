@@ -25,6 +25,7 @@ import {
   KeyRound,
   Network,
   ShieldCheck,
+  EarthLock,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
@@ -59,6 +60,8 @@ const OPERATIVITA_LINKS: NavLink[] = [
 
 // Licenze: manager di reparto (organigramma Keycloak), admin e super admin.
 const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
+// VPN: per tutti.
+const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
 
 const ADMIN_LINKS: NavLink[] = [
   { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
@@ -143,6 +146,7 @@ export function AppSidebar({
 
   const utilityLinks: NavLink[] = [
     ...(showLicenses ? [LICENSES_LINK] : []),
+    VPN_LINK,
     ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),
   ];
   const sections = [
