@@ -16,6 +16,7 @@ import { ActiveBadge } from "@/components/ActiveBadge";
 import { RoleBadge } from "@/components/team/RoleBadge";
 import { UserRowActions } from "@/components/team/UserRowActions";
 import { LinkRow } from "@/components/LinkRow";
+import { MobileList, MobileListItem } from "@/components/MobileList";
 import { NewTeamMemberDialog } from "@/components/team/NewTeamMemberDialog";
 import { BalanceMeters } from "@/components/team/BalanceMeters";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -63,7 +64,45 @@ export default async function TeamPage() {
 
       <Card>
         <CardContent>
-          <Table>
+          <MobileList>
+            {users.map((user) => (
+              <MobileListItem key={user.id} href={`/team/${user.id}`} label={user.name}>
+                <div className="flex items-start gap-3">
+                  <Avatar size="sm">
+                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-foreground">{user.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
+                  </div>
+                  <UserRowActions
+                    user={user}
+                    canDelete={user.id !== currentUser.id && roles.includes(user.role as Role)}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <RoleBadge role={user.role} />
+                  <ActiveBadge active={user.active} />
+                  <span className="text-xs text-muted-foreground">
+                    {EMPLOYMENT_TYPE_LABELS[user.employmentType as keyof typeof EMPLOYMENT_TYPE_LABELS] ??
+                      user.employmentType}
+                  </span>
+                </div>
+                {balances.get(user.id) && (
+                  <BalanceMeters
+                    balances={balanceFigures(balances.get(user.id)!)}
+                    toRecover={formatToRecover(recoveryCredits.get(user.id) ?? [])}
+                  />
+                )}
+              </MobileListItem>
+            ))}
+            {users.length === 0 && (
+              <MobileListItem className="text-center text-muted-foreground">
+                Nessun membro del team ancora.
+              </MobileListItem>
+            )}
+          </MobileList>
+          <Table containerClassName="hidden md:block">
             <TableHeader>
               <TableRow>
                 <TableHead>Membro</TableHead>

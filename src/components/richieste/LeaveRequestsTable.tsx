@@ -15,6 +15,7 @@ import { ApproveRejectActions } from "@/components/richieste/ApproveRejectAction
 import { RevertToPendingAction } from "@/components/richieste/RevertToPendingAction";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { deleteLeaveRequest } from "@/lib/actions";
+import { MobileList, MobileListItem } from "@/components/MobileList";
 import {
   Table,
   TableBody,
@@ -109,7 +110,43 @@ export function LeaveRequestsTable({
 
   return (
     <>
-      <Table>
+      <MobileList>
+        {requests.map((request) => (
+          <MobileListItem
+            key={request.id}
+            onOpen={() => setSelectedId(request.id)}
+            label={`Dettagli richiesta: ${typeLabel(request.type)}, ${formatPeriod(request)}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                {showMember && <p className="font-medium text-foreground">{request.user?.name ?? "—"}</p>}
+                <p className={showMember ? "text-sm" : "font-medium text-foreground"}>{typeLabel(request.type)}</p>
+              </div>
+              <StatusBadge status={request.status as LeaveStatus} />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {formatPeriod(request)} · {formatDuration(request)}
+            </p>
+            {request.recoveryCredit && (
+              <p className="truncate text-xs text-muted-foreground">{formatRecoveryCredit(request.recoveryCredit)}</p>
+            )}
+            {request.note && <p className="truncate text-xs text-muted-foreground">{request.note}</p>}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">Inviata il {formatDate(request.createdAt)}</span>
+              {(showActions || canDelete) && (
+                <div className="flex items-start gap-1">
+                  {showActions && <RequestActions request={request} compact />}
+                  {canDelete && <DeleteRequestButton request={request} />}
+                </div>
+              )}
+            </div>
+          </MobileListItem>
+        ))}
+        {requests.length === 0 && (
+          <MobileListItem className="text-center text-muted-foreground">{emptyMessage}</MobileListItem>
+        )}
+      </MobileList>
+      <Table containerClassName="hidden md:block">
         <TableHeader>
           <TableRow>
             {showMember && <TableHead>Membro</TableHead>}

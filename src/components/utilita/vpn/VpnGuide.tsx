@@ -91,7 +91,7 @@ export function VpnGuide() {
         value={platform}
         onChange={setChosen}
       />
-      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:items-center">
         <div
           ref={containerRef}
           aria-hidden="true"
@@ -126,7 +126,7 @@ export function VpnGuide() {
           <div className="flex flex-wrap items-center gap-3">
             <a href={guide.app.href} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline" })}>
               <Download className="size-4" />
-              OpenVPN Connect: {guide.app.label}
+              {guide.app.label}
             </a>
             <a
               href={OPENVPN_CLIENT_PAGE}

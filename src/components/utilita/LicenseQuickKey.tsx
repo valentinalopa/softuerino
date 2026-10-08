@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TONE_TEXT } from "@/lib/tones";
+import { copyFromServer } from "@/lib/clipboard";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 // Mostra/Copia dall'elenco, senza aprire la licenza. La chiave arriva dal
@@ -44,24 +45,31 @@ export function LicenseQuickKey({
   function fetchKey(action: "show" | "copy") {
     setMessage(null);
     setError(null);
+    if (action === "copy") {
+      // Subito, dentro il clic: su iPhone la copia funziona solo così.
+      const copying = copyFromServer(() => revealLicenseKey(licenseId, "copy"));
+      startTransition(async () => {
+        const failed = await copying;
+        setKey(null);
+        setMessage(
+          failed ? { kind: "error", text: failed.error } : { kind: "success", text: "Chiave copiata negli appunti." }
+        );
+        setOpen(true);
+      });
+      return;
+    }
     startTransition(async () => {
       try {
         const result = await revealLicenseKey(licenseId, action);
         if ("error" in result) {
           setMessage({ kind: "error", text: result.error });
-          if (!open) setOpen(true);
-          return;
+        } else {
+          setKey(result.key);
         }
-        setKey(action === "show" ? result.key : null);
-        if (action === "copy") {
-          await navigator.clipboard.writeText(result.key);
-          setMessage({ kind: "success", text: "Chiave copiata negli appunti." });
-        }
-        setOpen(true);
       } catch {
         setMessage({ kind: "error", text: "Errore imprevisto" });
-        setOpen(true);
       }
+      setOpen(true);
     });
   }
 

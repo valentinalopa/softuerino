@@ -8,7 +8,8 @@ const TRACK = "flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border b
 
 function itemClass(active: boolean) {
   return cn(
-    "rounded-full px-4 py-2 text-sm leading-none whitespace-nowrap transition-colors duration-ds ease-ds",
+    // Su mobile più compatte: ci stanno anche 4-5 schede senza scorrere.
+    "rounded-full px-2.5 py-2 text-xs leading-none whitespace-nowrap transition-colors duration-ds ease-ds sm:px-4 sm:text-sm",
     active
       ? "bg-card font-semibold text-primary-soft-foreground shadow-xs"
       : "font-medium text-muted-foreground hover:text-foreground"

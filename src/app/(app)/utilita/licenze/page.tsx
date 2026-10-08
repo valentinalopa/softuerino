@@ -6,6 +6,7 @@ import { LICENSE_KINDS, type LicenseKind } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { LinkRow } from "@/components/LinkRow";
+import { MobileList, MobileListItem } from "@/components/MobileList";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { NewLicenseDialog } from "@/components/utilita/NewLicenseDialog";
 import { LicenseQuickKey } from "@/components/utilita/LicenseQuickKey";
@@ -80,7 +81,47 @@ export default async function LicenzePage({
         />
         <Card>
           <CardContent>
-            <Table>
+            <MobileList>
+              {rows.map((l) => {
+                const status = expiryStatus(l.expiresAt, l.reminderDays);
+                return (
+                  <MobileListItem key={l.id} href={`/utilita/licenze/${l.id}`} label={l.name}>
+                    <div>
+                      <p className="font-medium break-words text-foreground">{l.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[l.vendor, l.department.name].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    <LicenseQuickKey
+                      licenseId={l.id}
+                      name={l.name}
+                      masked={maskedKey(l.keyHint)}
+                      used={l._count.activations}
+                      limit={l.activationLimit}
+                    />
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        {kind === "licenza" ? "Attivazioni" : "Utenti/posti"}: {l._count.activations} /{" "}
+                        {l.activationLimit ?? "∞"}
+                      </span>
+                      {status === "expired" || status === "soon" ? (
+                        <Badge variant={status === "expired" ? "danger" : "warning"}>
+                          {formatExpiry(l.expiresAt)}
+                        </Badge>
+                      ) : (
+                        <span>Scadenza: {formatExpiry(l.expiresAt)}</span>
+                      )}
+                    </div>
+                  </MobileListItem>
+                );
+              })}
+              {rows.length === 0 && (
+                <MobileListItem className="text-center text-muted-foreground">
+                  {kind === "licenza" ? "Nessuna licenza." : "Nessun abbonamento."}
+                </MobileListItem>
+              )}
+            </MobileList>
+            <Table containerClassName="hidden md:block">
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
