@@ -23,7 +23,7 @@ export const VPN_GUIDES: Record<VpnPlatform, Guide> = {
     app: { href: "https://apps.apple.com/app/openvpn-connect/id590379981", label: "Apri l'App Store" },
     steps: [
       "Installa OpenVPN Connect dall'App Store.",
-      "Tocca «Scarica configurazione» sulla VPN che ti serve, aprendo il link in Safari, e scarica il file.",
+      "Apri questa pagina in Safari, tocca «Scarica configurazione» sulla VPN che ti serve e scarica il file.",
       "Apri il file in OpenVPN (oppure Condividi → OpenVPN) e conferma l'importazione del profilo.",
       LOGIN_STEP,
     ],

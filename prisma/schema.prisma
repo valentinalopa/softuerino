@@ -42,6 +42,7 @@ model User {
   departments            UserDepartment[]
   licenseActivations     LicenseActivation[]
   licenseKeyAccesses     LicenseKeyAccess[]
+  vpnDownloads           VpnDownload[]
 }
 
 // Sessione di login: token opaco in cookie httpOnly, riga cancellabile per logout/revoca
@@ -366,13 +367,31 @@ model LicenseKeyAccess {
 }
 
 // --- VPN (Utilità) ---
-// Una sezione per ogni VPN (es. una sede): link al file di configurazione
-// OpenVPN (.ovpn) e note. Le creano i super admin, le vedono tutti.
+// Una sezione per ogni VPN (es. una sede) con il suo file di configurazione
+// OpenVPN (.ovpn). Le creano i super admin, le vedono tutti.
 model VpnSection {
   id        String   @id @default(cuid())
   name      String
-  configUrl String
   notes     String?
+  // Il file .ovpn contiene certificati e chiavi: è salvato cifrato con
+  // SETTINGS_ENCRYPTION_KEY, si scarica solo con il login da
+  // /api/vpn/<id>/config e ogni download è registrato (VpnDownload).
+  configFileName  String?
+  configEncrypted String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  downloads VpnDownload[]
+}
+
+model VpnDownload {
+  id           String   @id @default(cuid())
+  vpnSectionId String
+  userId       String
+  createdAt    DateTime @default(now())
+
+  vpnSection VpnSection @relation(fields: [vpnSectionId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([vpnSectionId, createdAt])
 }

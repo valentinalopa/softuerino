@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
-type VpnValues = { id: string; name: string; configUrl: string; notes: string | null };
+type VpnValues = { id: string; name: string; notes: string | null; configFileName: string | null };
 
 // Nuova VPN (senza "initial") o modifica di una esistente. Solo super admin.
 export function VpnSectionDialog({ initial }: { initial?: VpnValues }) {
@@ -65,17 +65,19 @@ export function VpnSectionDialog({ initial }: { initial?: VpnValues }) {
               <Input id="vpn-name" name="name" required maxLength={60} defaultValue={initial?.name} placeholder="Lecce" />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="vpn-url">Link al file di configurazione</Label>
+              <Label htmlFor="vpn-file">File di configurazione (.ovpn)</Label>
               <Input
-                id="vpn-url"
-                name="configUrl"
-                type="url"
-                required
-                defaultValue={initial?.configUrl}
-                placeholder="https://…/configurazione.ovpn"
+                id="vpn-file"
+                name="configFile"
+                type="file"
+                accept=".ovpn,.conf,application/x-openvpn-profile"
+                required={!initial?.configFileName}
               />
               <p className="text-xs text-muted-foreground">
-                Il link che scarica il file .ovpn. Lo vedono tutti gli utenti di Softuerino.
+                {initial?.configFileName
+                  ? `Caricato: ${initial.configFileName}. Lascia vuoto per tenerlo, oppure scegli un file nuovo per sostituirlo.`
+                  : "Massimo 256 KB."}{" "}
+                Il file viene salvato cifrato e lo scarica solo chi ha fatto login: ogni download è registrato.
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
