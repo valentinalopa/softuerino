@@ -30,7 +30,7 @@ export default async function AppLayout({
       : 0;
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
       <AppSidebar
         currentUser={{
           name: user.name,
@@ -43,7 +43,7 @@ export default async function AppLayout({
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {impersonating && <ImpersonationBanner userName={user.name} />}
-        <main className="min-w-0 flex-1 overflow-x-hidden px-6 py-8 md:px-10">
+        <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 sm:px-6 sm:py-8 md:px-10">
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>

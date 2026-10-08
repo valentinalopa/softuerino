@@ -9,6 +9,7 @@ import { TaskStatusSelect } from "@/components/task/TaskStatusSelect";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { deleteTask } from "@/lib/actions";
 import { EditTaskSheet } from "@/components/task/EditTaskSheet";
+import { MobileList, MobileListItem } from "@/components/MobileList";
 import {
   Table,
   TableBody,
@@ -56,7 +57,34 @@ export function TasksTable({
 
   return (
     <>
-      <Table>
+      <MobileList>
+        {tasks.map((task) => (
+          <MobileListItem key={task.id} onOpen={() => setSelectedId(task.id)} label={`Modifica ${task.title}`}>
+            <div className="flex items-start justify-between gap-2">
+              <p className="min-w-0 pt-1.5 font-medium break-words text-foreground">{task.title}</p>
+              <ConfirmDeleteButton
+                label={`Elimina ${task.title}`}
+                title={`Eliminare "${task.title}"?`}
+                description="Il task viene eliminato per tutti. L'operazione non è reversibile."
+                onConfirm={() => deleteTask(task.id)}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {task.client && <Badge variant="outline">{task.client.name}</Badge>}
+              {task.priority && <PriorityBadge priority={task.priority as TaskPriority} />}
+              {task.dueDate && <span>Scadenza {formatDate(task.dueDate)}</span>}
+            </div>
+            {task.assignees.length > 0 && (
+              <p className="text-xs text-muted-foreground">{task.assignees.map((a) => a.user.name).join(", ")}</p>
+            )}
+            <TaskStatusSelect taskId={task.id} status={task.status} />
+          </MobileListItem>
+        ))}
+        {tasks.length === 0 && (
+          <MobileListItem className="text-center text-muted-foreground">{emptyMessage}</MobileListItem>
+        )}
+      </MobileList>
+      <Table containerClassName="hidden md:block">
         <TableHeader>
           <TableRow>
             <TableHead>Task</TableHead>

@@ -5,6 +5,7 @@ import { Copy, Eye, EyeOff } from "lucide-react";
 import { revealLicenseKey } from "@/lib/licenses/actions";
 import { Button } from "@/components/ui/button";
 import { TONE_TEXT } from "@/lib/tones";
+import { copyFromServer } from "@/lib/clipboard";
 
 // Chiave mascherata (prime 4 cifre + asterischi). "Mostra" e "Copia" chiedono
 // la chiave completa al server, che registra ogni accesso.
@@ -51,12 +52,17 @@ export function LicenseKeyField({ licenseId, masked }: { licenseId: string; mask
           variant="ghost"
           size="sm"
           disabled={pending}
-          onClick={() =>
-            fetchKey("copy", async (key) => {
-              await navigator.clipboard.writeText(key);
-              setMessage({ kind: "success", text: "Chiave copiata negli appunti." });
-            })
-          }
+          onClick={() => {
+            setMessage(null);
+            // Subito, dentro il clic: su iPhone la copia funziona solo così.
+            const copying = copyFromServer(() => revealLicenseKey(licenseId, "copy"));
+            startTransition(async () => {
+              const failed = await copying;
+              setMessage(
+                failed ? { kind: "error", text: failed.error } : { kind: "success", text: "Chiave copiata negli appunti." }
+              );
+            });
+          }}
         >
           <Copy className="size-4" />
           Copia

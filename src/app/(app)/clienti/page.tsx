@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { ClientCategoryBadges } from "@/components/clienti/ClientCategoryBadges";
 import { ClientRowActions } from "@/components/clienti/ClientRowActions";
+import { MobileList, MobileListItem } from "@/components/MobileList";
 import { NewClientDialog } from "@/components/clienti/NewClientDialog";
 import {
   Table,
@@ -35,7 +36,24 @@ export default async function ClientiPage() {
 
       <Card>
         <CardContent>
-          <Table>
+          <MobileList>
+            {clients.map((client) => (
+              <MobileListItem key={client.id}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 pt-1.5 font-medium break-words text-foreground">{client.name}</p>
+                  <ClientRowActions client={client} />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ActiveBadge active={client.active} />
+                  <ClientCategoryBadges categories={client.categories} />
+                </div>
+              </MobileListItem>
+            ))}
+            {clients.length === 0 && (
+              <MobileListItem className="text-center text-muted-foreground">Nessun cliente ancora.</MobileListItem>
+            )}
+          </MobileList>
+          <Table containerClassName="hidden md:block">
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>

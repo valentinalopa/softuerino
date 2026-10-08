@@ -102,7 +102,8 @@ export default async function VpnPage() {
         </div>
       )}
 
-      <Card>
+      {/* Margini interni ridotti su mobile: le 4 schede dei dispositivi stanno su una riga. */}
+      <Card className="[--card-spacing:--spacing(4)] sm:[--card-spacing:--spacing(6)]">
         <CardHeader>
           <CardTitle>Come collegarsi</CardTitle>
         </CardHeader>

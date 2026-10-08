@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
 // Offcanvas laterale per i form di creazione/modifica: stessa primitiva del
-// Dialog (Base UI) ma ancorato al bordo destro, a tutta altezza. I dialog
+// Dialog (Base UI) ma ancorato al bordo destro (o sinistro, per il menu su
+// mobile), a tutta altezza. I dialog
 // centrati restano solo per le conferme (AlertDialog).
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
@@ -27,9 +28,12 @@ function SheetContent({
   className,
   children,
   showCloseButton = true,
+  side = "right",
   ...props
 }: SheetPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  // "left": menu di navigazione su mobile.
+  side?: "left" | "right"
 }) {
   return (
     <SheetPrimitive.Portal data-slot="sheet-portal">
@@ -40,8 +44,10 @@ function SheetContent({
       <SheetPrimitive.Popup
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-surface-border bg-card text-sm text-card-foreground shadow-lg duration-ds-slow ease-ds outline-none sm:rounded-l-2xl",
-          "data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right",
+          "fixed inset-y-0 z-50 flex w-full max-w-md flex-col border-surface-border bg-card text-sm text-card-foreground shadow-lg duration-ds-slow ease-ds outline-none",
+          side === "right"
+            ? "right-0 border-l sm:rounded-l-2xl data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right"
+            : "left-0 border-r data-open:animate-in data-open:slide-in-from-left data-closed:animate-out data-closed:slide-out-to-left",
           className
         )}
         {...props}

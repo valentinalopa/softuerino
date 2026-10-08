@@ -19,8 +19,8 @@ const LOGIN_STEP = "Inserisci utente e password del tuo account aziendale e atti
 
 export const VPN_GUIDES: Record<VpnPlatform, Guide> = {
   ios: {
-    label: "iPhone e iPad",
-    app: { href: "https://apps.apple.com/app/openvpn-connect/id590379981", label: "Apri l'App Store" },
+    label: "iPhone",
+    app: { href: "https://apps.apple.com/app/openvpn-connect/id590379981", label: "OpenVPN Connect su App Store" },
     steps: [
       "Installa OpenVPN Connect dall'App Store.",
       "Apri questa pagina in Safari, tocca «Scarica configurazione» sulla VPN che ti serve e scarica il file.",
@@ -30,7 +30,7 @@ export const VPN_GUIDES: Record<VpnPlatform, Guide> = {
   },
   android: {
     label: "Android",
-    app: { href: "https://play.google.com/store/apps/details?id=net.openvpn.openvpn", label: "Apri Google Play" },
+    app: { href: "https://play.google.com/store/apps/details?id=net.openvpn.openvpn", label: "OpenVPN Connect su Google Play" },
     steps: [
       "Installa OpenVPN Connect da Google Play.",
       "Tocca «Scarica configurazione» sulla VPN che ti serve: il file .ovpn finisce nei Download.",
@@ -40,7 +40,7 @@ export const VPN_GUIDES: Record<VpnPlatform, Guide> = {
   },
   macos: {
     label: "Mac",
-    app: { href: "https://openvpn.net/downloads/openvpn-connect-v3-macos.dmg", label: "Scarica per Mac" },
+    app: { href: "https://openvpn.net/downloads/openvpn-connect-v3-macos.dmg", label: "Scarica OpenVPN Connect" },
     steps: [
       "Scarica OpenVPN Connect per Mac, apri il file .dmg e installalo.",
       DOWNLOAD_STEP_DESKTOP,
@@ -50,7 +50,7 @@ export const VPN_GUIDES: Record<VpnPlatform, Guide> = {
   },
   windows: {
     label: "Windows",
-    app: { href: "https://openvpn.net/downloads/openvpn-connect-v3-windows.msi", label: "Scarica per Windows" },
+    app: { href: "https://openvpn.net/downloads/openvpn-connect-v3-windows.msi", label: "Scarica OpenVPN Connect" },
     steps: [
       "Scarica OpenVPN Connect per Windows e installalo.",
       DOWNLOAD_STEP_DESKTOP,

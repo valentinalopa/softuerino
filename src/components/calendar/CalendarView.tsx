@@ -101,7 +101,7 @@ export function CalendarView({
           <h2 className="capitalize">{periodLabel}</h2>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <SegmentedButtonTabs
             items={(Object.keys(VIEW_LABELS) as ViewMode[]).map((mode) => ({
               key: mode,
