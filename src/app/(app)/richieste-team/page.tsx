@@ -1,197 +1,244 @@
 import { Clock3 } from "lucide-react";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
+import { LEAVE_TYPES, LEAVE_TYPE_LABELS } from "@/lib/constants";
+import { getPendingOverdrafts } from "@/lib/leave-balance";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
+import { UrlSelectFilters } from "@/components/UrlSelectFilters";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  LeaveBalancesEditor,
-  type BalanceRow,
-} from "@/components/richieste/LeaveBalancesEditor";
-import { getLeaveBalancesForUsers, getPendingOverdrafts } from "@/lib/leave-balance";
-import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
-import type { EmploymentType } from "@/lib/constants";
 
-type View = "in_corso" | "storico" | "saldi";
+type View = "da_approvare" | "in_programma" | "storico";
 
-// Gestione delle richieste di tutto il team (admin e super admin): approvazioni,
-// richieste in corso e storico. Le proprie richieste stanno in /richieste.
+// Richieste del team (admin e super admin): il flusso di lavoro sulle
+// richieste. Da approvare, assenze in programma e storico filtrabile. I saldi
+// e tutto ciò che riguarda una persona stanno nella sua scheda in /team.
 export default async function RichiesteTeamPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; user?: string; type?: string; year?: string }>;
 }) {
   const user = await requireAdmin();
   // endDate è a mezzanotte dell'ultimo giorno incluso: "passata" solo da
   // domani in poi, non dalle 00:01 dell'ultimo giorno.
   const today = startOfDay(new Date());
 
-  const { view: viewParam } = await searchParams;
-  // I saldi si modificano solo da super admin.
-  const canEditBalances = user.role === "super_admin";
+  const params = await searchParams;
   const view: View =
-    viewParam === "storico"
-      ? "storico"
-      : viewParam === "saldi" && canEditBalances
-        ? "saldi"
-        : "in_corso";
+    params.view === "in_programma" || params.view === "storico" ? params.view : "da_approvare";
+
+  // Da approvare: le richieste degli altri (le proprie le decide un altro admin).
+  const pendingWhere: Prisma.LeaveRequestWhereInput = {
+    userId: { not: user.id },
+    status: "pending",
+  };
+  // In programma: assenze non ancora concluse e non rifiutate; le proprie in
+  // attesa stanno qui, dato che non compaiono tra quelle da approvare.
+  const upcomingWhere: Prisma.LeaveRequestWhereInput = {
+    endDate: { gte: today },
+    OR: [{ status: { in: ["approved", "registrata"] } }, { status: "pending", userId: user.id }],
+  };
+  // Storico: concluse, più le rifiutate (anche future).
+  const historyWhere: Prisma.LeaveRequestWhereInput = {
+    status: { not: "pending" },
+    OR: [{ endDate: { lt: today } }, { status: "rejected" }],
+  };
 
   const include = {
     user: { select: { id: true, name: true, employmentType: true } },
     recoveryCredit: { select: { reason: true, amount: true, unit: true } },
   } as const;
-  const [teamPending, currentRequests, pastRequests] = await Promise.all([
-    prisma.leaveRequest.findMany({
-      where: { userId: { not: user.id }, status: "pending" },
-      include,
-      orderBy: { startDate: "asc" },
-    }),
-    prisma.leaveRequest.findMany({
-      where: { OR: [{ endDate: { gte: today } }, { status: "pending" }] },
-      include,
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.leaveRequest.findMany({
-      where: { endDate: { lt: today }, status: { not: "pending" } },
-      include,
-      orderBy: [{ user: { name: "asc" } }, { startDate: "desc" }],
-    }),
+
+  const [pendingCount, upcomingCount] = await Promise.all([
+    prisma.leaveRequest.count({ where: pendingWhere }),
+    prisma.leaveRequest.count({ where: upcomingWhere }),
   ]);
-  const overdrafts = await getPendingOverdrafts(teamPending);
+
+  const viewHref = (v: View) =>
+    v === "da_approvare" ? "/richieste-team" : `/richieste-team?view=${v}`;
 
   return (
     <div className="space-y-8">
       <div>
         <h1>Richieste del team</h1>
         <p className="text-sm text-muted-foreground">
-          Approvazioni, richieste in corso e storico di tutto il team.
+          Approvazioni, assenze in programma e storico. Saldi e recuperi di una persona sono nella
+          sua scheda in Team.
         </p>
       </div>
-
-      {teamPending.length > 0 && (
-        <NotificationCard
-          icon={Clock3}
-          title={`${teamPending.length} richiest${teamPending.length === 1 ? "a" : "e"} in attesa di approvazione`}
-        >
-          {teamPending.map((request) => (
-            <TeamPendingItem key={request.id} request={request} overdraft={overdrafts.get(request.id)} />
-          ))}
-        </NotificationCard>
-      )}
 
       <div className="space-y-4">
         <SegmentedLinkTabs
           items={[
             {
-              key: "in_corso",
-              label: `In corso (${currentRequests.length})`,
-              href: "/richieste-team",
-              active: view === "in_corso",
+              key: "da_approvare",
+              label: `Da approvare (${pendingCount})`,
+              href: viewHref("da_approvare"),
+              active: view === "da_approvare",
+            },
+            {
+              key: "in_programma",
+              label: `In programma (${upcomingCount})`,
+              href: viewHref("in_programma"),
+              active: view === "in_programma",
             },
             {
               key: "storico",
-              label: `Storico (${pastRequests.length})`,
-              href: "/richieste-team?view=storico",
+              label: "Storico",
+              href: viewHref("storico"),
               active: view === "storico",
             },
-            ...(canEditBalances
-              ? [
-                  {
-                    key: "saldi",
-                    label: "Saldi",
-                    href: "/richieste-team?view=saldi",
-                    active: view === "saldi",
-                  },
-                ]
-              : []),
           ]}
         />
-        {view === "saldi" && (
-          <p className="text-sm text-muted-foreground">
-            Clicca un membro per aggiornarne il saldo. Per i dipendenti il residuo passa
-            all&apos;anno dopo, per le partite IVA il monte riparte da capo a gennaio.
-          </p>
-        )}
-        <Card>
-          <CardContent>
-            {view === "saldi" ? (
-              <LeaveBalancesEditor rows={await loadBalanceRows(today.getFullYear())} year={today.getFullYear()} />
-            ) : (
+
+        {view === "da_approvare" && <PendingView where={pendingWhere} include={include} />}
+
+        {view === "in_programma" && (
+          <Card>
+            <CardContent>
               <LeaveRequestsTable
-                requests={view === "in_corso" ? currentRequests : pastRequests}
+                requests={await prisma.leaveRequest.findMany({
+                  where: upcomingWhere,
+                  include,
+                  orderBy: { startDate: "asc" },
+                })}
                 showMember
                 showActions
-                emptyMessage={
-                  view === "in_corso" ? "Nessuna richiesta in corso." : "Nessuna richiesta passata."
-                }
+                emptyMessage="Nessuna assenza in programma."
               />
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
+        {view === "storico" && (
+          <HistoryView where={historyWhere} include={include} params={params} />
+        )}
       </div>
     </div>
   );
 }
 
-// Saldi residui dell'anno corrente dei membri attivi, per la tabella dei saldi.
-async function loadBalanceRows(year: number): Promise<BalanceRow[]> {
-  const users = await prisma.user.findMany({
-    where: { active: true },
-    select: {
-      id: true,
-      name: true,
-      employmentType: true,
-      balanceAdjustments: {
-        where: { year },
-        select: { updatedAt: true },
-        orderBy: { updatedAt: "desc" },
-        take: 1,
+type Include = {
+  user: { select: { id: true; name: true; employmentType: true } };
+  recoveryCredit: { select: { reason: true; amount: true; unit: true } };
+};
+
+async function PendingView({
+  where,
+  include,
+}: {
+  where: Prisma.LeaveRequestWhereInput;
+  include: Include;
+}) {
+  const pending = await prisma.leaveRequest.findMany({
+    where,
+    include,
+    orderBy: { startDate: "asc" },
+  });
+  if (pending.length === 0) {
+    return (
+      <Card>
+        <CardContent>
+          <p className="text-center text-sm text-muted-foreground">
+            Nessuna richiesta da approvare.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+  const overdrafts = await getPendingOverdrafts(pending);
+  return (
+    <NotificationCard
+      icon={Clock3}
+      title={`${pending.length} richiest${pending.length === 1 ? "a" : "e"} in attesa di approvazione`}
+    >
+      {pending.map((request) => (
+        <TeamPendingItem
+          key={request.id}
+          request={request}
+          overdraft={overdrafts.get(request.id)}
+        />
+      ))}
+    </NotificationCard>
+  );
+}
+
+async function HistoryView({
+  where,
+  include,
+  params,
+}: {
+  where: Prisma.LeaveRequestWhereInput;
+  include: Include;
+  params: { user?: string; type?: string; year?: string };
+}) {
+  const year = params.year && /^\d{4}$/.test(params.year) ? Number(params.year) : null;
+  const type = LEAVE_TYPES.includes(params.type as (typeof LEAVE_TYPES)[number])
+    ? params.type
+    : null;
+
+  const [requests, users, oldest] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: {
+        AND: [
+          where,
+          params.user ? { userId: params.user } : {},
+          type ? { type } : {},
+          // Una richiesta appartiene all'anno in cui inizia.
+          year ? { startDate: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } } : {},
+        ],
       },
-    },
-    orderBy: { name: "asc" },
-  });
-  const [balances, recoveryCredits] = await Promise.all([
-    getLeaveBalancesForUsers(
-      users.map((u) => ({ id: u.id, employmentType: u.employmentType as EmploymentType })),
-      year
-    ),
-    getRecoveryCreditsForUsers(users.map((u) => u.id)),
+      include,
+      orderBy: { startDate: "desc" },
+    }),
+    // Anche i membri disattivati: lo storico resta consultabile.
+    prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.leaveRequest.findFirst({ orderBy: { startDate: "asc" }, select: { startDate: true } }),
   ]);
-  return users.map((u) => {
-    const b = balances.get(u.id)!;
-    return {
-      userId: u.id,
-      name: u.name,
-      employmentType: u.employmentType as EmploymentType,
-      balances:
-        b.kind === "assenze"
-          ? {
-              assenze: { remaining: b.assenzeRemaining, allowance: b.assenzeAllowance, used: b.assenzeUsed },
+
+  const currentYear = new Date().getFullYear();
+  const firstYear = Math.min(oldest?.startDate.getFullYear() ?? currentYear, currentYear);
+  const years = Array.from({ length: currentYear - firstYear + 1 }, (_, i) => currentYear - i);
+  const filtered = Boolean(params.user || type || year);
+
+  return (
+    <div className="space-y-4">
+      <UrlSelectFilters
+        filters={[
+          {
+            param: "user",
+            allLabel: "Tutte le persone",
+            options: users.map((u) => ({ value: u.id, label: u.name })),
+          },
+          {
+            param: "type",
+            allLabel: "Tutti i tipi",
+            options: LEAVE_TYPES.map((t) => ({ value: t, label: LEAVE_TYPE_LABELS[t] })),
+          },
+          {
+            param: "year",
+            allLabel: "Tutti gli anni",
+            options: years.map((y) => ({ value: String(y), label: String(y) })),
+          },
+        ]}
+      />
+      <Card>
+        <CardContent>
+          <LeaveRequestsTable
+            requests={requests}
+            showMember
+            showActions
+            emptyMessage={
+              filtered
+                ? "Nessuna richiesta corrisponde ai filtri selezionati."
+                : "Nessuna richiesta passata."
             }
-          : {
-              ferie: { remaining: b.ferieRemaining, allowance: b.ferieAllowance, used: b.ferieUsed },
-              permesso: {
-                remaining: b.permessoRemaining,
-                allowance: b.permessoAllowance,
-                used: b.permessoUsed,
-              },
-            },
-      updatedAt: u.balanceAdjustments[0]?.updatedAt ?? null,
-      outsideAllowance:
-        b.kind === "assenze"
-          ? [
-              { label: "Recuperi goduti", value: b.recuperoDays, unit: "gg" },
-              { label: "Recuperi goduti (ore)", value: b.recuperoHours, unit: "h" },
-              { label: "Assenze extra", value: b.assenzaExtraDays, unit: "gg" },
-            ]
-          : [
-              { label: "Recuperi goduti", value: b.recuperoDays, unit: "gg" },
-              { label: "Recuperi goduti (ore)", value: b.recuperoHours, unit: "h" },
-              { label: "Malattia", value: b.malattiaDaysRegistered, unit: "gg" },
-            ],
-      recoveryCredits: recoveryCredits.get(u.id) ?? [],
-    };
-  });
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

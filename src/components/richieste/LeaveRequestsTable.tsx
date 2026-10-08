@@ -4,7 +4,7 @@ import { useState } from "react";
 import { LEAVE_TYPE_LABELS, LEAVE_STATUS_LABELS, type LeaveStatus } from "@/lib/constants";
 import {
   formatDate,
-  formatRange,
+  formatPeriod,
   formatDuration,
   formatRecoveryCredit,
   type LeaveRequestRow,
@@ -92,7 +92,7 @@ export function LeaveRequestsTable({
             <TableRow
               key={request.id}
               tabIndex={0}
-              aria-label={`Dettagli richiesta: ${typeLabel(request.type)}, ${formatRange(request.startDate, request.endDate)}`}
+              aria-label={`Dettagli richiesta: ${typeLabel(request.type)}, ${formatPeriod(request)}`}
               className="cursor-pointer focus-visible:bg-subtle focus-visible:outline-none"
               onClick={() => setSelectedId(request.id)}
               onKeyDown={(event) => {
@@ -120,7 +120,7 @@ export function LeaveRequestsTable({
                 )}
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {formatRange(request.startDate, request.endDate)}
+                {formatPeriod(request)}
               </TableCell>
               <TableCell className="text-muted-foreground">{formatDuration(request)}</TableCell>
               <TableCell>
@@ -165,7 +165,7 @@ export function LeaveRequestsTable({
               <SheetBody>
                 <dl className="divide-y divide-border-subtle text-sm">
                   {selected.user && <DetailRow label="Membro" value={selected.user.name} />}
-                  <DetailRow label="Periodo" value={formatRange(selected.startDate, selected.endDate)} />
+                  <DetailRow label="Periodo" value={formatPeriod(selected)} />
                   <DetailRow label="Durata" value={formatDuration(selected)} />
                   {selected.recoveryCredit && (
                     <DetailRow

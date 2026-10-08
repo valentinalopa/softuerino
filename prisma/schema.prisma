@@ -51,6 +51,9 @@ model Session {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+  // Ultima attività (aggiornata al massimo una volta l'ora): senza attività per
+  // qualche giorno la sessione scade anche prima di expiresAt.
+  lastSeenAt DateTime @default(now())
 
   // Come è nata la sessione: "password" o "oidc" (null = creata prima che si
   // registrasse). Per le sessioni "oidc" "Esci" passa anche da Keycloak.
@@ -102,7 +105,12 @@ model LeaveRequest {
   type      String // ferie | permesso | malattia
   startDate DateTime
   endDate   DateTime
-  hours     Float? // valorizzato solo per type = "permesso"
+  hours     Float? // valorizzato solo per le richieste a ore (permesso, recupero a ore)
+  // Fascia oraria delle richieste a ore, "HH:MM" (es. 09:00 → 11:00): hours
+  // ne è la durata. Vuote per le richieste a giornata e per quelle a ore
+  // create prima che la fascia esistesse.
+  startTime String?
+  endTime   String?
   status    String   @default("pending") // pending | approved | rejected | registrata
   note      String?
   createdAt DateTime @default(now())

@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { startOfDay } from "@/lib/calendar-utils";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
+import { formatHourlySlot } from "@/lib/leave-format";
 import {
   HOURLY_STYLES,
   LEAVE_STYLES,
@@ -16,6 +17,8 @@ export type CalendarAbsence = {
   startDate: Date;
   endDate: Date;
   hours: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
 };
 
 // Chi è assente nel giorno mostrato: serve a pianificare eventi e shooting
@@ -61,7 +64,7 @@ export function DayAbsences({
             <span className="font-semibold">{absence.userName}</span>
             <span>
               · {label}
-              {hourly && ` ${absence.hours}h`}
+              {absence.hours !== null && ` ${formatHourlySlot({ ...absence, hours: absence.hours })}`}
               {pending && " (in attesa)"}
             </span>
           </span>

@@ -292,6 +292,35 @@ export async function getLeaveBalancesForUsers(
   );
 }
 
+// Residuo e goduto per saldo (solo quelli del contratto del membro): dati
+// semplici per le barrette di Team e della scheda membro.
+export type BalanceFigures = { remaining: number; used: number };
+
+export function balanceFigures(balance: LeaveBalance): Partial<Record<BalanceKind, BalanceFigures>> {
+  return balance.kind === "assenze"
+    ? { assenze: { remaining: balance.assenzeRemaining, used: balance.assenzeUsed } }
+    : {
+        ferie: { remaining: balance.ferieRemaining, used: balance.ferieUsed },
+        permesso: { remaining: balance.permessoRemaining, used: balance.permessoUsed },
+      };
+}
+
+// Fuori monte nell'anno (recuperi goduti, malattia, assenze extra): solo
+// informativi, non scalano i saldi.
+export function outsideAllowance(balance: LeaveBalance) {
+  return balance.kind === "assenze"
+    ? [
+        { label: "Recuperi goduti", value: balance.recuperoDays, unit: "gg" },
+        { label: "Recuperi goduti (ore)", value: balance.recuperoHours, unit: "h" },
+        { label: "Assenze extra", value: balance.assenzaExtraDays, unit: "gg" },
+      ]
+    : [
+        { label: "Recuperi goduti", value: balance.recuperoDays, unit: "gg" },
+        { label: "Recuperi goduti (ore)", value: balance.recuperoHours, unit: "h" },
+        { label: "Malattia", value: balance.malattiaDaysRegistered, unit: "gg" },
+      ];
+}
+
 // Residuo per tipo di richiesta che scala un monte (ferie, permesso, assenza):
 // i tipi fuori monte (malattia, recupero, assenza extra) non ci sono. Oggetto
 // semplice, così arriva anche al form di richiesta (client).

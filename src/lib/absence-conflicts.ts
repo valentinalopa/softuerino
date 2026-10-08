@@ -1,4 +1,5 @@
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
+import { formatHourlySlot } from "@/lib/leave-format";
 
 // Un'assenza vista dal punto di vista della pianificazione di un evento.
 export type PlanningAbsence = {
@@ -8,13 +9,15 @@ export type PlanningAbsence = {
   startDate: Date;
   endDate: Date;
   hours: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
 };
 
 export type AbsenceConflict =
   // Assente tutto il giorno e già approvato/registrato: non invitabile.
   | { kind: "blocked"; reason: string }
   // Da tenere presente ma invitabile: richiesta in attesa o assenza a ore
-  // (salviamo le ore, non la fascia oraria).
+  // (la fascia è nella descrizione, l'orario dell'evento non si confronta).
   | { kind: "warning"; reason: string };
 
 function dayStart(date: Date) {
@@ -24,7 +27,9 @@ function dayStart(date: Date) {
 function describe(absence: PlanningAbsence) {
   const label =
     LEAVE_TYPE_LABELS[absence.type as keyof typeof LEAVE_TYPE_LABELS] ?? absence.type;
-  return absence.hours !== null ? `${label} ${absence.hours}h` : label;
+  return absence.hours !== null
+    ? `${label} ${formatHourlySlot({ ...absence, hours: absence.hours })}`
+    : label;
 }
 
 // Conflitto più grave tra le assenze di un membro e il periodo dell'evento.

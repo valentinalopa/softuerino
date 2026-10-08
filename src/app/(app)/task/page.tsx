@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { purgeExpiredDoneTasks } from "@/lib/actions";
-import { TASK_DONE_RETENTION_DAYS } from "@/lib/constants";
+import { TASK_DONE_RETENTION_DAYS, isAdminRole } from "@/lib/constants";
 import { NewTaskDialog } from "@/components/task/NewTaskDialog";
 import { TaskFilters } from "@/components/task/TaskFilters";
 import { TasksTable } from "@/components/task/TasksTable";
@@ -15,7 +15,7 @@ export default async function TaskPage({
 }: {
   searchParams: Promise<{ user?: string; client?: string; view?: string }>;
 }) {
-  await requireUser();
+  const currentUser = await requireUser();
 
   const { user: userParam, client: clientParam, view: viewParam } = await searchParams;
   const view: View = viewParam === "completati" ? "completati" : "attivi";
@@ -26,7 +26,7 @@ export default async function TaskPage({
   const purgeCutoff = new Date();
   purgeCutoff.setDate(purgeCutoff.getDate() - TASK_DONE_RETENTION_DAYS);
 
-  const [tasks, users, clients, clientsByAge] = await Promise.all([
+  const [tasks, users, clients] = await Promise.all([
     prisma.task.findMany({
       where: {
         ...(userParam ? { assignees: { some: { userId: userParam } } } : {}),
@@ -53,9 +53,6 @@ export default async function TaskPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
-    // Tutti i clienti, dal più vecchio: l'ordine assegna i colori delle
-    // etichette, e un cliente nuovo non cambia il colore degli altri.
-    prisma.client.findMany({ orderBy: { createdAt: "asc" }, select: { id: true } }),
     purgeExpiredDoneTasks(),
   ]);
 
@@ -100,7 +97,8 @@ export default async function TaskPage({
         <CardContent>
           <TasksTable
             tasks={tasks}
-            clientOrder={clientsByAge.map((c) => c.id)}
+            currentUserId={currentUser.id}
+            isAdmin={isAdminRole(currentUser.role)}
             users={users}
             clients={clients}
             emptyMessage={

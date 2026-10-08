@@ -5,12 +5,12 @@ import { startOfDay } from "@/lib/calendar-utils";
 import { getLeaveBalance, remainingByLeaveType } from "@/lib/leave-balance";
 import { getRecoveryCreditsForUsers, toOpenRecoveryCredits } from "@/lib/recovery-credits";
 import { formatAmount, formatToRecover } from "@/lib/leave-format";
-import { formatRange } from "@/lib/leave-format";
+import { formatWhen } from "@/lib/leave-format";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { LeaveRequestsTable, StatusBadge } from "@/components/richieste/LeaveRequestsTable";
 import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
-import { LEAVE_TYPE_LABELS, type EmploymentType } from "@/lib/constants";
+import { LEAVE_TYPE_LABELS, annualAllowance, type EmploymentType } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 
 type Range = "upcoming" | "past";
@@ -86,7 +86,7 @@ export default async function RichiestePage({
                 )}
               </div>
               <span className="text-muted-foreground">
-                {formatRange(request.startDate, request.endDate)}
+                {formatWhen(request)}
               </span>
             </NotificationItem>
           ))}
@@ -100,19 +100,19 @@ export default async function RichiestePage({
           <BalanceCard
             label="Assenze rimanenti"
             negative={balance.assenzeRemaining < 0}
-            value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(balance.assenzeAllowance)} giorni`}
+            value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(annualAllowance("assenze"))} giorni`}
           />
         ) : (
           <>
             <BalanceCard
               label="Ferie rimanenti"
               negative={balance.ferieRemaining < 0}
-              value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieAllowance)} giorni`}
+              value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(annualAllowance("ferie"))} giorni`}
             />
             <BalanceCard
               label="Permesso rimanente"
               negative={balance.permessoRemaining < 0}
-              value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(balance.permessoAllowance)} ore`}
+              value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(annualAllowance("permesso"))} ore`}
             />
             <BalanceCard
               label="Malattia registrata"

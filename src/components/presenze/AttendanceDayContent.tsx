@@ -5,6 +5,7 @@ import {
   type PresenceSlot,
 } from "@/lib/constants";
 import type { DayEntry, HourlyLeaveInfo } from "@/lib/attendance-utils";
+import { formatHourlySlot } from "@/lib/leave-format";
 import {
   LEAVE_STYLES,
   MODE_STYLES,
@@ -150,7 +151,7 @@ function HourlyLeaveChip({ hourly }: { hourly: HourlyLeaveInfo }) {
       )}
     >
       <Icon className="size-3" />
-      {style.title} {hourly.hours}h
+      {style.title} {formatHourlySlot(hourly)}
     </div>
   );
 }

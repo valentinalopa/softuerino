@@ -11,6 +11,8 @@ import {
   revokeSessions,
 } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
+import { hoursBetween } from "@/lib/leave-format";
+import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
@@ -317,7 +319,8 @@ export async function createLeaveRequest(formData: FormData) {
   const type = String(formData.get("type") ?? "");
   const startDateRaw = String(formData.get("startDate") ?? "");
   const endDateRaw = String(formData.get("endDate") ?? startDateRaw) || startDateRaw;
-  const hoursRaw = String(formData.get("hours") ?? "").trim();
+  const startTimeRaw = String(formData.get("startTime") ?? "").trim();
+  const endTimeRaw = String(formData.get("endTime") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim() || null;
 
   // Un admin può registrare ferie/permesso/malattia per conto di un altro
@@ -375,13 +378,21 @@ export async function createLeaveRequest(formData: FormData) {
     return { error: "La data di fine non può precedere quella di inizio" };
   }
 
+  // A ore si indica la fascia (dalle/alle): le ore, che scalano il saldo, ne
+  // sono la durata.
   let hours: number | null = null;
+  let startTime: string | null = null;
+  let endTime: string | null = null;
   if (isHourly) {
-    const parsed = Number(hoursRaw);
-    if (!hoursRaw || Number.isNaN(parsed) || parsed <= 0 || parsed > 24) {
-      return { error: "Indica un numero di ore valido (massimo 24)" };
+    if (!startTimeRaw || !endTimeRaw) {
+      return { error: "Indica la fascia oraria (dalle / alle)" };
     }
-    hours = parsed;
+    hours = hoursBetween(startTimeRaw, endTimeRaw);
+    if (hours === null) {
+      return { error: "Fascia oraria non valida: l'orario di fine deve seguire quello di inizio" };
+    }
+    startTime = startTimeRaw;
+    endTime = endTimeRaw;
   }
 
   const startDate = localDate(startDateRaw);
@@ -419,6 +430,8 @@ export async function createLeaveRequest(formData: FormData) {
       startDate,
       endDate,
       hours,
+      startTime,
+      endTime,
       note,
       status,
       recoveryCreditId: recoveryCredit?.id ?? null,
@@ -564,7 +577,6 @@ export async function setLeaveBalances(
   );
 
   for (const userId of userById.keys()) revalidateLeavePaths(userId);
-  revalidatePath("/team");
 }
 
 // --- Recuperi da fare (solo super admin) ---
@@ -629,6 +641,7 @@ export async function deleteRecoveryCredit(creditId: string): Promise<ActionResu
 }
 
 function revalidateLeavePaths(userId: string) {
+  revalidatePath("/team");
   revalidatePath("/richieste");
   revalidatePath("/panoramica");
   revalidatePath("/richieste-team");
@@ -677,7 +690,16 @@ export async function createEvent(formData: FormData) {
           startDate: { lte: endAt },
           endDate: { gte: new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()) },
         },
-        select: { userId: true, type: true, status: true, startDate: true, endDate: true, hours: true },
+        select: {
+          userId: true,
+          type: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          hours: true,
+          startTime: true,
+          endTime: true,
+        },
       }),
       prisma.user.findMany({
         where: { id: { in: participantIds } },
@@ -685,7 +707,13 @@ export async function createEvent(formData: FormData) {
       }),
     ]);
     for (const participant of participants) {
-      const conflict = absenceConflict(absences, participant.id, startAt, endAt);
+      // Il motivo finisce nel messaggio d'errore: niente "Malattia" dei colleghi.
+      const conflict = absenceConflict(
+        absences.map((absence) => maskLeaveForViewer(absence, user)),
+        participant.id,
+        startAt,
+        endAt
+      );
       if (conflict?.kind === "blocked") {
         return {
           error: `${participant.name} è assente in quelle date (${conflict.reason}). Rimuovi questa persona dai partecipanti`,
@@ -1114,7 +1142,9 @@ export async function createTask(formData: FormData) {
   after(() => notifyTaskAssigned(task.id, assigneeIds, user.id));
 }
 
-async function hasTaskAccess(taskId: string) {
+// Eliminare un task resta ad admin e assegnatari: modificarlo (stato e campi)
+// invece può chiunque nel team, i task sono condivisi.
+async function canDeleteTask(taskId: string) {
   const user = await requireUser();
   if (isAdminRole(user.role)) return true;
 
@@ -1129,18 +1159,16 @@ export async function updateTaskStatus(
   status: string
 ): Promise<ActionResult> {
   if (!(await requireWritableUser())) return READ_ONLY_ERROR;
-  if (!(await hasTaskAccess(taskId))) {
-    return { error: "Non autorizzato" };
-  }
 
   if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
     return { error: "Stato non valido" };
   }
 
-  await prisma.task.update({
+  const updated = await prisma.task.updateMany({
     where: { id: taskId },
     data: { status, completedAt: status === "done" ? new Date() : null },
   });
+  if (updated.count === 0) return { error: "Task non trovato (forse è stato eliminato)" };
   revalidatePath("/task");
 }
 
@@ -1148,9 +1176,6 @@ export async function updateTaskStatus(
 export async function updateTask(taskId: string, formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-  if (!(await hasTaskAccess(taskId))) {
-    return { error: "Non autorizzato" };
-  }
 
   const parsed = parseTaskForm(formData);
   if ("error" in parsed) return { error: parsed.error };
@@ -1188,8 +1213,8 @@ export async function updateTask(taskId: string, formData: FormData): Promise<Ac
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
   if (!(await requireWritableUser())) return READ_ONLY_ERROR;
-  if (!(await hasTaskAccess(taskId))) {
-    return { error: "Non autorizzato" };
+  if (!(await canDeleteTask(taskId))) {
+    return { error: "Solo gli assegnatari o un admin possono eliminare questo task" };
   }
   await prisma.task.delete({ where: { id: taskId } });
   revalidatePath("/task");

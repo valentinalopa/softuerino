@@ -25,6 +25,9 @@ export type LeaveInfo = {
 export type HourlyLeaveInfo = {
   type: HourlyLeaveType;
   hours: number;
+  // Fascia "HH:MM", assente per i permessi creati prima che si salvasse.
+  startTime: string | null;
+  endTime: string | null;
   status: LeaveStatus;
 };
 
@@ -60,6 +63,8 @@ export function buildAttendanceMap(params: {
     startDate: Date;
     endDate: Date;
     hours: number | null;
+    startTime?: string | null;
+    endTime?: string | null;
     status: string;
   }[];
   presenceEntries: {
@@ -93,6 +98,8 @@ export function buildAttendanceMap(params: {
       entry.hourly = {
         type: leave.type,
         hours: leave.hours ?? 0,
+        startTime: leave.startTime ?? null,
+        endTime: leave.endTime ?? null,
         status: leave.status as LeaveStatus,
       };
       continue;

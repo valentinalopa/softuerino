@@ -1,11 +1,13 @@
 import { TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
-import { formatRange, formatRecoveryCredit, type RecoveryCreditRef } from "@/lib/leave-format";
+import { formatRecoveryCredit, formatWhen, type RecoveryCreditRef } from "@/lib/leave-format";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Riquadro per ciò che attende un'azione (richieste in attesa): tono warning.
+// Riquadro per ciò che attende un'azione (richieste in attesa): card bianca
+// con un accento warning a sinistra e sull'icona. Fondo neutro, così i
+// pulsanti tenui (Approva / Rifiuta) mantengono il contrasto.
 export function NotificationCard({
   icon: Icon,
   title,
@@ -16,21 +18,23 @@ export function NotificationCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="gap-3 border-warning/30 bg-warning-subtle">
+    <Card size="sm" className="gap-3 border-l-4 border-l-warning">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="size-4 text-warning-soft-foreground" />
+        <CardTitle className="flex items-center gap-2 text-base">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning-soft-foreground">
+            <Icon className="size-4" />
+          </span>
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ul className="space-y-2 text-sm">{children}</ul>
+        <ul className="divide-y divide-border-subtle text-sm">{children}</ul>
       </CardContent>
     </Card>
   );
 }
 
-// Riga della lista dentro NotificationCard, con separatore nel tono del riquadro.
+// Riga della lista dentro NotificationCard: separatore sottile tra le righe.
 export function NotificationItem({
   className,
   children,
@@ -41,7 +45,7 @@ export function NotificationItem({
   return (
     <li
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 border-b border-warning/20 pb-2 last:border-0 last:pb-0",
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5 first:pt-0 last:pb-0",
         className
       )}
     >
@@ -63,6 +67,9 @@ export function TeamPendingItem({
     type: string;
     startDate: Date;
     endDate: Date;
+    hours: number | null;
+    startTime?: string | null;
+    endTime?: string | null;
     note: string | null;
     user: { name: string };
     recoveryCredit?: RecoveryCreditRef | null;
@@ -75,7 +82,7 @@ export function TeamPendingItem({
           <span className="font-medium text-foreground">{request.user.name}</span>{" "}
           <span className="text-muted-foreground">
             · {LEAVE_TYPE_LABELS[request.type as keyof typeof LEAVE_TYPE_LABELS] ?? request.type}{" "}
-            · {formatRange(request.startDate, request.endDate)}
+            · {formatWhen(request)}
           </span>
         </p>
         {request.recoveryCredit && (

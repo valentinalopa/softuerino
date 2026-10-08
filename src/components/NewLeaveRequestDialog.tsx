@@ -14,7 +14,7 @@ import {
 import type { OpenRecoveryCredit } from "@/lib/recovery-credits";
 import type { RemainingByLeaveType } from "@/lib/leave-balance";
 import { countedLeaveDays } from "@/lib/leave-days";
-import { formatAmount } from "@/lib/leave-format";
+import { formatAmount, hoursBetween } from "@/lib/leave-format";
 import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -70,10 +70,13 @@ export function NewLeaveRequestDialog({
   // negativo è permesso, ma va detto prima di inviare.
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
-  const [hours, setHours] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  // Durata della fascia (null finché non è completa e valida).
+  const slotHours = startTime && endTime ? hoursBetween(startTime, endTime) : null;
   const typeRemaining = remaining[type as keyof RemainingByLeaveType];
   const requested = isHourly
-    ? Number(hours) || 0
+    ? (slotHours ?? 0)
     : startDate && endDate && endDate >= startDate
       ? countedLeaveDays(startDate, endDate)
       : 0;
@@ -111,7 +114,8 @@ export function NewLeaveRequestDialog({
           setCreditId(recoveryCredits[0]?.id ?? "");
           setStartDate(undefined);
           setEndDate(undefined);
-          setHours("");
+          setStartTime("");
+          setEndTime("");
         }
       }}
     >
@@ -196,17 +200,41 @@ export function NewLeaveRequestDialog({
 
             {isHourly ? (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="new-request-hours">Ore</Label>
-                <Input
-                  id="new-request-hours"
-                  name="hours"
-                  type="number"
-                  min="0.5"
-                  step="0.5"
-                  required
-                  value={hours}
-                  onChange={(event) => setHours(event.target.value)}
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="new-request-startTime">Dalle</Label>
+                    <Input
+                      id="new-request-startTime"
+                      name="startTime"
+                      type="time"
+                      step={900}
+                      required
+                      value={startTime}
+                      onChange={(event) => setStartTime(event.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="new-request-endTime">Alle</Label>
+                    <Input
+                      id="new-request-endTime"
+                      name="endTime"
+                      type="time"
+                      step={900}
+                      required
+                      value={endTime}
+                      onChange={(event) => setEndTime(event.target.value)}
+                    />
+                  </div>
+                </div>
+                {startTime && endTime && (
+                  <p
+                    className={`text-xs ${slotHours === null ? "text-destructive" : "text-muted-foreground"}`}
+                  >
+                    {slotHours === null
+                      ? "L'orario di fine deve seguire quello di inizio."
+                      : `Totale: ${formatAmount(slotHours)} ${slotHours === 1 ? "ora" : "ore"}`}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
