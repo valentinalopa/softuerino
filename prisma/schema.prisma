@@ -364,3 +364,15 @@ model LicenseKeyAccess {
 
   @@index([licenseId, createdAt])
 }
+
+// --- VPN (Utilità) ---
+// Una sezione per ogni VPN (es. una sede): link al file di configurazione
+// OpenVPN (.ovpn) e note. Le creano i super admin, le vedono tutti.
+model VpnSection {
+  id        String   @id @default(cuid())
+  name      String
+  configUrl String
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
