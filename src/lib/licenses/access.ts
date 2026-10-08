@@ -1,19 +1,20 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
-import { managedDepartmentIds } from "@/lib/departments";
+import { departmentIdsWithCap } from "@/lib/permissions";
 import { isAdminRole } from "@/lib/constants";
 
 // Chi vede le licenze di quali reparti:
 // - admin e super admin: tutte;
-// - manager di un reparto (organigramma Keycloak, claim manager_of): quelle
-//   dei reparti di cui è manager;
+// - responsabile di un reparto (organigramma Keycloak, claim manager_of):
+//   quelle dei reparti che guida, se lì il permesso "licenze" è attivo
+//   (Ruoli e permessi);
 // - gli altri: nessuna.
 export type LicenseScope = { all: true } | { all: false; departmentIds: string[] };
 
 export async function licenseScopeFor(user: { id: string; role: string }): Promise<LicenseScope | null> {
   if (isAdminRole(user.role)) return { all: true };
-  const departmentIds = await managedDepartmentIds(user.id);
+  const departmentIds = await departmentIdsWithCap(user.id, "licenze");
   return departmentIds.length > 0 ? { all: false, departmentIds } : null;
 }
 

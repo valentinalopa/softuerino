@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getAuthContext } from "@/lib/auth/session";
 import { managedDepartmentNames } from "@/lib/departments";
+import { managerCaps, membersWithCap } from "@/lib/permissions";
 import { ssoAccountUrl } from "@/lib/auth/oidc";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -29,8 +30,18 @@ export default async function AppLayout({
         })
       : 0;
 
-  // Reparti di cui è responsabile: simbolo nel menu e licenze del reparto.
+  // Reparti di cui è responsabile: simbolo nel menu e, secondo i permessi
+  // del reparto, licenze e "Il mio reparto".
   const managed = (await managedDepartmentNames([user.id])).get(user.id) ?? [];
+  const caps = await managerCaps(user.id);
+  const showReparto =
+    !isAdminRole(user.role) && (caps.has("presenze_ore") || caps.has("richieste") || caps.has("nuovi_membri"));
+  // Richieste in attesa che il responsabile può approvare.
+  const approvable = caps.has("approvare") ? await membersWithCap(user.id, "approvare") : [];
+  const repartoPendingCount =
+    !isAdminRole(user.role) && approvable.length > 0
+      ? await prisma.leaveRequest.count({ where: { status: "pending", userId: { in: approvable } } })
+      : 0;
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -42,7 +53,9 @@ export default async function AppLayout({
           managedDepartments: managed,
         }}
         teamPendingCount={teamPendingCount}
-        showLicenses={isAdminRole(user.role) || managed.length > 0}
+        showLicenses={isAdminRole(user.role) || caps.has("licenze")}
+        showReparto={showReparto}
+        repartoPendingCount={repartoPendingCount}
         ssoAccountUrl={ssoAccountUrl()}
       />
       <div className="flex min-w-0 flex-1 flex-col">

@@ -17,9 +17,11 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import { absenceConflict } from "@/lib/absence-conflicts";
+import { managerCan, managerCaps } from "@/lib/permissions";
 import {
   notifyEventInvite,
   notifyLeaveDecision,
+  notifyNewLeaveRequest,
   notifyTaskAssigned,
 } from "@/lib/email/notifications";
 import {
@@ -80,7 +82,14 @@ const SUPER_ADMIN_ONLY_ERROR = {
 };
 
 export async function createUser(formData: FormData) {
-  const currentUser = await requireAdmin();
+  // Admin e super admin; oppure un responsabile di reparto con il permesso
+  // "Creare nuovi membri" (solo ruolo Membro).
+  const currentUser = await requireWritableUser();
+  if (!currentUser) return READ_ONLY_ERROR;
+  const asManager = !isAdminRole(currentUser.role);
+  if (asManager && !(await managerCaps(currentUser.id)).has("nuovi_membri")) {
+    return { error: "Non autorizzato" };
+  }
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")
@@ -103,7 +112,10 @@ export async function createUser(formData: FormData) {
   if (!ROLES.includes(role as (typeof ROLES)[number])) {
     return { error: "Ruolo non valido" };
   }
-  if (!assignableRoles(currentUser.role).includes(role as (typeof ROLES)[number])) {
+  if (asManager && role !== "membro") {
+    return { error: "Un responsabile di reparto può creare solo membri" };
+  }
+  if (!asManager && !assignableRoles(currentUser.role).includes(role as (typeof ROLES)[number])) {
     return SUPER_ADMIN_ONLY_ERROR;
   }
   if (!EMPLOYMENT_TYPES.includes(employmentType as (typeof EMPLOYMENT_TYPES)[number])) {
@@ -124,6 +136,7 @@ export async function createUser(formData: FormData) {
   }
 
   revalidatePath("/team");
+  revalidatePath("/reparto");
 }
 
 export async function updateUser(userId: string, formData: FormData) {
@@ -423,7 +436,7 @@ export async function createLeaveRequest(formData: FormData) {
         ? "approved"
         : "pending";
 
-  await prisma.leaveRequest.create({
+  const created = await prisma.leaveRequest.create({
     data: {
       userId: targetUserId,
       type,
@@ -441,14 +454,21 @@ export async function createLeaveRequest(formData: FormData) {
   revalidatePath("/richieste");
   revalidatePath("/richieste-team");
   revalidatePath("/panoramica");
+  revalidatePath("/reparto");
   revalidatePath("/");
+  // Avviso ai responsabili ferie (e ai responsabili del reparto che possono
+  // approvare): solo per le richieste fatte dalla persona stessa.
+  if (!onBehalfOfOther) after(() => notifyNewLeaveRequest(created.id, user.id));
 }
 
 export async function updateLeaveStatus(
   requestId: string,
   status: "approved" | "rejected"
 ): Promise<ActionResult> {
-  const currentUser = await requireAdmin();
+  // Admin e super admin; oppure il responsabile del reparto di chi ha fatto la
+  // richiesta, se lì ha il permesso "Approvare le richieste".
+  const currentUser = await requireWritableUser();
+  if (!currentUser) return READ_ONLY_ERROR;
 
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
@@ -456,6 +476,12 @@ export async function updateLeaveStatus(
   });
   if (!request) {
     return { error: "Richiesta non trovata" };
+  }
+  if (!isAdminRole(currentUser.role)) {
+    // Il responsabile non vede le malattie (dato sanitario): non le gestisce.
+    if (request.type === "malattia" || !(await managerCan(currentUser.id, request.userId, "approvare"))) {
+      return { error: "Non autorizzato" };
+    }
   }
 
   // La malattia non si "approva": una malattia riportata in attesa e poi
@@ -663,6 +689,8 @@ function revalidateLeavePaths(userId: string) {
   revalidatePath("/panoramica");
   revalidatePath("/richieste-team");
   revalidatePath(`/team/${userId}`);
+  revalidatePath("/reparto");
+  revalidatePath(`/reparto/${userId}`);
   revalidatePath("/");
 }
 

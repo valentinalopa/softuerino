@@ -25,6 +25,8 @@ import {
   ExternalLink,
   KeyRound,
   Network,
+  UserStar,
+  SlidersHorizontal,
   ShieldCheck,
   EarthLock,
   type LucideIcon,
@@ -62,6 +64,8 @@ const OPERATIVITA_LINKS: NavLink[] = [
 
 // Licenze: manager di reparto (organigramma Keycloak), admin e super admin.
 const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
+// Il mio reparto: per i responsabili di reparto (secondo i permessi).
+const REPARTO_LINK: NavLink = { href: "/reparto", label: "Il mio reparto", icon: UserStar };
 // VPN e organigramma: per tutti.
 const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
 const ORG_LINK: NavLink = { href: "/organigramma", label: "Organigramma", icon: Network };
@@ -72,6 +76,9 @@ const ADMIN_LINKS: NavLink[] = [
   { href: "/team", label: "Team", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
 ];
+
+// Ruoli e permessi: solo super admin, ma sta con l'amministrazione.
+const ROLES_LINK: NavLink = { href: "/ruoli", label: "Ruoli e permessi", icon: SlidersHorizontal };
 
 // Operazioni di sistema: solo super admin.
 const SYSTEM_LINKS: NavLink[] = [
@@ -125,14 +132,20 @@ export function AppSidebar({
   currentUser,
   teamPendingCount = 0,
   showLicenses = false,
+  showReparto = false,
+  repartoPendingCount = 0,
   ssoAccountUrl = null,
 }: {
   // managedDepartments: reparti di cui è responsabile (Keycloak).
   currentUser: { name: string; email: string; role: Role; managedDepartments?: string[] };
   // Richieste del team in attesa di approvazione (admin e super admin).
   teamPendingCount?: number;
-  // Licenze e abbonamenti: manager di almeno un reparto, admin o super admin.
+  // Licenze e abbonamenti: responsabile con il permesso, admin o super admin.
   showLicenses?: boolean;
+  // "Il mio reparto": responsabili (non admin) con permessi sulle persone.
+  showReparto?: boolean;
+  // Richieste del reparto in attesa, se il responsabile può approvarle.
+  repartoPendingCount?: number;
   // Account SSO (console di Keycloak), per tutti; null senza SSO.
   ssoAccountUrl?: string | null;
 }) {
@@ -151,6 +164,7 @@ export function AppSidebar({
   }
 
   const utilityLinks: NavLink[] = [
+    ...(showReparto ? [REPARTO_LINK] : []),
     ...(showLicenses ? [LICENSES_LINK] : []),
     ORG_LINK,
     VPN_LINK,
@@ -160,7 +174,14 @@ export function AppSidebar({
     { label: null, links: COMMON_LINKS },
     { label: "Operatività", links: OPERATIVITA_LINKS },
     ...(utilityLinks.length > 0 ? [{ label: "Utilità", links: utilityLinks }] : []),
-    ...(isAdminRole(currentUser.role) ? [{ label: "Amministrazione", links: ADMIN_LINKS }] : []),
+    ...(isAdminRole(currentUser.role)
+      ? [
+          {
+            label: "Amministrazione",
+            links: currentUser.role === "super_admin" ? [...ADMIN_LINKS, ROLES_LINK] : ADMIN_LINKS,
+          },
+        ]
+      : []),
     ...(currentUser.role === "super_admin" ? [{ label: "Sistema", links: SYSTEM_LINKS }] : []),
   ];
 
@@ -188,7 +209,12 @@ export function AppSidebar({
                     ? pathname === "/"
                     : pathname === link.href || pathname.startsWith(`${link.href}/`);
                 const Icon = link.icon;
-                const badge = link.href === "/richieste-team" ? teamPendingCount : 0;
+                const badge =
+                link.href === "/richieste-team"
+                  ? teamPendingCount
+                  : link.href === "/reparto"
+                    ? repartoPendingCount
+                    : 0;
                 if (link.external) {
                   return (
                     <a
@@ -341,7 +367,7 @@ export function AppSidebar({
             }
           >
             <Menu className="size-5" />
-            {teamPendingCount > 0 && (
+            {teamPendingCount + repartoPendingCount > 0 && (
               <span className={`absolute top-2 right-2 size-2 rounded-full ${TONE_DOT.warning}`} aria-hidden="true" />
             )}
           </SheetTrigger>
