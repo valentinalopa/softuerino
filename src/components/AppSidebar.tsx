@@ -24,6 +24,7 @@ import {
   ExternalLink,
   KeyRound,
   Network,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
@@ -56,10 +57,8 @@ const OPERATIVITA_LINKS: NavLink[] = [
   { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true },
 ];
 
-// Strumenti per i manager di reparto (organigramma Keycloak), admin e super admin.
-const UTILITY_LINKS: NavLink[] = [
-  { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound },
-];
+// Licenze: manager di reparto (organigramma Keycloak), admin e super admin.
+const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
 
 const ADMIN_LINKS: NavLink[] = [
   { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
@@ -120,13 +119,16 @@ function writeCollapsed(value: boolean) {
 export function AppSidebar({
   currentUser,
   teamPendingCount = 0,
-  showUtility = false,
+  showLicenses = false,
+  ssoAccountUrl = null,
 }: {
   currentUser: { name: string; email: string; role: Role };
   // Richieste del team in attesa di approvazione (admin e super admin).
   teamPendingCount?: number;
-  // Sezione Utilità: manager di almeno un reparto, admin o super admin.
-  showUtility?: boolean;
+  // Licenze e abbonamenti: manager di almeno un reparto, admin o super admin.
+  showLicenses?: boolean;
+  // Account SSO (console di Keycloak), per tutti; null senza SSO.
+  ssoAccountUrl?: string | null;
 }) {
   const pathname = usePathname();
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
@@ -139,10 +141,14 @@ export function AppSidebar({
     writeCollapsed(!collapsed);
   }
 
+  const utilityLinks: NavLink[] = [
+    ...(showLicenses ? [LICENSES_LINK] : []),
+    ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),
+  ];
   const sections = [
     { label: null, links: COMMON_LINKS },
     { label: "Operatività", links: OPERATIVITA_LINKS },
-    ...(showUtility ? [{ label: "Utilità", links: UTILITY_LINKS }] : []),
+    ...(utilityLinks.length > 0 ? [{ label: "Utilità", links: utilityLinks }] : []),
     ...(isAdminRole(currentUser.role) ? [{ label: "Amministrazione", links: ADMIN_LINKS }] : []),
     ...(currentUser.role === "super_admin" ? [{ label: "Sistema", links: SYSTEM_LINKS }] : []),
   ];
