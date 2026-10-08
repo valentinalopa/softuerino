@@ -1,14 +1,14 @@
-import { requireAdmin } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/session";
 import { loadOrgTree, type OrgNode } from "@/lib/org";
-import { getInitials } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { LevelAvatar, ResponsabileBadge, UserLevelBadges, levelSummary } from "@/components/team/UserLevel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Organigramma in sola lettura: reparti, manager e a chi fanno capo arrivano
 // da Keycloak (gestito dall'IT).
 export default async function OrganigrammaPage() {
-  await requireAdmin();
+  // Visibile a tutti: chi è responsabile di cosa deve essere chiaro a ognuno.
+  await requireUser();
   const tree = await loadOrgTree();
 
   return (
@@ -16,9 +16,15 @@ export default async function OrganigrammaPage() {
       <div>
         <h1>Organigramma</h1>
         <p className="text-sm text-muted-foreground">
-          Reparti, manager e a chi fanno capo. Gestito in Keycloak dall&apos;IT: qui è in sola
+          Reparti, responsabili e a chi fanno capo. Gestito in Keycloak dall&apos;IT: qui è in sola
           lettura e si aggiorna quando le persone accedono a Softuerino.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Legenda:</span>
+          <UserLevelBadges role="super_admin" departments={[]} />
+          <UserLevelBadges role="admin" departments={[]} />
+          <ResponsabileBadge />
+        </div>
       </div>
       {tree.length === 0 ? (
         <Card>
@@ -67,27 +73,27 @@ function Department({ node }: { node: OrgNode }) {
   );
 }
 
-// Persone del reparto, manager per primi.
+// Persone del reparto, responsabili per primi: anello e simbolo sull'avatar
+// secondo il livello, etichetta "Responsabile" per chi guida questo reparto.
 function People({ node }: { node: OrgNode }) {
-  const managers = new Set(node.managers);
-  const people = [...node.managers, ...node.members.filter((name) => !managers.has(name))];
-  if (people.length === 0) {
+  if (node.people.length === 0) {
     return <p className="text-sm text-muted-foreground">Nessun membro ancora sincronizzato.</p>;
   }
   return (
-    <ul className="flex flex-wrap gap-x-6 gap-y-3">
-      {people.map((name) => (
-        <li key={name} className="flex items-center gap-2">
-          <Avatar size="sm">
-            <AvatarFallback>{getInitials(name)}</AvatarFallback>
-          </Avatar>
-          <span className="text-sm text-foreground">{name}</span>
-          {managers.has(name) && <Badge variant="accent">Manager</Badge>}
+    <ul className="flex flex-wrap gap-x-6 gap-y-4">
+      {node.people.map((p) => (
+        <li key={p.name} className="flex items-center gap-2.5">
+          <LevelAvatar name={p.name} role={p.role} departments={p.managed} />
+          <span className="text-sm text-foreground">{p.name}</span>
+          {p.isManager && <ResponsabileBadge />}
+          {(p.role === "admin" || p.role === "super_admin") && (
+            <span className="sr-only">{levelSummary(p.role, p.managed)}</span>
+          )}
         </li>
       ))}
       {node.managers.length === 0 && (
         <li className="flex items-center">
-          <Badge variant="neutral">Nessun manager</Badge>
+          <Badge variant="neutral">Nessun responsabile</Badge>
         </li>
       )}
     </ul>

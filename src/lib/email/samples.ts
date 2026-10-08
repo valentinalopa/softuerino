@@ -5,6 +5,7 @@ import {
   smtpTestEmail,
   taskAssignedEmail,
   licenseExpiryEmail,
+  newLeaveRequestEmail,
   type Mail,
   type Recipient,
 } from "@/lib/email/templates";
@@ -12,11 +13,12 @@ import {
 // Email di esempio per l'anteprima e le prove di Sistema → Email: stessi
 // template delle notifiche vere, con dati inventati.
 
-export const SAMPLE_KINDS = ["smtp", "leave", "event", "task", "license"] as const;
+export const SAMPLE_KINDS = ["smtp", "newleave", "leave", "event", "task", "license"] as const;
 export type SampleKind = (typeof SAMPLE_KINDS)[number];
 
 export const SAMPLE_LABELS: Record<SampleKind, string> = {
   smtp: "Email di prova SMTP",
+  newleave: "Nuova richiesta da approvare",
   leave: "Esito di una richiesta",
   event: "Invito a un evento",
   task: "Task assegnato",
@@ -34,6 +36,19 @@ export function buildSample(kind: SampleKind, recipient: Recipient, appUrl: stri
   switch (kind) {
     case "smtp":
       return smtpTestEmail(recipient, appUrl);
+    case "newleave":
+      return newLeaveRequestEmail(recipient, appUrl, {
+        requester: "Mario Rossi (esempio)",
+        type: "ferie",
+        status: "pending",
+        startDate: inDays(14),
+        endDate: inDays(18),
+        hours: null,
+        startTime: null,
+        endTime: null,
+        note: "Vacanza già prenotata.",
+        path: "/richieste-team",
+      });
     case "leave":
       return leaveDecisionEmail(recipient, appUrl, {
         type: "ferie",

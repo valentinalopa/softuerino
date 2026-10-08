@@ -149,6 +149,46 @@ export function leaveDecisionEmail(
   });
 }
 
+// Nuova richiesta di assenza, ai responsabili ferie e ai responsabili del
+// reparto che possono approvarla. La malattia non si approva: si avvisa e basta.
+export function newLeaveRequestEmail(
+  recipient: Recipient,
+  appUrl: string,
+  data: {
+    requester: string;
+    type: string;
+    status: string;
+    startDate: Date;
+    endDate: Date;
+    hours: number | null;
+    startTime: string | null;
+    endTime: string | null;
+    note: string | null;
+    path: string;
+  }
+): Mail {
+  const type = (LEAVE_TYPE_LABELS[data.type as LeaveType] ?? data.type).toLowerCase();
+  const period =
+    data.startDate.getTime() === data.endDate.getTime()
+      ? formatDate(data.startDate)
+      : `dal ${formatDate(data.startDate)} al ${formatDate(data.endDate)}`;
+  const details: Array<[string, string]> = [["Periodo", period]];
+  if (data.startTime && data.endTime) details.push(["Orario", `${data.startTime}–${data.endTime}`]);
+  if (data.hours !== null) details.push(["Durata", `${data.hours} ore`]);
+  const pending = data.status === "pending";
+  // "ferie", "un permesso", "un'assenza", "una malattia"
+  const article = type === "ferie" ? "" : type.startsWith("assenza") ? "un'" : type === "malattia" ? "una " : "un ";
+  return render(recipient, appUrl, {
+    subject: pending ? `Nuova richiesta: ${type} di ${data.requester}` : `${type.charAt(0).toUpperCase()}${type.slice(1)} registrata: ${data.requester}`,
+    intro: pending
+      ? [{ strong: data.requester }, ` ha chiesto ${article}${type}: è in attesa di approvazione.`]
+      : [{ strong: data.requester }, ` ha registrato ${article}${type}.`],
+    details,
+    note: data.note ?? undefined,
+    link: { path: data.path, label: pending ? "Apri le richieste da approvare" : "Apri le richieste" },
+  });
+}
+
 export function eventInviteEmail(
   recipient: Recipient,
   appUrl: string,

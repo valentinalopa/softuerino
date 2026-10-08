@@ -1,4 +1,6 @@
 import { requireUser } from "@/lib/auth/session";
+import { managedDepartmentNames } from "@/lib/departments";
+import { UserLevelBadges } from "@/components/team/UserLevel";
 import { ROLE_LABELS, EMPLOYMENT_TYPE_LABELS, type Role, type EmploymentType } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileForm } from "@/components/profilo/ProfileForm";
@@ -7,6 +9,7 @@ import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 
 export default async function ProfiloPage() {
   const user = await requireUser();
+  const managed = (await managedDepartmentNames([user.id])).get(user.id) ?? [];
   // Con Keycloak la password locale ce l'hanno solo i super admin (emergenza).
   const localPassword = !isOidcConfigured() || user.role === "super_admin";
 
@@ -17,6 +20,9 @@ export default async function ProfiloPage() {
         <p className="text-sm text-muted-foreground">
           Gestisci le tue informazioni personali e la sicurezza dell&apos;account.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <UserLevelBadges role={user.role} departments={managed} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -54,6 +60,12 @@ export default async function ProfiloPage() {
             <span className="text-muted-foreground">Ruolo</span>
             <span>{ROLE_LABELS[user.role as Role]}</span>
           </div>
+          {managed.length > 0 && (
+            <div className="flex justify-between gap-3 border-b border-border pb-2">
+              <span className="text-muted-foreground">Responsabile di</span>
+              <span className="text-right">{managed.join(", ")}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">Tipo di rapporto</span>
             <span>{EMPLOYMENT_TYPE_LABELS[user.employmentType as EmploymentType]}</span>

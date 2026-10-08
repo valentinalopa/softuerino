@@ -1,9 +1,12 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getEmailSettings, sendMail } from "@/lib/email/mailer";
+import { isAdminRole } from "@/lib/constants";
+import { approversOf } from "@/lib/permissions";
 import {
   eventInviteEmail,
   leaveDecisionEmail,
+  newLeaveRequestEmail,
   taskAssignedEmail,
   type Mail,
   type Recipient,
@@ -53,6 +56,49 @@ export async function notifyLeaveDecision(requestId: string, actorId: string) {
   if (!request) return;
   await deliver(await activeRecipients([request.userId], actorId), (recipient, appUrl) =>
     leaveDecisionEmail(recipient, appUrl, request)
+  );
+}
+
+// Nuova richiesta di assenza: ai responsabili ferie (scelti in Ruoli e
+// permessi) e ai responsabili del reparto che possono approvarla.
+export async function notifyNewLeaveRequest(requestId: string, actorId: string) {
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      userId: true,
+      type: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      hours: true,
+      startTime: true,
+      endTime: true,
+      note: true,
+      user: { select: { name: true } },
+    },
+  });
+  if (!request || (request.status !== "pending" && request.status !== "registrata")) return;
+  const [approvers, notified] = await Promise.all([
+    approversOf(request.userId),
+    prisma.user.findMany({ where: { leaveNotify: true }, select: { id: true } }),
+  ]);
+  const ids = [...new Set([...approvers, ...notified.map((u) => u.id)])].filter((id) => id !== request.userId);
+  const recipients = (
+    await prisma.user.findMany({
+      where: { id: { in: ids.filter((id) => id !== actorId) }, active: true },
+      select: { name: true, email: true, role: true },
+    })
+  )
+    // La malattia è un dato sanitario: l'avviso va solo ad admin e super admin.
+    .filter((r) => request.type !== "malattia" || isAdminRole(r.role));
+  // Admin: pagina "Richieste del team"; responsabili: "Il mio reparto".
+  const roleByEmail = new Map(recipients.map((r) => [r.email, r.role]));
+  await deliver(recipients, (recipient, appUrl) =>
+    newLeaveRequestEmail(recipient, appUrl, {
+      ...request,
+      requester: request.user.name,
+      path: isAdminRole(roleByEmail.get(recipient.email) ?? "") ? "/richieste-team" : "/reparto",
+    })
   );
 }
 

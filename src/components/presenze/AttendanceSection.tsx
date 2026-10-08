@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { appendQuery } from "@/lib/utils";
 import { addMonths, endOfMonth, formatMonthYear, startOfMonth } from "@/lib/calendar-utils";
 import {
@@ -16,9 +17,13 @@ export async function AttendanceSection({
   editable,
   basePath,
   monthParam,
+  viewer,
 }: {
   userId: string;
   editable: boolean;
+  // Chi guarda, se non è né la persona né un admin (es. il responsabile di
+  // reparto): la malattia gli arriva come "assenza".
+  viewer?: { id: string; role: string };
   // Pagina che ospita la sezione (es. "/presenze" o "/team/abc?tab=presenze"):
   // la navigazione mese aggiunge solo ?month=... a questo href.
   basePath: string;
@@ -45,7 +50,10 @@ export async function AttendanceSection({
     }),
   ]);
 
-  const attendanceMap = buildAttendanceMap({ leaveRequests, presenceEntries });
+  const attendanceMap = buildAttendanceMap({
+    leaveRequests: viewer ? leaveRequests.map((leave) => maskLeaveForViewer(leave, viewer)) : leaveRequests,
+    presenceEntries,
+  });
 
   return (
     <AttendanceMonthCalendar

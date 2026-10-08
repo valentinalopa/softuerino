@@ -26,6 +26,9 @@ model User {
   // Reparti a cui fanno capo i reparti dell'utente (claim "reports_to" di
   // Keycloak, nomi separati da virgola); vuoto = vertice dell'organigramma.
   reportsTo      String   @default("")
+  // Responsabile ferie: riceve un'email per ogni nuova richiesta di assenza
+  // (scelto dai super admin in Ruoli e permessi).
+  leaveNotify    Boolean  @default(false)
 
   sessions               Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")
@@ -289,6 +292,9 @@ model EmailSettings {
 model Department {
   id        String   @id @default(cuid())
   name      String   @unique // nome del gruppo Keycloak (es. "IT")
+  // Cosa possono fare i responsabili di questo reparto (CSV di MANAGER_CAPS),
+  // deciso dai super admin in Amministrazione → Ruoli e permessi.
+  managerPermissions String   @default("licenze,presenze_ore")
   createdAt DateTime @default(now())
 
   members  UserDepartment[]
@@ -346,8 +352,9 @@ model LicenseActivation {
   createdById String?
   createdAt   DateTime @default(now())
 
-  license   License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
-  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  license    License            @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  createdBy  User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  keyAccesses LicenseKeyAccess[]
 
   @@index([licenseId])
 }
@@ -358,10 +365,16 @@ model LicenseKeyAccess {
   licenseId String
   userId    String
   action    String // show | copy
+  // Dove viene usata: la chiave si vede solo indicando un'attivazione (nuova
+  // o già registrata). usedFor ne conserva il nome anche se l'attivazione
+  // viene poi rimossa.
+  activationId String?
+  usedFor      String?
   createdAt DateTime @default(now())
 
-  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  license    License            @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activation LicenseActivation? @relation(fields: [activationId], references: [id], onDelete: SetNull)
 
   @@index([licenseId, createdAt])
 }

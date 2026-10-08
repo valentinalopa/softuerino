@@ -10,7 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/leave-format";
 import { formatTime } from "@/lib/calendar-utils";
-import { LicenseKeyField } from "@/components/utilita/LicenseKeyField";
+import { LicenseQuickKey } from "@/components/utilita/LicenseQuickKey";
 import { LicenseActivations } from "@/components/utilita/LicenseActivations";
 import { LicenseForm } from "@/components/utilita/LicenseForm";
 import { DeleteLicenseButton } from "@/components/utilita/DeleteLicenseButton";
@@ -101,7 +101,17 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
               <CardTitle>Chiave</CardTitle>
             </CardHeader>
             <CardContent>
-              <LicenseKeyField licenseId={license.id} masked={maskedKey(license.keyHint)} />
+              <LicenseQuickKey
+                licenseId={license.id}
+                name={license.name}
+                masked={maskedKey(license.keyHint)}
+                activations={license.activations.map((a) => ({ id: a.id, label: a.label, note: a.note }))}
+                limit={license.activationLimit}
+                withLabels
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Per vederla o copiarla si indica dove viene usata: ogni accesso viene registrato.
+              </p>
             </CardContent>
           </Card>
 
@@ -127,7 +137,7 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
           <Card>
             <CardHeader>
               <CardTitle>Accessi alla chiave</CardTitle>
-              <CardDescription>Gli ultimi 20: chi l&apos;ha vista o copiata.</CardDescription>
+              <CardDescription>Gli ultimi 20: chi l&apos;ha vista o copiata, e per cosa.</CardDescription>
             </CardHeader>
             <CardContent>
               {license.keyAccesses.length === 0 ? (
@@ -142,6 +152,7 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
                         {a.user.name}{" "}
                         <span className="text-muted-foreground">
                           · {a.action === "copy" ? "copiata" : "mostrata"}
+                          {a.usedFor && ` per ${a.usedFor}`}
                         </span>
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">

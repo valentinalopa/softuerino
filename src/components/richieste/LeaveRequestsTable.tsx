@@ -50,18 +50,18 @@ function typeLabel(type: string) {
 
 // Stato della richiesta: in attesa → Approva/Rifiuta, altrimenti la si può
 // riportare in attesa (solo admin, cioè dove showActions è attivo).
+// Il responsabile di reparto (pendingOnly) approva o rifiuta e basta.
 function RequestActions({
   request,
   compact = false,
+  pendingOnly = false,
 }: {
   request: LeaveRequestRow;
   compact?: boolean;
+  pendingOnly?: boolean;
 }) {
-  return request.status === "pending" ? (
-    <ApproveRejectActions requestId={request.id} />
-  ) : (
-    <RevertToPendingAction requestId={request.id} compact={compact} />
-  );
+  if (request.status === "pending") return <ApproveRejectActions requestId={request.id} />;
+  return pendingOnly ? null : <RevertToPendingAction requestId={request.id} compact={compact} />;
 }
 
 // Eliminazione definitiva, solo super admin (canDelete).
@@ -91,12 +91,15 @@ export function LeaveRequestsTable({
   requests,
   showMember = false,
   showActions = false,
+  pendingOnly = false,
   canDelete = false,
   emptyMessage = "Nessuna richiesta ancora.",
 }: {
   requests: LeaveRequestRow[];
   showMember?: boolean;
   showActions?: boolean;
+  // Solo Approva/Rifiuta sulle richieste in attesa (responsabile di reparto).
+  pendingOnly?: boolean;
   // Super admin: può eliminare le richieste.
   canDelete?: boolean;
   emptyMessage?: string;
@@ -135,7 +138,7 @@ export function LeaveRequestsTable({
               <span className="text-xs text-muted-foreground">Inviata il {formatDate(request.createdAt)}</span>
               {(showActions || canDelete) && (
                 <div className="flex items-start gap-1">
-                  {showActions && <RequestActions request={request} compact />}
+                  {showActions && <RequestActions request={request} compact pendingOnly={pendingOnly} />}
                   {canDelete && <DeleteRequestButton request={request} />}
                 </div>
               )}
@@ -205,7 +208,7 @@ export function LeaveRequestsTable({
                 onKeyDown={(event) => event.stopPropagation()}
               >
                 <div className="flex items-start justify-end gap-1">
-                  {showActions && <RequestActions request={request} compact />}
+                  {showActions && <RequestActions request={request} compact pendingOnly={pendingOnly} />}
                   {canDelete && <DeleteRequestButton request={request} />}
                 </div>
               </TableCell>
@@ -259,7 +262,7 @@ export function LeaveRequestsTable({
               {(showActions || canDelete) && (
                 <SheetFooter>
                   {canDelete && <DeleteRequestButton request={selected} withText />}
-                  {showActions && <RequestActions request={selected} />}
+                  {showActions && <RequestActions request={selected} pendingOnly={pendingOnly} />}
                 </SheetFooter>
               )}
             </>

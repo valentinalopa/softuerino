@@ -179,16 +179,42 @@ export async function removeLicenseActivation(activationId: string): Promise<Act
   revalidatePath(`/utilita/licenze/${activation.licenseId}`);
 }
 
-// Chiave completa, solo su richiesta esplicita ("Mostra" o "Copia"): ogni
-// accesso finisce nel registro della licenza.
+// Chiave completa, solo su richiesta esplicita ("Mostra" o "Copia") e solo
+// dicendo dove viene usata: un'attivazione già registrata (activationId) o una
+// nuova (activationId "new" + label, entro il limite di attivazioni). Ogni
+// accesso finisce nel registro della licenza con l'uso indicato.
 export async function revealLicenseKey(
   licenseId: string,
-  action: string
+  action: string,
+  formData: FormData
 ): Promise<{ error: string } | { key: string }> {
   if (action !== "show" && action !== "copy") return { error: "Azione non valida" };
   const found = await findAccessibleLicense(licenseId);
   if ("error" in found) return found.error!;
   if (!found.license.keyEncrypted) return { error: "Nessuna chiave salvata" };
+
+  const activationId = String(formData.get("activationId") ?? "new");
+  const label = String(formData.get("label") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim() || null;
+  let existing: { id: string; label: string } | null = null;
+  if (activationId === "new") {
+    if (!label) return { error: "Indica dove la usi (sito, PC, account...)" };
+    if (label.length > 120) return { error: "Testo troppo lungo (massimo 120 caratteri)" };
+    if (found.license.activationLimit !== null) {
+      const used = await prisma.licenseActivation.count({ where: { licenseId } });
+      if (used >= found.license.activationLimit) {
+        return {
+          error: `Limite raggiunto (${used} su ${found.license.activationLimit}): scegli un'attivazione già registrata o liberane una`,
+        };
+      }
+    }
+  } else {
+    existing = await prisma.licenseActivation.findFirst({
+      where: { id: activationId, licenseId },
+      select: { id: true, label: true },
+    });
+    if (!existing) return { error: "Attivazione non trovata" };
+  }
 
   let key: string;
   try {
@@ -196,7 +222,14 @@ export async function revealLicenseKey(
   } catch {
     return { error: "Chiave non leggibile (chiave di cifratura del server cambiata?)" };
   }
-  await prisma.licenseKeyAccess.create({ data: { licenseId, userId: found.user.id, action } });
+  await prisma.$transaction(async (tx) => {
+    const activation =
+      existing ?? (await tx.licenseActivation.create({ data: { licenseId, label, note, createdById: found.user.id } }));
+    await tx.licenseKeyAccess.create({
+      data: { licenseId, userId: found.user.id, action, activationId: activation.id, usedFor: activation.label },
+    });
+  });
+  revalidatePath("/utilita/licenze");
   revalidatePath(`/utilita/licenze/${licenseId}`);
   return { key };
 }
