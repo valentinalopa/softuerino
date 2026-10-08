@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { purgeExpiredDoneTasks } from "@/lib/actions";
-import { TASK_DONE_RETENTION_DAYS, isAdminRole } from "@/lib/constants";
+import { TASK_DONE_RETENTION_DAYS } from "@/lib/constants";
 import { NewTaskDialog } from "@/components/task/NewTaskDialog";
 import { TaskFilters } from "@/components/task/TaskFilters";
 import { TasksTable } from "@/components/task/TasksTable";
@@ -15,7 +15,7 @@ export default async function TaskPage({
 }: {
   searchParams: Promise<{ user?: string; client?: string; view?: string }>;
 }) {
-  const currentUser = await requireUser();
+  await requireUser();
 
   const { user: userParam, client: clientParam, view: viewParam } = await searchParams;
   const view: View = viewParam === "completati" ? "completati" : "attivi";
@@ -97,8 +97,6 @@ export default async function TaskPage({
         <CardContent>
           <TasksTable
             tasks={tasks}
-            currentUserId={currentUser.id}
-            isAdmin={isAdminRole(currentUser.role)}
             users={users}
             clients={clients}
             emptyMessage={

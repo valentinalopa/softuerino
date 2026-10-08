@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
 import { formatRecoveryCredit, formatWhen, type RecoveryCreditRef } from "@/lib/leave-format";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
+import { DeleteRequestButton } from "@/components/richieste/LeaveRequestsTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Riquadro per ciò che attende un'azione (richieste in attesa): card bianca
@@ -59,9 +60,12 @@ export function NotificationItem({
 export function TeamPendingItem({
   request,
   overdraft,
+  canDelete = false,
 }: {
   // Avviso se l'approvazione manda il saldo in negativo (getPendingOverdrafts).
   overdraft?: string;
+  // Super admin: può eliminare la richiesta.
+  canDelete?: boolean;
   request: {
     id: string;
     type: string;
@@ -100,7 +104,10 @@ export function TeamPendingItem({
           </p>
         )}
       </div>
-      <ApproveRejectActions requestId={request.id} />
+      <div className="flex items-start gap-1">
+        <ApproveRejectActions requestId={request.id} />
+        {canDelete && <DeleteRequestButton request={request} />}
+      </div>
     </NotificationItem>
   );
 }

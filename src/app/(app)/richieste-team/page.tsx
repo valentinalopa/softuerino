@@ -22,6 +22,8 @@ export default async function RichiesteTeamPage({
   searchParams: Promise<{ view?: string; user?: string; type?: string; year?: string }>;
 }) {
   const user = await requireAdmin();
+  // Eliminare una richiesta: solo super admin.
+  const canDelete = user.role === "super_admin";
   // endDate è a mezzanotte dell'ultimo giorno incluso: "passata" solo da
   // domani in poi, non dalle 00:01 dell'ultimo giorno.
   const today = startOfDay(new Date());
@@ -94,7 +96,9 @@ export default async function RichiesteTeamPage({
           ]}
         />
 
-        {view === "da_approvare" && <PendingView where={pendingWhere} include={include} />}
+        {view === "da_approvare" && (
+          <PendingView where={pendingWhere} include={include} canDelete={canDelete} />
+        )}
 
         {view === "in_programma" && (
           <Card>
@@ -107,6 +111,7 @@ export default async function RichiesteTeamPage({
                 })}
                 showMember
                 showActions
+                canDelete={canDelete}
                 emptyMessage="Nessuna assenza in programma."
               />
             </CardContent>
@@ -114,7 +119,12 @@ export default async function RichiesteTeamPage({
         )}
 
         {view === "storico" && (
-          <HistoryView where={historyWhere} include={include} params={params} />
+          <HistoryView
+            where={historyWhere}
+            include={include}
+            params={params}
+            canDelete={canDelete}
+          />
         )}
       </div>
     </div>
@@ -129,9 +139,11 @@ type Include = {
 async function PendingView({
   where,
   include,
+  canDelete,
 }: {
   where: Prisma.LeaveRequestWhereInput;
   include: Include;
+  canDelete: boolean;
 }) {
   const pending = await prisma.leaveRequest.findMany({
     where,
@@ -160,6 +172,7 @@ async function PendingView({
           key={request.id}
           request={request}
           overdraft={overdrafts.get(request.id)}
+          canDelete={canDelete}
         />
       ))}
     </NotificationCard>
@@ -170,10 +183,12 @@ async function HistoryView({
   where,
   include,
   params,
+  canDelete,
 }: {
   where: Prisma.LeaveRequestWhereInput;
   include: Include;
   params: { user?: string; type?: string; year?: string };
+  canDelete: boolean;
 }) {
   const year = params.year && /^\d{4}$/.test(params.year) ? Number(params.year) : null;
   const type = LEAVE_TYPES.includes(params.type as (typeof LEAVE_TYPES)[number])
@@ -231,6 +246,7 @@ async function HistoryView({
             requests={requests}
             showMember
             showActions
+            canDelete={canDelete}
             emptyMessage={
               filtered
                 ? "Nessuna richiesta corrisponde ai filtri selezionati."

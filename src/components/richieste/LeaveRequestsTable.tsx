@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import type { Tone } from "@/lib/tones";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
 import { RevertToPendingAction } from "@/components/richieste/RevertToPendingAction";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
+import { deleteLeaveRequest } from "@/lib/actions";
 import {
   Table,
   TableBody,
@@ -55,15 +57,41 @@ function RequestActions({ request }: { request: LeaveRequestRow }) {
   );
 }
 
+// Eliminazione definitiva, solo super admin (canDelete).
+export function DeleteRequestButton({
+  request,
+  withText = false,
+}: {
+  request: Pick<
+    LeaveRequestRow,
+    "id" | "type" | "startDate" | "endDate" | "hours" | "startTime" | "endTime" | "user"
+  >;
+  withText?: boolean;
+}) {
+  const who = request.user ? ` di ${request.user.name}` : "";
+  return (
+    <ConfirmDeleteButton
+      withText={withText}
+      label={`Elimina richiesta: ${typeLabel(request.type)}${who}, ${formatPeriod(request)}`}
+      title={`Eliminare la richiesta${who}?`}
+      description={`${typeLabel(request.type)}, ${formatPeriod(request)}. La richiesta sparisce da calendari e storico e i saldi si ricalcolano. L'operazione non è reversibile.`}
+      onConfirm={() => deleteLeaveRequest(request.id)}
+    />
+  );
+}
+
 export function LeaveRequestsTable({
   requests,
   showMember = false,
   showActions = false,
+  canDelete = false,
   emptyMessage = "Nessuna richiesta ancora.",
 }: {
   requests: LeaveRequestRow[];
   showMember?: boolean;
   showActions?: boolean;
+  // Super admin: può eliminare le richieste.
+  canDelete?: boolean;
   emptyMessage?: string;
 }) {
   const colSpan = showMember ? 7 : 6;
@@ -133,7 +161,10 @@ export function LeaveRequestsTable({
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
               >
-                {showActions && <RequestActions request={request} />}
+                <div className="flex items-start justify-end gap-1">
+                  {showActions && <RequestActions request={request} />}
+                  {canDelete && <DeleteRequestButton request={request} />}
+                </div>
               </TableCell>
             </TableRow>
           ))}
@@ -182,9 +213,10 @@ export function LeaveRequestsTable({
                   </div>
                 </dl>
               </SheetBody>
-              {showActions && (
+              {(showActions || canDelete) && (
                 <SheetFooter>
-                  <RequestActions request={selected} />
+                  {canDelete && <DeleteRequestButton request={selected} withText />}
+                  {showActions && <RequestActions request={selected} />}
                 </SheetFooter>
               )}
             </>

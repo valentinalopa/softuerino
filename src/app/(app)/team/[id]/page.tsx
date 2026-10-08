@@ -136,6 +136,7 @@ export default async function TeamMemberPage({
         <RichiesteTab
           memberId={member.id}
           employmentType={member.employmentType as EmploymentType}
+          canDelete={currentUser.role === "super_admin"}
         />
       )}
     </div>
@@ -247,9 +248,11 @@ async function SaldiTab({
 async function RichiesteTab({
   memberId,
   employmentType,
+  canDelete,
 }: {
   memberId: string;
   employmentType: EmploymentType;
+  canDelete: boolean;
 }) {
   const [leaveRequests, recoveryCredits, balance] = await Promise.all([
     prisma.leaveRequest.findMany({
@@ -277,6 +280,7 @@ async function RichiesteTab({
           <LeaveRequestsTable
             requests={leaveRequests}
             showActions
+            canDelete={canDelete}
             emptyMessage="Nessuna richiesta ancora."
           />
         </CardContent>

@@ -6,7 +6,8 @@ import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
 import type { Tone } from "@/lib/tones";
 import { TaskStatusSelect } from "@/components/task/TaskStatusSelect";
-import { DeleteTaskButton } from "@/components/task/DeleteTaskButton";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
+import { deleteTask } from "@/lib/actions";
 import { EditTaskSheet } from "@/components/task/EditTaskSheet";
 import {
   Table,
@@ -39,16 +40,11 @@ export function PriorityBadge({ priority }: { priority: TaskPriority }) {
 
 export function TasksTable({
   tasks,
-  currentUserId,
-  isAdmin,
   users,
   clients,
   emptyMessage = "Nessun task ancora.",
 }: {
   tasks: TaskRow[];
-  // Tutti modificano qualunque task; eliminarlo solo admin e assegnatari.
-  currentUserId: string;
-  isAdmin: boolean;
   // Opzioni del pannello di modifica (stesse di "Nuovo task").
   users: { id: string; name: string }[];
   clients: { id: string; name: string }[];
@@ -116,9 +112,12 @@ export function TasksTable({
                 {task.dueDate ? formatDate(task.dueDate) : "—"}
               </TableCell>
               <TableCell className="text-right">
-                {(isAdmin || task.assignees.some((a) => a.user.id === currentUserId)) && (
-                  <DeleteTaskButton taskId={task.id} />
-                )}
+                <ConfirmDeleteButton
+                  label={`Elimina ${task.title}`}
+                  title={`Eliminare "${task.title}"?`}
+                  description="Il task viene eliminato per tutti. L'operazione non è reversibile."
+                  onConfirm={() => deleteTask(task.id)}
+                />
               </TableCell>
             </TableRow>
           ))}

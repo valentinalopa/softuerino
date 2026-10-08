@@ -524,6 +524,23 @@ export async function revertLeaveToPending(requestId: string): Promise<ActionRes
   revalidateLeavePaths(request.userId);
 }
 
+// Solo super admin: elimina una richiesta (ferie, permesso, malattia...) in
+// qualunque stato, es. inserita per errore. I saldi si ricalcolano da soli
+// (si basano sulle richieste approvate) e un recupero da fare collegato torna
+// a contare solo le richieste rimaste.
+export async function deleteLeaveRequest(requestId: string): Promise<ActionResult> {
+  await requireSuperAdmin();
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: { userId: true },
+  });
+  if (!request) {
+    return { error: "Richiesta non trovata (forse è già stata eliminata)" };
+  }
+  await prisma.leaveRequest.delete({ where: { id: requestId } });
+  revalidateLeavePaths(request.userId);
+}
+
 // Saldi residui impostati dal super admin (es. ricopiati dall'Excel). Per
 // ogni valore si salva la rettifica che, nell'anno corrente, porta il residuo
 // esattamente al numero inserito; da lì in poi le richieste approvate lo
@@ -1142,18 +1159,6 @@ export async function createTask(formData: FormData) {
   after(() => notifyTaskAssigned(task.id, assigneeIds, user.id));
 }
 
-// Eliminare un task resta ad admin e assegnatari: modificarlo (stato e campi)
-// invece può chiunque nel team, i task sono condivisi.
-async function canDeleteTask(taskId: string) {
-  const user = await requireUser();
-  if (isAdminRole(user.role)) return true;
-
-  const isAssignee = await prisma.taskAssignee.findUnique({
-    where: { taskId_userId: { taskId, userId: user.id } },
-  });
-  return Boolean(isAssignee);
-}
-
 export async function updateTaskStatus(
   taskId: string,
   status: string
@@ -1213,10 +1218,9 @@ export async function updateTask(taskId: string, formData: FormData): Promise<Ac
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
   if (!(await requireWritableUser())) return READ_ONLY_ERROR;
-  if (!(await canDeleteTask(taskId))) {
-    return { error: "Solo gli assegnatari o un admin possono eliminare questo task" };
-  }
-  await prisma.task.delete({ where: { id: taskId } });
+  // I task sono condivisi: chiunque nel team li modifica e li elimina.
+  const deleted = await prisma.task.deleteMany({ where: { id: taskId } });
+  if (deleted.count === 0) return { error: "Task non trovato (forse è già stato eliminato)" };
   revalidatePath("/task");
 }
 

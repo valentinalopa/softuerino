@@ -154,6 +154,7 @@ export default async function RichiestePage({
           <CardContent>
             <LeaveRequestsTable
               requests={range === "upcoming" ? ownUpcoming : ownPast}
+              canDelete={user.role === "super_admin"}
               emptyMessage={
                 range === "upcoming" ? "Nessuna richiesta in programma." : "Nessuna richiesta conclusa."
               }
