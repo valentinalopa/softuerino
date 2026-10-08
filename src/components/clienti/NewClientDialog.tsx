@@ -17,6 +17,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 export function NewClientDialog() {
   const [open, setOpen] = useState(false);
@@ -56,7 +57,7 @@ export function NewClientDialog() {
         <SheetHeader>
           <SheetTitle>Nuovo cliente</SheetTitle>
         </SheetHeader>
-        <form action={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
           <SheetBody className="space-y-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-client-name">Nome cliente</Label>

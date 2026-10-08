@@ -33,6 +33,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 type ClientRow = { id: string; name: string; active: boolean; categories: string };
 
@@ -100,7 +101,7 @@ export function ClientRowActions({ client }: { client: ClientRow }) {
           <SheetHeader>
             <SheetTitle>Modifica cliente</SheetTitle>
           </SheetHeader>
-          <form action={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
             <SheetBody className="space-y-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor={`client-name-${client.id}`}>Nome cliente</Label>

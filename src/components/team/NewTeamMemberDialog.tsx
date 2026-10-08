@@ -22,6 +22,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 // `roles`: i ruoli che l'utente corrente può assegnare (un admin non crea
 // super admin).
@@ -72,7 +73,7 @@ export function NewTeamMemberDialog({
         <SheetHeader>
           <SheetTitle>Nuovo membro</SheetTitle>
         </SheetHeader>
-        <form action={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
           <SheetBody className="space-y-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-user-name">Nome</Label>

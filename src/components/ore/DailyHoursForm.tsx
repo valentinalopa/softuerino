@@ -7,6 +7,7 @@ import { saveDailyTimeEntries } from "@/lib/actions";
 import { Input } from "@/components/ui/input";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { formatHours } from "@/lib/ore-utils";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 export function DailyHoursForm({
   dateValue,
@@ -56,7 +57,7 @@ export function DailyHoursForm({
   );
 
   return (
-    <form action={handleSubmit} className="space-y-3">
+    <form onSubmit={submitKeepingValues(handleSubmit)} className="space-y-3">
       <input type="hidden" name="date" value={dateValue} />
       <input type="hidden" name="userId" value={userId} />
       <div className="divide-y overflow-hidden surface">

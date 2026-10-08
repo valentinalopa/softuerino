@@ -14,6 +14,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 export function NewTaskDialog({
   users,
@@ -59,7 +60,7 @@ export function NewTaskDialog({
         <SheetHeader>
           <SheetTitle>Nuovo task</SheetTitle>
         </SheetHeader>
-        <form action={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
           <SheetBody className="space-y-3">
             <TaskFields idPrefix="new-task" users={users} clients={clients} />
 

@@ -1,19 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { changeOwnPassword } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TONE_TEXT } from "@/lib/tones";
+import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 
 export function PasswordForm() {
-  const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
 
-  async function handleSubmit(formData: FormData) {
+  async function handleSubmit(formData: FormData, form: HTMLFormElement) {
     setError(null);
     setSuccess(false);
     setPending(true);
@@ -23,7 +23,7 @@ export function PasswordForm() {
         setError(result.error);
         return;
       }
-      formRef.current?.reset();
+      form.reset();
       setSuccess(true);
     } catch {
       setError("Errore imprevisto");
@@ -33,7 +33,7 @@ export function PasswordForm() {
   }
 
   return (
-    <form ref={formRef} action={handleSubmit} className="space-y-3">
+    <form onSubmit={submitKeepingValues(handleSubmit)} className="space-y-3">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="current-password">Password attuale</Label>
         <Input id="current-password" name="currentPassword" type="password" required />
