@@ -29,6 +29,8 @@ model User {
   // Responsabile ferie: riceve un'email per ogni nuova richiesta di assenza
   // (scelto dai super admin in Ruoli e permessi).
   leaveNotify    Boolean  @default(false)
+  // Riceve le richieste di nuovi utenti (se nessuno: tutti i super admin).
+  accountNotify  Boolean  @default(false)
 
   sessions               Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")
@@ -46,6 +48,8 @@ model User {
   licenseActivations     LicenseActivation[]
   licenseKeyAccesses     LicenseKeyAccess[]
   vpnDownloads           VpnDownload[]
+  accountRequests        AccountRequest[]   @relation("AccountRequester")
+  accountRequestsHandled AccountRequest[]   @relation("AccountHandler")
 }
 
 // Sessione di login: token opaco in cookie httpOnly, riga cancellabile per logout/revoca
@@ -292,12 +296,14 @@ model EmailSettings {
 model Department {
   id        String   @id @default(cuid())
   name      String   @unique // nome del gruppo Keycloak (es. "IT")
-  // Cosa possono fare i responsabili di questo reparto (CSV di MANAGER_CAPS),
-  // deciso dai super admin in Amministrazione → Ruoli e permessi.
-  managerPermissions String   @default("licenze,presenze_ore")
+  // Permessi personalizzati per membri e responsabili di questo reparto (JSON,
+  // vedi permission-rules.ts); null = impostazioni generali.
+  permissions String?
   createdAt DateTime @default(now())
 
   members  UserDepartment[]
+  accountRequests AccountRequest[]
+  licenseShares   LicenseDepartment[]
   licenses License[]
 }
 
@@ -326,6 +332,16 @@ model License {
   keyEncrypted    String?
   keyHint         String?
   activationLimit Int? // null = illimitate
+  // Condivisa con altri reparti (oltre a departmentId, il reparto principale)
+  // e/o visibile a chiunque abbia accesso a Softuerino.
+  visibleToAll    Boolean   @default(false)
+  // Account con cui è stata acquistata o si accede (es. Adobe) e password:
+  // cifrati come la chiave. L'account lo vedono in chiaro solo i super admin,
+  // gli altri (come la password) indicando dove lo usano; accountHint = prime
+  // 3 lettere per mostrarlo mascherato.
+  accountEncrypted  String?
+  accountHint       String?
+  passwordEncrypted String?
   expiresAt       DateTime?
   reminderDays    Int       @default(7) // primo avviso N giorni prima, il secondo 1 giorno prima
   notes           String?
@@ -339,9 +355,22 @@ model License {
   department  Department          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   activations LicenseActivation[]
   keyAccesses LicenseKeyAccess[]
+  sharedDepartments LicenseDepartment[]
 
   @@index([departmentId])
   @@index([expiresAt])
+}
+
+// Reparti con cui una licenza è condivisa (oltre al reparto principale).
+model LicenseDepartment {
+  licenseId    String
+  departmentId String
+
+  license    License    @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([licenseId, departmentId])
+  @@index([departmentId])
 }
 
 model LicenseActivation {
@@ -365,6 +394,7 @@ model LicenseKeyAccess {
   licenseId String
   userId    String
   action    String // show | copy
+  field     String   @default("key") // key | password | account
   // Dove viene usata: la chiave si vede solo indicando un'attivazione (nuova
   // o già registrata). usedFor ne conserva il nome anche se l'attivazione
   // viene poi rimossa.
@@ -407,4 +437,35 @@ model VpnDownload {
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([vpnSectionId, createdAt])
+}
+
+// --- Permessi (Amministrazione → Ruoli e permessi) ---
+// Impostazioni generali: una sola riga (id 1), regole in JSON; senza riga
+// valgono i predefiniti di permission-rules.ts.
+model PermissionSettings {
+  id        Int      @id @default(1)
+  rules     String
+  updatedAt DateTime @updatedAt
+}
+
+// Richiesta di un nuovo account da parte di chi ha il permesso "Richiedere
+// nuovi utenti": l'account si crea in Keycloak, qui si tiene traccia.
+model AccountRequest {
+  id            String    @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String
+  departmentId  String?
+  note          String?
+  status        String    @default("pending") // pending | done | rejected
+  requestedById String?
+  handledById   String?
+  createdAt     DateTime  @default(now())
+  handledAt     DateTime?
+
+  department  Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  requestedBy User?       @relation("AccountRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  handledBy   User?       @relation("AccountHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }

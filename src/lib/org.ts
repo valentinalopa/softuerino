@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { byName } from "@/lib/utils";
 import { ensureConfiguredDepartments } from "@/lib/departments";
 
 export type OrgPerson = {
@@ -13,7 +14,7 @@ export type OrgNode = {
   id: string;
   name: string;
   managers: string[];
-  people: OrgPerson[]; // responsabili per primi, poi in ordine alfabetico
+  people: OrgPerson[]; // per nome (i responsabili hanno l'etichetta)
   children: OrgNode[];
 };
 
@@ -61,7 +62,7 @@ export async function loadOrgTree(): Promise<OrgNode[]> {
           isManager: m.isManager,
           managed: managedBy.get(m.user.id) ?? [],
         }))
-        .sort((a, b) => Number(b.isManager) - Number(a.isManager) || a.name.localeCompare(b.name)),
+        .sort(byName),
       children: [],
       parent,
     });

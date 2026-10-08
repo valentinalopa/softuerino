@@ -64,7 +64,7 @@ const OPERATIVITA_LINKS: NavLink[] = [
 
 // Licenze: manager di reparto (organigramma Keycloak), admin e super admin.
 const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
-// Il mio reparto: per i responsabili di reparto (secondo i permessi).
+// Il mio reparto: per chi ha permessi sulle persone (Ruoli e permessi).
 const REPARTO_LINK: NavLink = { href: "/reparto", label: "Il mio reparto", icon: UserStar };
 // VPN e organigramma: per tutti.
 const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
@@ -133,6 +133,7 @@ export function AppSidebar({
   teamPendingCount = 0,
   showLicenses = false,
   showReparto = false,
+  showClients = false,
   repartoPendingCount = 0,
   ssoAccountUrl = null,
 }: {
@@ -142,8 +143,10 @@ export function AppSidebar({
   teamPendingCount?: number;
   // Licenze e abbonamenti: responsabile con il permesso, admin o super admin.
   showLicenses?: boolean;
-  // "Il mio reparto": responsabili (non admin) con permessi sulle persone.
+  // "Il mio reparto": chi (non admin) ha permessi sulle persone.
   showReparto?: boolean;
+  // Clienti in Utilità per chi (non admin) può aggiungerli.
+  showClients?: boolean;
   // Richieste del reparto in attesa, se il responsabile può approvarle.
   repartoPendingCount?: number;
   // Account SSO (console di Keycloak), per tutti; null senza SSO.
@@ -166,6 +169,7 @@ export function AppSidebar({
   const utilityLinks: NavLink[] = [
     ...(showReparto ? [REPARTO_LINK] : []),
     ...(showLicenses ? [LICENSES_LINK] : []),
+    ...(showClients ? [{ href: "/clienti", label: "Clienti", icon: Building2 }] : []),
     ORG_LINK,
     VPN_LINK,
     ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),

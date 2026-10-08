@@ -252,24 +252,3 @@ export const LICENSE_KIND_LABELS: Record<LicenseKind, string> = {
 };
 
 export const LICENSE_REMINDER_DAYS_DEFAULT = 7;
-
-// Cosa possono fare i responsabili di reparto (incarico da Keycloak), reparto
-// per reparto: lo decidono i super admin in Amministrazione → Ruoli e
-// permessi. Valgono solo per le persone del reparto che guidano.
-export const MANAGER_CAPS = ["licenze", "presenze_ore", "richieste", "approvare", "nuovi_membri"] as const;
-export type ManagerCap = (typeof MANAGER_CAPS)[number];
-export const DEFAULT_MANAGER_CAPS: readonly ManagerCap[] = ["licenze", "presenze_ore"];
-export const MANAGER_CAP_LABELS: Record<ManagerCap, { label: string; hint: string }> = {
-  licenze: { label: "Licenze e abbonamenti", hint: "Vede e gestisce le licenze del reparto." },
-  presenze_ore: { label: "Presenze e ore", hint: "Vede presenze in ufficio e log ore delle persone del reparto." },
-  richieste: { label: "Richieste e saldi", hint: "Vede richieste, assenze e saldi delle persone del reparto." },
-  approvare: { label: "Approvare le richieste", hint: "Approva o rifiuta le richieste del reparto (le vede anche)." },
-  nuovi_membri: { label: "Creare nuovi membri", hint: "Aggiunge persone con ruolo Membro." },
-};
-
-export function parseManagerCaps(csv: string): ManagerCap[] {
-  return csv
-    .split(",")
-    .map((c) => c.trim())
-    .filter((c): c is ManagerCap => (MANAGER_CAPS as readonly string[]).includes(c));
-}

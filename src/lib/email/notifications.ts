@@ -7,6 +7,8 @@ import {
   eventInviteEmail,
   leaveDecisionEmail,
   newLeaveRequestEmail,
+  accountRequestEmail,
+  accountRequestOutcomeEmail,
   taskAssignedEmail,
   type Mail,
   type Recipient,
@@ -99,6 +101,47 @@ export async function notifyNewLeaveRequest(requestId: string, actorId: string) 
       requester: request.user.name,
       path: isAdminRole(roleByEmail.get(recipient.email) ?? "") ? "/richieste-team" : "/reparto",
     })
+  );
+}
+
+// Richiesta di un nuovo utente: a chi gestisce gli account (Ruoli e
+// permessi); se nessuno è indicato, a tutti i super admin.
+export async function notifyAccountRequest(requestId: string) {
+  const request = await prisma.accountRequest.findUnique({
+    where: { id: requestId },
+    include: { department: { select: { name: true } }, requestedBy: { select: { id: true, name: true } } },
+  });
+  if (!request) return;
+  const chosen = await prisma.user.findMany({
+    where: { active: true, accountNotify: true },
+    select: { id: true, name: true, email: true },
+  });
+  const recipients = (
+    chosen.length > 0
+      ? chosen
+      : await prisma.user.findMany({
+          where: { active: true, role: "super_admin" },
+          select: { id: true, name: true, email: true },
+        })
+  ).filter((r) => r.id !== request.requestedById);
+  await deliver(recipients, (recipient, appUrl) =>
+    accountRequestEmail(recipient, appUrl, {
+      firstName: request.firstName,
+      lastName: request.lastName,
+      email: request.email,
+      department: request.department?.name ?? null,
+      requester: request.requestedBy?.name ?? "Qualcuno",
+      note: request.note,
+    })
+  );
+}
+
+// Esito della richiesta di nuovo utente, a chi l'ha fatta.
+export async function notifyAccountRequestOutcome(requestId: string, actorId: string) {
+  const request = await prisma.accountRequest.findUnique({ where: { id: requestId } });
+  if (!request?.requestedById) return;
+  await deliver(await activeRecipients([request.requestedById], actorId), (recipient, appUrl) =>
+    accountRequestOutcomeEmail(recipient, appUrl, request)
   );
 }
 

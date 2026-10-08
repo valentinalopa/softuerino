@@ -1,15 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { updateDepartmentPermissions } from "@/lib/roles/actions";
-import { MANAGER_CAPS, MANAGER_CAP_LABELS, type ManagerCap } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { TONE_TEXT } from "@/lib/tones";
 
-// Interruttori dei permessi dei responsabili di un reparto.
-export function DepartmentPermissionsForm({ departmentId, caps }: { departmentId: string; caps: ManagerCap[] }) {
-  const [checked, setChecked] = useState<Set<ManagerCap>>(new Set(caps));
+type Person = { id: string; name: string; summary: string; checked: boolean };
+
+// Elenco di persone da spuntare (responsabili ferie, chi riceve le richieste
+// di nuovi utenti).
+export function PeopleChoiceForm({
+  people,
+  onSave,
+}: {
+  people: Person[];
+  onSave: (formData: FormData) => Promise<{ error: string } | undefined>;
+}) {
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -17,7 +23,7 @@ export function DepartmentPermissionsForm({ departmentId, caps }: { departmentId
     setMessage(null);
     setPending(true);
     try {
-      const result = await updateDepartmentPermissions(departmentId, formData);
+      const result = await onSave(formData);
       setMessage(result?.error ? { kind: "error", text: result.error } : { kind: "success", text: "Salvato." });
     } catch {
       setMessage({ kind: "error", text: "Errore imprevisto" });
@@ -26,35 +32,25 @@ export function DepartmentPermissionsForm({ departmentId, caps }: { departmentId
     }
   }
 
-  function toggle(cap: ManagerCap, on: boolean) {
-    setMessage(null);
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(cap);
-      else next.delete(cap);
-      return next;
-    });
-  }
-
   return (
     <form onSubmit={submitKeepingValues(handleSubmit)} className="space-y-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {MANAGER_CAPS.map((cap) => (
+        {people.map((p) => (
           <label
-            key={cap}
+            key={p.id}
             className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2 has-checked:border-primary-border has-checked:bg-primary-soft"
           >
             <input
               type="checkbox"
-              name="caps"
-              value={cap}
-              checked={checked.has(cap)}
-              onChange={(event) => toggle(cap, event.target.checked)}
+              name="userId"
+              value={p.id}
+              defaultChecked={p.checked}
+              onChange={() => setMessage(null)}
               className="mt-0.5 size-4 accent-primary"
             />
             <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">{MANAGER_CAP_LABELS[cap].label}</span>
-              <span className="block text-xs text-muted-foreground">{MANAGER_CAP_LABELS[cap].hint}</span>
+              <span className="block text-sm font-medium text-foreground">{p.name}</span>
+              <span className="block text-xs text-muted-foreground">{p.summary}</span>
             </span>
           </label>
         ))}

@@ -22,21 +22,33 @@ export type LicenseFormValues = {
   reminderDays: number;
   notes: string | null;
   hasKey: boolean;
+  sharedDepartmentIds: string[];
+  visibleToAll: boolean;
+  hasAccount: boolean;
+  hasPassword: boolean;
 };
 
 export function LicenseForm({
   departments,
+  allDepartments,
   initial,
   submitLabel,
   onSubmit,
 }: {
+  // Reparti principali possibili (dove si può gestire) e tutti i reparti, con
+  // cui condividerla.
   departments: { id: string; name: string }[];
+  allDepartments: { id: string; name: string }[];
   initial?: LicenseFormValues;
   submitLabel: string;
   onSubmit: (formData: FormData) => Promise<{ error: string } | undefined | { id: string }>;
 }) {
   const [unlimited, setUnlimited] = useState(initial ? initial.activationLimit === null : false);
   const [clearKey, setClearKey] = useState(false);
+  const [clearPassword, setClearPassword] = useState(false);
+  const [clearAccount, setClearAccount] = useState(false);
+  const [visibleToAll, setVisibleToAll] = useState(initial?.visibleToAll ?? false);
+  const [mainDepartment, setMainDepartment] = useState(initial?.departmentId ?? departments[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
@@ -98,9 +110,41 @@ export function LicenseForm({
             name="departmentId"
             defaultValue={initial?.departmentId ?? departments[0].id}
             items={departments.map((d) => ({ value: d.id, label: d.name }))}
+            onValueChange={setMainDepartment}
           />
         </div>
       </div>
+
+      <fieldset className="space-y-2">
+        <legend className="mb-1.5 text-sm font-medium">Chi la vede</legend>
+        <div className="flex flex-wrap gap-2">
+          {allDepartments
+            .filter((d) => d.id !== mainDepartment)
+            .map((d) => (
+              <label
+                key={d.id}
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1 text-sm has-checked:border-primary-border has-checked:bg-primary-soft"
+              >
+                <input
+                  type="checkbox"
+                  name="sharedDepartmentIds"
+                  value={d.id}
+                  defaultChecked={initial?.sharedDepartmentIds.includes(d.id)}
+                  className="size-3.5 accent-primary"
+                />
+                {d.name}
+              </label>
+            ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Oltre al reparto principale, condividila con altri reparti: la vedono secondo i loro permessi.
+        </p>
+        <Label className="flex items-center gap-2 text-sm font-normal">
+          <Checkbox checked={visibleToAll} onCheckedChange={(next) => setVisibleToAll(Boolean(next))} />
+          Visibile a tutti (chiunque usi Softuerino può vederla e usarla, registrando dove)
+        </Label>
+        <input type="hidden" name="visibleToAll" value={visibleToAll ? "true" : "false"} />
+      </fieldset>
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="license-key">Chiave di licenza</Label>
@@ -118,6 +162,48 @@ export function LicenseForm({
             Rimuovi la chiave salvata
           </Label>
         )}
+      </div>
+
+      {/* Account con cui è stata acquistata o si accede (es. Adobe) e password:
+          cifrati; l'account lo vedono in chiaro solo i super admin, gli altri
+          (come la password) registrando dove li usano. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="license-account">Account</Label>
+          <Input
+            id="license-account"
+            name="account"
+            autoComplete="off"
+            maxLength={200}
+            disabled={clearAccount}
+            placeholder={initial?.hasAccount ? "Salvato: lascia vuoto per non cambiarlo" : "Facoltativo (account di acquisto o accesso)"}
+          />
+          {initial?.hasAccount && (
+            <Label className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+              <Checkbox checked={clearAccount} onCheckedChange={(next) => setClearAccount(Boolean(next))} />
+              Rimuovi l&apos;account salvato
+            </Label>
+          )}
+          <input type="hidden" name="clearAccount" value={clearAccount ? "true" : "false"} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="license-password">Password</Label>
+          <Input
+            id="license-password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            disabled={clearPassword}
+            placeholder={initial?.hasPassword ? "Salvata: lascia vuoto per non cambiarla" : "Facoltativa"}
+          />
+          {initial?.hasPassword && (
+            <Label className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+              <Checkbox checked={clearPassword} onCheckedChange={(next) => setClearPassword(Boolean(next))} />
+              Rimuovi la password salvata
+            </Label>
+          )}
+          <input type="hidden" name="clearPassword" value={clearPassword ? "true" : "false"} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

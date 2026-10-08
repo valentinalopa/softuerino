@@ -31,6 +31,7 @@ export function LicenseQuickKey({
   activations,
   limit,
   withLabels = false,
+  field = "key",
 }: {
   licenseId: string;
   name: string;
@@ -39,7 +40,10 @@ export function LicenseQuickKey({
   limit: number | null; // null = illimitate
   // Pulsanti con il testo (scheda della licenza) invece delle sole icone.
   withLabels?: boolean;
+  // Chiave di licenza o password dell'account (es. abbonamento Adobe).
+  field?: "key" | "password" | "account";
 }) {
+  const what = field === "password" ? "password" : field === "account" ? "account" : "chiave";
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<KeyAction>("show");
   const [choice, setChoice] = useState<string>("new");
@@ -103,7 +107,7 @@ export function LicenseQuickKey({
           type="button"
           variant="ghost"
           size={withLabels ? "sm" : "icon-sm"}
-          aria-label={`Mostra la chiave di ${name}`}
+          aria-label={`Mostra ${field === "account" ? "l'" : "la "}${what} di ${name}`}
           title="Mostra"
           onClick={() => start("show")}
         >
@@ -114,7 +118,7 @@ export function LicenseQuickKey({
           type="button"
           variant="ghost"
           size={withLabels ? "sm" : "icon-sm"}
-          aria-label={`Copia la chiave di ${name}`}
+          aria-label={`Copia ${field === "account" ? "l'" : "la "}${what} di ${name}`}
           title="Copia"
           onClick={() => start("copy")}
         >
@@ -130,17 +134,22 @@ export function LicenseQuickKey({
             <DialogDescription>
               {done
                 ? "Accesso registrato con l'uso indicato."
-                : "Per vedere o copiare la chiave indica dove la usi. Ogni accesso viene registrato."}
+                : `Per vedere o copiare ${field === "account" ? "l'account" : `la ${what}`} indica dove ${field === "account" ? "lo" : "la"} usi. Ogni accesso viene registrato.`}
             </DialogDescription>
           </DialogHeader>
 
           {done ? (
             <div className="space-y-2">
               {key && <code className="block rounded-md bg-muted px-3 py-2 text-sm break-all">{key}</code>}
-              {copied && <p className={`text-sm ${TONE_TEXT.success}`}>Chiave copiata negli appunti.</p>}
+              {copied && (
+                <p className={`text-sm ${TONE_TEXT.success}`}>
+                  {field === "password" ? "Password copiata" : field === "account" ? "Account copiato" : "Chiave copiata"} negli appunti.
+                </p>
+              )}
             </div>
           ) : (
-            <form id={`key-${licenseId}`} onSubmit={handleSubmit} className="space-y-3">
+            <form id={`key-${licenseId}-${field}`} onSubmit={handleSubmit} className="space-y-3">
+              <input type="hidden" name="field" value={field} />
               <fieldset className="space-y-2">
                 <legend className="mb-2 font-medium">Dove la usi?</legend>
                 {activations.map((a) => (
@@ -218,7 +227,7 @@ export function LicenseQuickKey({
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Annulla
                 </Button>
-                <Button type="submit" form={`key-${licenseId}`} disabled={pending || (full && activations.length === 0)}>
+                <Button type="submit" form={`key-${licenseId}-${field}`} disabled={pending || (full && activations.length === 0)}>
                   {action === "copy" ? <Copy className="size-4" /> : <Eye className="size-4" />}
                   {action === "copy" ? "Registra e copia" : "Registra e mostra"}
                 </Button>

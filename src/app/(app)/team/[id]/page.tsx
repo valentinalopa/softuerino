@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
-import { isSsoManaged } from "@/lib/auth/oidc";
+import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import {
   balanceFigures,
   getLeaveBalance,
@@ -213,6 +213,7 @@ async function ProfiloTab({
               isSelf={isSelf}
               roles={roles}
               ssoManaged={isSsoManaged(member)}
+              ssoEnabled={isOidcConfigured()}
             />
           ) : (
             <p className="text-sm text-muted-foreground">

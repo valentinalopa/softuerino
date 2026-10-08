@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { byName } from "@/lib/utils";
 import { requireAdmin } from "@/lib/auth/session";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { balanceFigures, getLeaveBalancesForUsers } from "@/lib/leave-balance";
@@ -32,9 +33,8 @@ export default async function TeamPage() {
   const currentUser = await requireAdmin();
   const roles = assignableRoles(currentUser.role);
 
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: "asc" },
-  });
+  const users = (await prisma.user.findMany({
+  })).sort(byName);
 
   const year = new Date().getFullYear();
   const [balances, recoveryCredits, managedBy] = await Promise.all([

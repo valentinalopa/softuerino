@@ -20,10 +20,13 @@ export function LicenseActivations({
   licenseId,
   activations,
   limit,
+  readOnly = false,
 }: {
   licenseId: string;
   activations: Activation[];
   limit: number | null; // null = illimitate
+  // Solo "Vedere le licenze": elenco senza aggiunte né rimozioni.
+  readOnly?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -68,23 +71,25 @@ export function LicenseActivations({
                   {a.createdBy ? ` · ${a.createdBy}` : ""}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Rimuovi attivazione ${a.label}`}
-                className="text-muted-foreground"
-                disabled={pending}
-                onClick={() => run(() => removeLicenseActivation(a.id))}
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              {!readOnly && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Rimuovi attivazione ${a.label}`}
+                  className="text-muted-foreground"
+                  disabled={pending}
+                  onClick={() => run(() => removeLicenseActivation(a.id))}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      {!full && (
+      {!full && !readOnly && (
         <form
           onSubmit={submitKeepingValues((formData, form) =>
             run(() => addLicenseActivation(licenseId, formData), form)

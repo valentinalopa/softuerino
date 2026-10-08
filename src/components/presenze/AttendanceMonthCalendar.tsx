@@ -169,6 +169,7 @@ export function AttendanceMonthCalendar({
           prevHref={prevHref}
           nextHref={nextHref}
           monthLabel={monthLabel}
+          current={`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`}
         />
 
         {editable && selected.size > 0 && (

@@ -31,6 +31,7 @@ export function EditTeamMemberForm({
   isSelf,
   roles,
   ssoManaged,
+  ssoEnabled,
 }: {
   user: TeamUser;
   isSelf: boolean;
@@ -39,10 +40,13 @@ export function EditTeamMemberForm({
   // Account aziendale collegato: nome ed email da Keycloak, password locale
   // solo per i super admin (accesso d'emergenza).
   ssoManaged: boolean;
+  // Accesso con Keycloak attivo: la password locale serve solo ai super admin
+  // (accesso d'emergenza); per gli altri il campo non c'è.
+  ssoEnabled: boolean;
 }) {
   const [active, setActive] = useState(user.active);
   const [role, setRole] = useState(user.role);
-  const showPassword = !ssoManaged || role === "super_admin";
+  const showPassword = !ssoEnabled || role === "super_admin";
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
