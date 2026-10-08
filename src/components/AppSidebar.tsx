@@ -30,8 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
-import { ROLE_LABELS, homePathFor, isAdminRole, type Role } from "@/lib/constants";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { homePathFor, isAdminRole, type Role } from "@/lib/constants";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,8 +39,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Marchio } from "@/components/brand/Marchio";
+import { LevelAvatar, levelSummary } from "@/components/team/UserLevel";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { cn, getInitials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { TONE_DOT, TONE_SOFT } from "@/lib/tones";
 
 // external: sito esterno (es. il cloud aziendale), aperto in una nuova scheda.
@@ -62,15 +62,15 @@ const OPERATIVITA_LINKS: NavLink[] = [
 
 // Licenze: manager di reparto (organigramma Keycloak), admin e super admin.
 const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
-// VPN: per tutti.
+// VPN e organigramma: per tutti.
 const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
+const ORG_LINK: NavLink = { href: "/organigramma", label: "Organigramma", icon: Network };
 
 const ADMIN_LINKS: NavLink[] = [
   { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
   { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
   { href: "/team", label: "Team", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
-  { href: "/organigramma", label: "Organigramma", icon: Network },
 ];
 
 // Operazioni di sistema: solo super admin.
@@ -127,7 +127,8 @@ export function AppSidebar({
   showLicenses = false,
   ssoAccountUrl = null,
 }: {
-  currentUser: { name: string; email: string; role: Role };
+  // managedDepartments: reparti di cui è responsabile (Keycloak).
+  currentUser: { name: string; email: string; role: Role; managedDepartments?: string[] };
   // Richieste del team in attesa di approvazione (admin e super admin).
   teamPendingCount?: number;
   // Licenze e abbonamenti: manager di almeno un reparto, admin o super admin.
@@ -136,6 +137,7 @@ export function AppSidebar({
   ssoAccountUrl?: string | null;
 }) {
   const pathname = usePathname();
+  const managed = currentUser.managedDepartments ?? [];
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
   // La larghezza si anima solo dopo un clic dell'utente: al caricamento la
   // sidebar compare già nello stato salvato, senza animazione.
@@ -150,6 +152,7 @@ export function AppSidebar({
 
   const utilityLinks: NavLink[] = [
     ...(showLicenses ? [LICENSES_LINK] : []),
+    ORG_LINK,
     VPN_LINK,
     ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),
   ];
@@ -259,18 +262,14 @@ export function AppSidebar({
               )}
               title={isCollapsed ? currentUser.name : undefined}
             >
-              <Avatar size="sm" className="shrink-0">
-                <AvatarFallback>
-                  {getInitials(currentUser.name)}
-                </AvatarFallback>
-              </Avatar>
+              <LevelAvatar name={currentUser.name} role={currentUser.role} departments={managed} />
               {!isCollapsed && (
                 <span className="min-w-0 flex-1 truncate">
                   <span className="block truncate text-sm font-semibold text-foreground">
                     {currentUser.name}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {ROLE_LABELS[currentUser.role]}
+                    {levelSummary(currentUser.role, managed)}
                   </span>
                 </span>
               )}

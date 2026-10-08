@@ -4,7 +4,6 @@ import { isOidcConfigured } from "@/lib/auth/oidc";
 import { balanceFigures, getLeaveBalancesForUsers } from "@/lib/leave-balance";
 import { formatToRecover } from "@/lib/leave-format";
 import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
-import { getInitials } from "@/lib/utils";
 import {
   EMPLOYMENT_TYPE_LABELS,
   assignableRoles,
@@ -13,13 +12,13 @@ import {
 } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
-import { RoleBadge } from "@/components/team/RoleBadge";
+import { LevelAvatar, UserLevelBadges } from "@/components/team/UserLevel";
+import { managedDepartmentNames } from "@/lib/departments";
 import { UserRowActions } from "@/components/team/UserRowActions";
 import { LinkRow } from "@/components/LinkRow";
 import { MobileList, MobileListItem } from "@/components/MobileList";
 import { NewTeamMemberDialog } from "@/components/team/NewTeamMemberDialog";
 import { BalanceMeters } from "@/components/team/BalanceMeters";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table,
   TableBody,
@@ -38,7 +37,7 @@ export default async function TeamPage() {
   });
 
   const year = new Date().getFullYear();
-  const [balances, recoveryCredits] = await Promise.all([
+  const [balances, recoveryCredits, managedBy] = await Promise.all([
     getLeaveBalancesForUsers(
       users.map((user) => ({
         id: user.id,
@@ -47,6 +46,7 @@ export default async function TeamPage() {
       year
     ),
     getRecoveryCreditsForUsers(users.map((user) => user.id)),
+    managedDepartmentNames(users.map((user) => user.id)),
   ]);
 
   return (
@@ -68,9 +68,7 @@ export default async function TeamPage() {
             {users.map((user) => (
               <MobileListItem key={user.id} href={`/team/${user.id}`} label={user.name}>
                 <div className="flex items-start gap-3">
-                  <Avatar size="sm">
-                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                  </Avatar>
+                  <LevelAvatar name={user.name} role={user.role} departments={managedBy.get(user.id) ?? []} />
                   <div className="min-w-0 flex-1">
                     <span className="block truncate font-medium text-foreground">{user.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
@@ -81,7 +79,7 @@ export default async function TeamPage() {
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <RoleBadge role={user.role} />
+                  <UserLevelBadges role={user.role} departments={managedBy.get(user.id) ?? []} />
                   <ActiveBadge active={user.active} />
                   <span className="text-xs text-muted-foreground">
                     {EMPLOYMENT_TYPE_LABELS[user.employmentType as keyof typeof EMPLOYMENT_TYPE_LABELS] ??
@@ -119,9 +117,7 @@ export default async function TeamPage() {
                 <LinkRow key={user.id} href={`/team/${user.id}`}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <Avatar size="sm">
-                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                      </Avatar>
+                      <LevelAvatar name={user.name} role={user.role} departments={managedBy.get(user.id) ?? []} />
                       <div className="min-w-0">
                         <span className="block truncate font-medium text-foreground">
                           {user.name}
@@ -134,7 +130,9 @@ export default async function TeamPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col items-start gap-1">
-                      <RoleBadge role={user.role} />
+                      <div className="flex flex-wrap gap-1">
+                        <UserLevelBadges role={user.role} departments={managedBy.get(user.id) ?? []} />
+                      </div>
                       <span className="text-xs text-muted-foreground">
                         {EMPLOYMENT_TYPE_LABELS[
                           user.employmentType as keyof typeof EMPLOYMENT_TYPE_LABELS

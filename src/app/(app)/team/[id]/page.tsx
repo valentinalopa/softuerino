@@ -17,7 +17,9 @@ import {
   type EmploymentType,
   type Role,
 } from "@/lib/constants";
-import { RoleBadge } from "@/components/team/RoleBadge";
+import { Badge } from "@/components/ui/badge";
+import { ResponsabileBadge, UserLevelBadges } from "@/components/team/UserLevel";
+import { managedDepartmentNames } from "@/lib/departments";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { EditTeamMemberForm } from "@/components/team/EditTeamMemberForm";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
@@ -62,6 +64,7 @@ export default async function TeamMemberPage({
     notFound();
   }
 
+  const managed = (await managedDepartmentNames([member.id])).get(member.id) ?? [];
   const basePath = `/team/${member.id}`;
   const tabHref = (t: Tab) => (t === "profilo" ? basePath : `${basePath}?tab=${t}`);
 
@@ -75,9 +78,9 @@ export default async function TeamMemberPage({
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1>{member.name}</h1>
-              <RoleBadge role={member.role} />
+              <UserLevelBadges role={member.role} departments={managed} />
               <ActiveBadge active={member.active} />
             </div>
             <p className="text-sm text-muted-foreground">{member.email}</p>
@@ -175,16 +178,22 @@ async function ProfiloTab({
         </CardHeader>
         <CardContent className="text-sm">
           {departments.length > 0 ? (
-            <p>
-              {departments
-                .map((d) => (d.isManager ? `${d.department.name} (manager)` : d.department.name))
-                .join(", ")}
-            </p>
+            <div className="flex flex-wrap gap-2">
+              {departments.map((d) =>
+                d.isManager ? (
+                  <ResponsabileBadge key={d.department.name} department={d.department.name} />
+                ) : (
+                  <Badge key={d.department.name} variant="neutral">
+                    {d.department.name}
+                  </Badge>
+                )
+              )}
+            </div>
           ) : (
             <p className="text-muted-foreground">Nessun reparto.</p>
           )}
           {member.reportsTo && (
-            <p className="mt-1">Fa capo a: {member.reportsTo.split(",").join(", ")}</p>
+            <p className="mt-2">Fa capo a: {member.reportsTo.split(",").join(", ")}</p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
             Organigramma gestito in Keycloak dall&apos;IT, aggiornato a ogni accesso.

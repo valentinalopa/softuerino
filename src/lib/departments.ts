@@ -68,6 +68,19 @@ export async function ensureConfiguredDepartments() {
   }
 }
 
+// Nomi dei reparti di cui ciascun utente è responsabile (per il simbolo
+// "Responsabile ..." accanto al nome). Senza userIds: tutti.
+export async function managedDepartmentNames(userIds?: string[]) {
+  const rows = await prisma.userDepartment.findMany({
+    where: { isManager: true, ...(userIds && { userId: { in: userIds } }) },
+    select: { userId: true, department: { select: { name: true } } },
+    orderBy: { department: { name: "asc" } },
+  });
+  const byUser = new Map<string, string[]>();
+  for (const r of rows) byUser.set(r.userId, [...(byUser.get(r.userId) ?? []), r.department.name]);
+  return byUser;
+}
+
 // Reparti di cui l'utente è manager (id), per i permessi sulle licenze.
 export async function managedDepartmentIds(userId: string) {
   const rows = await prisma.userDepartment.findMany({

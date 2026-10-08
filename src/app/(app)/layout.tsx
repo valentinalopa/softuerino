@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getAuthContext } from "@/lib/auth/session";
-import { managedDepartmentIds } from "@/lib/departments";
+import { managedDepartmentNames } from "@/lib/departments";
 import { ssoAccountUrl } from "@/lib/auth/oidc";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -29,6 +29,9 @@ export default async function AppLayout({
         })
       : 0;
 
+  // Reparti di cui è responsabile: simbolo nel menu e licenze del reparto.
+  const managed = (await managedDepartmentNames([user.id])).get(user.id) ?? [];
+
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <AppSidebar
@@ -36,9 +39,10 @@ export default async function AppLayout({
           name: user.name,
           email: user.email,
           role: user.role as Role,
+          managedDepartments: managed,
         }}
         teamPendingCount={teamPendingCount}
-        showLicenses={isAdminRole(user.role) || (await managedDepartmentIds(user.id)).length > 0}
+        showLicenses={isAdminRole(user.role) || managed.length > 0}
         ssoAccountUrl={ssoAccountUrl()}
       />
       <div className="flex min-w-0 flex-1 flex-col">

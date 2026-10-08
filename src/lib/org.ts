@@ -2,11 +2,18 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { ensureConfiguredDepartments } from "@/lib/departments";
 
+export type OrgPerson = {
+  name: string;
+  role: string;
+  isManager: boolean; // responsabile di questo reparto
+  managed: string[]; // tutti i reparti di cui è responsabile (per l'anello sull'avatar)
+};
+
 export type OrgNode = {
   id: string;
   name: string;
   managers: string[];
-  members: string[];
+  people: OrgPerson[]; // responsabili per primi, poi in ordine alfabetico
   children: OrgNode[];
 };
 
@@ -20,10 +27,17 @@ export async function loadOrgTree(): Promise<OrgNode[]> {
     orderBy: { name: "asc" },
     include: {
       members: {
-        include: { user: { select: { name: true, reportsTo: true, active: true } } },
+        include: { user: { select: { id: true, name: true, role: true, reportsTo: true, active: true } } },
       },
     },
   });
+
+  const managedBy = new Map<string, string[]>();
+  for (const d of departments) {
+    for (const m of d.members) {
+      if (m.isManager) managedBy.set(m.user.id, [...(managedBy.get(m.user.id) ?? []), d.name]);
+    }
+  }
 
   const nodes = new Map<string, OrgNode & { parent: string | null }>();
   for (const d of departments) {
@@ -40,7 +54,14 @@ export async function loadOrgTree(): Promise<OrgNode[]> {
       id: d.id,
       name: d.name,
       managers: members.filter((m) => m.isManager).map((m) => m.user.name).sort(),
-      members: members.map((m) => m.user.name).sort(),
+      people: members
+        .map((m) => ({
+          name: m.user.name,
+          role: m.user.role,
+          isManager: m.isManager,
+          managed: managedBy.get(m.user.id) ?? [],
+        }))
+        .sort((a, b) => Number(b.isManager) - Number(a.isManager) || a.name.localeCompare(b.name)),
       children: [],
       parent,
     });
