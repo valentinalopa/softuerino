@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
+import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import {
   addMonths,
   endOfMonth,
@@ -71,7 +72,7 @@ export default async function PresenzePage({
         />
 
         {view === "generale" ? (
-          <TeamAttendance monthParam={monthParam} />
+          <TeamAttendance monthParam={monthParam} viewer={user} />
         ) : (
           <AttendanceSection
             userId={user.id}
@@ -85,7 +86,13 @@ export default async function PresenzePage({
   );
 }
 
-async function TeamAttendance({ monthParam }: { monthParam?: string }) {
+async function TeamAttendance({
+  monthParam,
+  viewer,
+}: {
+  monthParam?: string;
+  viewer: { id: string; role: string };
+}) {
   const current = parseMonthParam(monthParam);
   const monthStart = startOfMonth(current);
   const monthEnd = endOfMonth(current);
@@ -112,7 +119,10 @@ async function TeamAttendance({ monthParam }: { monthParam?: string }) {
     }),
   ]);
 
-  const attendanceMap = buildAttendanceMap({ leaveRequests, presenceEntries });
+  const attendanceMap = buildAttendanceMap({
+    leaveRequests: leaveRequests.map((leave) => maskLeaveForViewer(leave, viewer)),
+    presenceEntries,
+  });
 
   return (
     <>

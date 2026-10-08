@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
 // Un colore per stato, per distinguerli a colpo d'occhio nella tabella.
 export const TASK_STATUS_TONES: Record<TaskStatus, Tone> = {
   not_started: "neutral",
-  in_progress: "accent",
-  in_pausa: "aqua",
+  in_progress: "aqua",
+  in_pausa: "warning",
   done: "success",
 };
 

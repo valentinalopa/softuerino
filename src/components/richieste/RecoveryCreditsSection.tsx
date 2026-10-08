@@ -2,17 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import {
-  createRecoveryCredit,
-  deleteRecoveryCredit,
-  setRecoveryCreditStatus,
-} from "@/lib/actions";
+import { createRecoveryCredit, deleteRecoveryCredit, setRecoveryCreditStatus } from "@/lib/actions";
 import { formatAmount as formatNumber, formatDate } from "@/lib/leave-format";
-import {
-  RECOVERY_STATUS_LABELS,
-  type RecoveryStatus,
-  type RecoveryUnit,
-} from "@/lib/constants";
+import { RECOVERY_STATUS_LABELS, type RecoveryStatus, type RecoveryUnit } from "@/lib/constants";
 import type { RecoveryCreditView } from "@/lib/recovery-credits";
 import { TONE_SOFT, type Tone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
@@ -33,15 +25,17 @@ function unitShort(unit: RecoveryUnit) {
   return unit === "ore" ? "h" : "gg";
 }
 
-
 // Recuperi da fare di un membro (dipendente o partita IVA) (es. 2 gg dopo una trasferta): elenco con
-// stato, aggiunta e stato forzabile dal super admin.
+// stato, aggiunta e stato forzabile dal super admin. readOnly: gli altri admin
+// li vedono soltanto.
 export function RecoveryCreditsSection({
   userId,
   credits,
+  readOnly = false,
 }: {
   userId: string;
   credits: RecoveryCreditView[];
+  readOnly?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
 
@@ -49,7 +43,7 @@ export function RecoveryCreditsSection({
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-foreground">Recuperi da fare</h3>
-        {!adding && (
+        {!adding && !readOnly && (
           <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}>
             <Plus className="size-4" />
             Aggiungi
@@ -61,13 +55,14 @@ export function RecoveryCreditsSection({
 
       {credits.length === 0 && !adding ? (
         <p className="text-sm text-muted-foreground">
-          Nessun recupero registrato. Aggiungine uno quando matura (es. una trasferta):
-          verrà proposto quando si chiede un recupero.
+          {readOnly
+            ? "Nessun recupero registrato."
+            : "Nessun recupero registrato. Aggiungine uno quando matura (es. una trasferta): verrà proposto quando si chiede un recupero."}
         </p>
       ) : (
         <ul className="space-y-2">
           {credits.map((credit) => (
-            <CreditItem key={credit.id} credit={credit} />
+            <CreditItem key={credit.id} credit={credit} readOnly={readOnly} />
           ))}
         </ul>
       )}
@@ -75,7 +70,7 @@ export function RecoveryCreditsSection({
   );
 }
 
-function CreditItem({ credit }: { credit: RecoveryCreditView }) {
+function CreditItem({ credit, readOnly }: { credit: RecoveryCreditView; readOnly: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -124,67 +119,75 @@ function CreditItem({ credit }: { credit: RecoveryCreditView }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Label htmlFor={`credit-status-${credit.id}`} className="text-xs font-normal text-muted-foreground">
-          Stato
-        </Label>
-        <NativeSelectField
-          id={`credit-status-${credit.id}`}
-          // Rimonta quando lo stato cambia dal server (es. dopo un'altra azione).
-          key={credit.statusOverride ?? "auto"}
-          name={`status-${credit.id}`}
-          className="h-8 text-xs"
-          defaultValue={credit.statusOverride ?? ""}
-          onValueChange={(value) =>
-            run(() =>
-              setRecoveryCreditStatus(credit.id, value === "" ? null : (value as "da_fare" | "fatto"))
-            )
-          }
-          items={[
-            {
-              value: "",
-              label: `Automatico · ${RECOVERY_STATUS_LABELS[credit.autoStatus].toLowerCase()}`,
-            },
-            { value: "da_fare", label: "Da fare" },
-            { value: "fatto", label: "Fatto" },
-          ]}
-        />
-        <div className="ml-auto">
-          {confirmDelete ? (
-            <div className="flex items-center gap-1">
+      {!readOnly && (
+        <div className="flex items-center gap-2">
+          <Label
+            htmlFor={`credit-status-${credit.id}`}
+            className="text-xs font-normal text-muted-foreground"
+          >
+            Stato
+          </Label>
+          <NativeSelectField
+            id={`credit-status-${credit.id}`}
+            // Rimonta quando lo stato cambia dal server (es. dopo un'altra azione).
+            key={credit.statusOverride ?? "auto"}
+            name={`status-${credit.id}`}
+            className="h-8 text-xs"
+            defaultValue={credit.statusOverride ?? ""}
+            onValueChange={(value) =>
+              run(() =>
+                setRecoveryCreditStatus(
+                  credit.id,
+                  value === "" ? null : (value as "da_fare" | "fatto")
+                )
+              )
+            }
+            items={[
+              {
+                value: "",
+                label: `Automatico · ${RECOVERY_STATUS_LABELS[credit.autoStatus].toLowerCase()}`,
+              },
+              { value: "da_fare", label: "Da fare" },
+              { value: "fatto", label: "Fatto" },
+            ]}
+          />
+          <div className="ml-auto">
+            {confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={pending}
+                >
+                  Annulla
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => run(() => deleteRecoveryCredit(credit.id))}
+                  disabled={pending}
+                >
+                  Elimina
+                </Button>
+              </div>
+            ) : (
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                onClick={() => setConfirmDelete(false)}
-                disabled={pending}
+                size="icon-sm"
+                className="text-muted-foreground"
+                aria-label={`Elimina recupero ${credit.reason}`}
+                onClick={() => setConfirmDelete(true)}
               >
-                Annulla
+                <Trash2 className="size-4" />
               </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={() => run(() => deleteRecoveryCredit(credit.id))}
-                disabled={pending}
-              >
-                Elimina
-              </Button>
-            </div>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground"
-              aria-label={`Elimina recupero ${credit.reason}`}
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
     </li>
   );

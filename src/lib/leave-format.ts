@@ -6,6 +6,8 @@ export type LeaveRequestRow = {
   startDate: Date;
   endDate: Date;
   hours: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
   status: string;
   note?: string | null;
   createdAt: Date;
@@ -38,10 +40,63 @@ export function formatRange(start: Date, end: Date) {
   return `${formatDate(start)} → ${formatDate(end)}`;
 }
 
+type DatedRequest = {
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
+};
+
+// Periodo di una richiesta: le richieste a ore stanno in un giorno solo, la
+// data basta (la fascia è nella durata).
+export function formatPeriod(request: DatedRequest) {
+  return request.hours !== null
+    ? formatDate(request.startDate)
+    : formatRange(request.startDate, request.endDate);
+}
+
+// Quando, in una riga sola (richieste in attesa): data e fascia per quelle a ore.
+export function formatWhen(request: DatedRequest) {
+  if (request.hours === null) return formatRange(request.startDate, request.endDate);
+  return `${formatDate(request.startDate)} · ${formatHourlySlot({ ...request, hours: request.hours })}`;
+}
+
+// Fascia oraria di una richiesta a ore ("09:00–11:00"), o null se manca
+// (richieste a giornata, o a ore create prima che si salvasse la fascia).
+export function formatTimeRange(request: { startTime?: string | null; endTime?: string | null }) {
+  if (!request.startTime || !request.endTime) return null;
+  return `${request.startTime}–${request.endTime}`;
+}
+
+// Etichetta corta per i calendari: la fascia se c'è, altrimenti le ore.
+export function formatHourlySlot(request: {
+  hours: number;
+  startTime?: string | null;
+  endTime?: string | null;
+}) {
+  return formatTimeRange(request) ?? `${formatAmount(request.hours)}h`;
+}
+
+// Durata in ore tra due orari "HH:MM" della stessa giornata, o null se non
+// validi o se la fine non segue l'inizio.
+export function hoursBetween(startTime: string, endTime: string) {
+  const toMinutes = (time: string) => {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  };
+  const start = toMinutes(startTime);
+  const end = toMinutes(endTime);
+  if (start === null || end === null || end <= start) return null;
+  return Math.round(((end - start) / 60) * 100) / 100;
+}
+
 export function formatDuration(request: LeaveRequestRow) {
   // A ore (permesso, recupero a ore): hours è valorizzato solo in quel caso.
   if (request.hours !== null) {
-    return `${formatAmount(request.hours)} ore`;
+    const range = formatTimeRange(request);
+    const hours = `${formatAmount(request.hours)} ore`;
+    return range ? `${range} (${hours})` : hours;
   }
   // Stessa convenzione del saldo (domeniche escluse), così la durata mostrata
   // coincide con i giorni effettivamente scalati.

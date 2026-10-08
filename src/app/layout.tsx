@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import localFont from "next/font/local";
 import "./globals.css";
 import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme";
@@ -29,13 +28,16 @@ export default function RootLayout({
       className={`${clashGrotesk.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        {/* Applica il tema salvato prima del primo paint (niente flash).
+            Script inline nel <head> del root layout, come nella guida
+            "preventing-flash-before-hydration" di Next: <Script
+            beforeInteractive> dentro il body fa scattare l'errore React
+            "Encountered a script tag while rendering React component". La
+            CSP ammette gli script inline ('unsafe-inline', next.config.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
-        {/* Applica il tema salvato prima del primo paint (niente flash):
-            next/script beforeInteractive è il canale canonico, senza il
-            warning React sui tag <script> renderizzati nei componenti. */}
-        <Script id="theme-bootstrap" strategy="beforeInteractive">
-          {THEME_BOOTSTRAP_SCRIPT}
-        </Script>
         {children}
       </body>
     </html>

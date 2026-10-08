@@ -3,9 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { getLeaveBalance } from "@/lib/leave-balance";
 import { formatDayMonth, formatTime } from "@/lib/calendar-utils";
-import { formatAmount, formatRange } from "@/lib/leave-format";
+import { formatAmount, formatWhen } from "@/lib/leave-format";
 import { eventTypeStyle } from "@/components/calendar/types";
-import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS } from "@/lib/constants";
+import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS, annualAllowance } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -46,7 +46,7 @@ export default async function Home() {
           <StatCard
             label="Assenze rimanenti (giorni)"
             value={balance.assenzeRemaining}
-            sub={`su ${formatAmount(balance.assenzeAllowance)}`}
+            sub={`su ${formatAmount(annualAllowance("assenze"))} l'anno`}
             href="/richieste"
           />
         ) : (
@@ -54,13 +54,13 @@ export default async function Home() {
             <StatCard
               label="Ferie rimanenti (giorni)"
               value={balance.ferieRemaining}
-              sub={`su ${formatAmount(balance.ferieAllowance)}`}
+              sub={`su ${formatAmount(annualAllowance("ferie"))} l'anno`}
               href="/richieste"
             />
             <StatCard
               label="Permesso rimanente (ore)"
               value={balance.permessoRemaining}
-              sub={`su ${formatAmount(balance.permessoAllowance)}`}
+              sub={`su ${formatAmount(annualAllowance("permesso"))} l'anno`}
               href="/richieste"
             />
             <StatCard
@@ -99,7 +99,7 @@ export default async function Home() {
                     ] ?? request.type}
                   </span>
                   <span className="text-muted-foreground">
-                    {formatRange(request.startDate, request.endDate)}
+                    {formatWhen(request)}
                   </span>
                 </li>
               ))}

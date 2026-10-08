@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
+import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { CalendarView } from "@/components/calendar/CalendarView";
@@ -51,6 +52,8 @@ export default async function CalendarioPage() {
         startDate: true,
         endDate: true,
         hours: true,
+        startTime: true,
+        endTime: true,
         user: { select: { name: true } },
       },
       orderBy: { startDate: "asc" },
@@ -77,9 +80,9 @@ export default async function CalendarioPage() {
 
       <CalendarView
         events={calendarEvents}
-        absences={leaveRequests.map(({ user, ...absence }) => ({
-          ...absence,
-          userName: user.name,
+        absences={leaveRequests.map(({ user: absentUser, ...absence }) => ({
+          ...maskLeaveForViewer(absence, user),
+          userName: absentUser.name,
         }))}
         users={calendarUsers}
         currentUserId={user.id}

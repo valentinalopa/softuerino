@@ -83,7 +83,7 @@ export default async function PanoramicaPage() {
           {teamPending.map((request) => (
             <TeamPendingItem key={request.id} request={request} overdraft={overdrafts.get(request.id)} />
           ))}
-          <li className="pt-1">
+          <li className="pt-2.5">
             <Link href="/richieste-team" className="text-xs text-muted-foreground hover:underline">
               {teamPendingCount > PENDING_PREVIEW
                 ? `Vedi tutte (${teamPendingCount})`

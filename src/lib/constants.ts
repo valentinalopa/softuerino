@@ -51,6 +51,16 @@ export const LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE = {
 export const BALANCE_KINDS = ["ferie", "permesso", "assenze"] as const;
 export type BalanceKind = (typeof BALANCE_KINDS)[number];
 
+// Monte annuale di un saldo: è il riferimento mostrato accanto al residuo
+// ("5 / 26 giorni"). Non il disponibile (monte + riporto o rettifica), che
+// dopo una rettifica coincide col residuo e non dice nulla.
+export function annualAllowance(kind: BalanceKind): number {
+  const { dipendente, partita_iva } = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE;
+  if (kind === "ferie") return dipendente.ferieDaysPerYear;
+  if (kind === "permesso") return dipendente.permessoHoursPerYear;
+  return partita_iva.assenzeDaysPerYear;
+}
+
 // Recuperi da fare (es. dopo una trasferta): si misurano a giorni o a ore,
 // come la richiesta di recupero che li smaltisce.
 export const RECOVERY_UNITS = ["giorni", "ore"] as const;

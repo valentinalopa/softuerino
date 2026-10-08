@@ -4,8 +4,13 @@ import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
 import { isSsoManaged } from "@/lib/auth/oidc";
-import { getLeaveBalance, remainingByLeaveType, type LeaveBalance } from "@/lib/leave-balance";
-import { formatAmount } from "@/lib/leave-format";
+import {
+  balanceFigures,
+  getLeaveBalance,
+  outsideAllowance,
+  remainingByLeaveType,
+} from "@/lib/leave-balance";
+import { formatToRecover } from "@/lib/leave-format";
 import {
   assignableRoles,
   IMPERSONATABLE_ROLES,
@@ -17,7 +22,8 @@ import { ActiveBadge } from "@/components/ActiveBadge";
 import { EditTeamMemberForm } from "@/components/team/EditTeamMemberForm";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
-import { getOpenRecoveryCredits } from "@/lib/recovery-credits";
+import { getOpenRecoveryCredits, getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
+import { MemberBalances } from "@/components/team/MemberBalances";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { StartImpersonationButton } from "@/components/impersonation/StartImpersonationButton";
 import { OreLogSection, type OreLogParams } from "@/components/ore/OreLogSection";
@@ -25,12 +31,20 @@ import { AttendanceSection } from "@/components/presenze/AttendanceSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
-const TABS = ["info", "ore", "presenze", "richieste"] as const;
+const TABS = ["profilo", "saldi", "richieste", "presenze", "ore"] as const;
+
+const TAB_LABELS: Record<(typeof TABS)[number], string> = {
+  profilo: "Profilo",
+  saldi: "Saldi",
+  richieste: "Richieste",
+  presenze: "Presenze",
+  ore: "Ore",
+};
 type Tab = (typeof TABS)[number];
 
 // Scheda membro: l'unico punto in cui un admin consulta e gestisce i
-// dati di un'altra persona (CRUD su ore, presenze e richieste). Le pagine
-// /ore, /presenze e /richieste restano personali.
+// dati di un'altra persona (profilo, saldi e recuperi, richieste, presenze,
+// ore). Le pagine /ore, /presenze e /richieste restano personali.
 export default async function TeamMemberPage({
   params,
   searchParams,
@@ -41,7 +55,7 @@ export default async function TeamMemberPage({
   const currentUser = await requireAdmin();
   const { id } = await params;
   const { tab: tabParam, month: monthParam, ...oreParams } = await searchParams;
-  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "info";
+  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "profilo";
 
   const member = await prisma.user.findUnique({ where: { id } });
   if (!member) {
@@ -49,7 +63,7 @@ export default async function TeamMemberPage({
   }
 
   const basePath = `/team/${member.id}`;
-  const tabHref = (t: Tab) => (t === "info" ? basePath : `${basePath}?tab=${t}`);
+  const tabHref = (t: Tab) => (t === "profilo" ? basePath : `${basePath}?tab=${t}`);
 
   return (
     <div className="space-y-6">
@@ -76,29 +90,27 @@ export default async function TeamMemberPage({
       </div>
 
       <SegmentedLinkTabs
-        items={[
-          { key: "info", label: "Info", href: tabHref("info"), active: tab === "info" },
-          { key: "ore", label: "Ore", href: tabHref("ore"), active: tab === "ore" },
-          {
-            key: "presenze",
-            label: "Presenze",
-            href: tabHref("presenze"),
-            active: tab === "presenze",
-          },
-          {
-            key: "richieste",
-            label: "Richieste",
-            href: tabHref("richieste"),
-            active: tab === "richieste",
-          },
-        ]}
+        items={TABS.map((t) => ({
+          key: t,
+          label: TAB_LABELS[t],
+          href: tabHref(t),
+          active: tab === t,
+        }))}
       />
 
-      {tab === "info" && (
-        <InfoTab
+      {tab === "profilo" && (
+        <ProfiloTab
           member={member}
           isSelf={member.id === currentUser.id}
           roles={assignableRoles(currentUser.role)}
+        />
+      )}
+
+      {tab === "saldi" && (
+        <SaldiTab
+          memberId={member.id}
+          employmentType={member.employmentType as EmploymentType}
+          canEdit={currentUser.role === "super_admin"}
         />
       )}
 
@@ -130,7 +142,7 @@ export default async function TeamMemberPage({
   );
 }
 
-async function InfoTab({
+async function ProfiloTab({
   member,
   isSelf,
   roles,
@@ -153,17 +165,9 @@ async function InfoTab({
     include: { department: { select: { name: true } } },
     orderBy: { department: { name: "asc" } },
   });
-  const balance = await getLeaveBalance(
-    member.id,
-    member.employmentType as EmploymentType
-  );
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <BalanceCards balance={balance} />
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>Reparti</CardTitle>
@@ -211,6 +215,35 @@ async function InfoTab({
   );
 }
 
+async function SaldiTab({
+  memberId,
+  employmentType,
+  canEdit,
+}: {
+  memberId: string;
+  employmentType: EmploymentType;
+  canEdit: boolean;
+}) {
+  const year = new Date().getFullYear();
+  const [balance, creditsByUser] = await Promise.all([
+    getLeaveBalance(memberId, employmentType, year),
+    getRecoveryCreditsForUsers([memberId]),
+  ]);
+  const credits = creditsByUser.get(memberId) ?? [];
+
+  return (
+    <MemberBalances
+      userId={memberId}
+      year={year}
+      balances={balanceFigures(balance)}
+      toRecover={formatToRecover(credits)}
+      recoveryCredits={credits}
+      outsideAllowance={outsideAllowance(balance)}
+      canEdit={canEdit}
+    />
+  );
+}
+
 async function RichiesteTab({
   memberId,
   employmentType,
@@ -249,55 +282,5 @@ async function RichiesteTab({
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function BalanceCards({ balance }: { balance: LeaveBalance }) {
-  if (balance.kind === "assenze") {
-    return (
-      <BalanceCard
-        label="Assenze rimanenti"
-        negative={balance.assenzeRemaining < 0}
-        value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(balance.assenzeAllowance)} giorni`}
-      />
-    );
-  }
-  return (
-    <>
-      <BalanceCard
-        label="Ferie rimanenti"
-        negative={balance.ferieRemaining < 0}
-        value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieAllowance)} giorni`}
-      />
-      <BalanceCard
-        label="Permesso rimanente"
-        negative={balance.permessoRemaining < 0}
-        value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(balance.permessoAllowance)} ore`}
-      />
-      <BalanceCard
-        label="Malattia registrata"
-        value={`${formatAmount(balance.malattiaDaysRegistered)} giorni (nessun tetto)`}
-      />
-    </>
-  );
-}
-
-function BalanceCard({
-  label,
-  value,
-  negative = false,
-}: {
-  label: string;
-  value: string;
-  negative?: boolean;
-}) {
-  return (
-    <Card>
-      <CardContent>
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <p className={`mt-1 text-lg font-semibold ${negative ? "text-destructive" : ""}`}>{value}</p>
-        {negative && <p className="mt-0.5 text-xs font-medium text-destructive">In negativo</p>}
-      </CardContent>
-    </Card>
   );
 }

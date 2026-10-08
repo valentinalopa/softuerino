@@ -10,6 +10,7 @@ import {
   Thermometer,
 } from "lucide-react";
 import { PRESENCE_SLOTS, PRESENCE_SLOT_LABELS } from "@/lib/constants";
+import { formatTimeRange } from "@/lib/leave-format";
 import { lookupAttendance, type DayEntry } from "@/lib/attendance-utils";
 import { TONE_CHIP } from "@/lib/tones";
 
@@ -106,17 +107,23 @@ export function buildDayCategories(
 ): DayCategory[] {
   const buckets = new Map<string, DayCategory>();
 
+  // orderKey: posizione in CATEGORY_ORDER, se diversa dalla chiave (i
+  // permessi si dividono per fascia ma restano al posto del loro tipo).
+  const orderOf = new Map<string, string>();
+
   function add(
     key: string,
     label: string,
     chip: string,
     icon: DayCategory["icon"],
-    person: { id: string; name: string }
+    person: { id: string; name: string },
+    orderKey: string = key
   ) {
     let bucket = buckets.get(key);
     if (!bucket) {
       bucket = { key, label, chip, icon, people: [] };
       buckets.set(key, bucket);
+      orderOf.set(key, orderKey);
     }
     if (!bucket.people.some((p) => p.id === person.id)) {
       bucket.people.push(person);
@@ -147,19 +154,33 @@ export function buildDayCategories(
     }
 
     if (entry.hourly) {
-      // Stesso blocco del tipo a giornata: "Recupero" raccoglie chi recupera
-      // tutto il giorno e chi solo qualche ora.
+      // Un blocco per fascia ("Permesso 09:00–11:00"): chi ha la stessa
+      // fascia sta insieme. Senza fascia (richieste vecchie) resta il blocco
+      // del tipo, lo stesso di chi recupera tutto il giorno.
       const style = HOURLY_STYLES[entry.hourly.type];
       const pending = entry.hourly.status === "pending";
-      const key = pending ? `${entry.hourly.type}-pending` : entry.hourly.type;
-      const label = pending ? `${style.title} (in attesa)` : style.title;
-      add(key, label, pending ? NEUTRAL_CHIP : style.chip, style.icon, person);
+      const typeKey = pending ? `${entry.hourly.type}-pending` : entry.hourly.type;
+      const range = formatTimeRange(entry.hourly);
+      const title = range ? `${style.title} ${range}` : style.title;
+      add(
+        range ? `${typeKey}-${range}` : typeKey,
+        pending ? `${title} (in attesa)` : title,
+        pending ? NEUTRAL_CHIP : style.chip,
+        style.icon,
+        person,
+        typeKey
+      );
     }
   }
 
-  return CATEGORY_ORDER.map((key) => buckets.get(key)).filter(
-    (bucket): bucket is DayCategory => Boolean(bucket)
-  );
+  // In ordine di categoria; a parità (fasce dello stesso tipo), per orario.
+  return [...buckets.values()]
+    .filter((bucket) => CATEGORY_ORDER.includes(orderOf.get(bucket.key)!))
+    .sort(
+      (a, b) =>
+        CATEGORY_ORDER.indexOf(orderOf.get(a.key)!) -
+          CATEGORY_ORDER.indexOf(orderOf.get(b.key)!) || a.key.localeCompare(b.key)
+    );
 }
 
 export function disambiguatedInitials(users: { id: string; name: string }[]) {

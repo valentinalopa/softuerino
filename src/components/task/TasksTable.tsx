@@ -4,7 +4,7 @@ import { useState } from "react";
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/lib/constants";
 import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
-import { CLIENT_TAG_COLORS, type Tone } from "@/lib/tones";
+import type { Tone } from "@/lib/tones";
 import { TaskStatusSelect } from "@/components/task/TaskStatusSelect";
 import { DeleteTaskButton } from "@/components/task/DeleteTaskButton";
 import { EditTaskSheet } from "@/components/task/EditTaskSheet";
@@ -39,23 +39,21 @@ export function PriorityBadge({ priority }: { priority: TaskPriority }) {
 
 export function TasksTable({
   tasks,
-  clientOrder,
+  currentUserId,
+  isAdmin,
   users,
   clients,
   emptyMessage = "Nessun task ancora.",
 }: {
   tasks: TaskRow[];
+  // Tutti modificano qualunque task; eliminarlo solo admin e assegnatari.
+  currentUserId: string;
+  isAdmin: boolean;
   // Opzioni del pannello di modifica (stesse di "Nuovo task").
   users: { id: string; name: string }[];
   clients: { id: string; name: string }[];
-  // Id di tutti i clienti in ordine di creazione: la posizione dà il colore
-  // dell'etichetta, fisso per cliente e diverso finché bastano i colori.
-  clientOrder: string[];
   emptyMessage?: string;
 }) {
-  const clientIndex = new Map(clientOrder.map((id, index) => [id, index]));
-  const clientTagColor = (clientId: string) =>
-    CLIENT_TAG_COLORS[(clientIndex.get(clientId) ?? 0) % CLIENT_TAG_COLORS.length];
   // Si tiene l'id, non il task: dopo un salvataggio la tabella si aggiorna.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = tasks.find((task) => task.id === selectedId) ?? null;
@@ -97,9 +95,8 @@ export function TasksTable({
               <TableCell className="font-medium">{task.title}</TableCell>
               <TableCell className="text-muted-foreground">
                 {task.client ? (
-                  <Badge variant={null} className={clientTagColor(task.client.id)}>
-                    {task.client.name}
-                  </Badge>
+                  // Neutro: i colori della riga restano a stato e priorità.
+                  <Badge variant="outline">{task.client.name}</Badge>
                 ) : (
                   "—"
                 )}
@@ -119,7 +116,9 @@ export function TasksTable({
                 {task.dueDate ? formatDate(task.dueDate) : "—"}
               </TableCell>
               <TableCell className="text-right">
-                <DeleteTaskButton taskId={task.id} />
+                {(isAdmin || task.assignees.some((a) => a.user.id === currentUserId)) && (
+                  <DeleteTaskButton taskId={task.id} />
+                )}
               </TableCell>
             </TableRow>
           ))}

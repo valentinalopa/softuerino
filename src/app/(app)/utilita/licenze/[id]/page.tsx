@@ -7,7 +7,9 @@ import { updateLicense } from "@/lib/licenses/actions";
 import { formatExpiry } from "@/lib/licenses/expiry";
 import { LICENSE_KIND_LABELS, type LicenseKind } from "@/lib/constants";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDate } from "@/lib/leave-format";
+import { formatTime } from "@/lib/calendar-utils";
 import { LicenseKeyField } from "@/components/utilita/LicenseKeyField";
 import { LicenseActivations } from "@/components/utilita/LicenseActivations";
 import { LicenseForm } from "@/components/utilita/LicenseForm";
@@ -27,8 +29,15 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
     where: { id },
     include: {
       department: { select: { name: true } },
-      activations: { orderBy: { createdAt: "asc" }, include: { createdBy: { select: { name: true } } } },
-      keyAccesses: { orderBy: { createdAt: "desc" }, take: 20, include: { user: { select: { name: true } } } },
+      activations: {
+        orderBy: { createdAt: "asc" },
+        include: { createdBy: { select: { name: true } } },
+      },
+      keyAccesses: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: { user: { select: { name: true } } },
+      },
     },
   });
   // Licenza di un reparto non accessibile: come se non esistesse.
@@ -51,85 +60,101 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
           <div>
             <h1>{license.name}</h1>
             <p className="text-sm text-muted-foreground">
-              {LICENSE_KIND_LABELS[license.kind as LicenseKind] ?? license.kind} · {license.department.name}
-              {license.vendor ? ` · ${license.vendor}` : ""} · Scadenza: {formatExpiry(license.expiresAt)}
+              {LICENSE_KIND_LABELS[license.kind as LicenseKind] ?? license.kind} ·{" "}
+              {license.department.name}
+              {license.vendor ? ` · ${license.vendor}` : ""} · Scadenza:{" "}
+              {formatExpiry(license.expiresAt)}
             </p>
           </div>
           <DeleteLicenseButton licenseId={license.id} name={license.name} />
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Chiave</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <LicenseKeyField licenseId={license.id} masked={maskedKey(license.keyHint)} />
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Dati</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LicenseForm
+              departments={departments}
+              submitLabel="Salva modifiche"
+              onSubmit={updateLicense.bind(null, license.id)}
+              initial={{
+                name: license.name,
+                kind: license.kind,
+                vendor: license.vendor,
+                departmentId: license.departmentId,
+                activationLimit: license.activationLimit,
+                expiresAt: isoDate(license.expiresAt),
+                reminderDays: license.reminderDays,
+                notes: license.notes,
+                hasKey: Boolean(license.keyEncrypted),
+              }}
+            />
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{license.kind === "licenza" ? "Attivazioni" : "Utenti/posti"}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <LicenseActivations
-            licenseId={license.id}
-            limit={license.activationLimit}
-            activations={license.activations.map((a) => ({
-              id: a.id,
-              label: a.label,
-              note: a.note,
-              createdAt: a.createdAt.toISOString(),
-              createdBy: a.createdBy?.name ?? null,
-            }))}
-          />
-        </CardContent>
-      </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Chiave</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LicenseKeyField licenseId={license.id} masked={maskedKey(license.keyHint)} />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Dati</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <LicenseForm
-            departments={departments}
-            submitLabel="Salva modifiche"
-            onSubmit={updateLicense.bind(null, license.id)}
-            initial={{
-              name: license.name,
-              kind: license.kind,
-              vendor: license.vendor,
-              departmentId: license.departmentId,
-              activationLimit: license.activationLimit,
-              expiresAt: isoDate(license.expiresAt),
-              reminderDays: license.reminderDays,
-              notes: license.notes,
-              hasKey: Boolean(license.keyEncrypted),
-            }}
-          />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{license.kind === "licenza" ? "Attivazioni" : "Utenti/posti"}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LicenseActivations
+                licenseId={license.id}
+                limit={license.activationLimit}
+                activations={license.activations.map((a) => ({
+                  id: a.id,
+                  label: a.label,
+                  note: a.note,
+                  createdAt: a.createdAt.toISOString(),
+                  createdBy: a.createdBy?.name ?? null,
+                }))}
+              />
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Accessi alla chiave</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {license.keyAccesses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nessuno ha ancora visto o copiato la chiave.</p>
-          ) : (
-            <ul className="space-y-1 text-sm">
-              {license.keyAccesses.map((a) => (
-                <li key={a.id}>
-                  {new Intl.DateTimeFormat("it-IT", { dateStyle: "short", timeStyle: "short" }).format(a.createdAt)} ·{" "}
-                  {a.user.name} · {a.action === "copy" ? "copiata" : "mostrata"}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Accessi alla chiave</CardTitle>
+              <CardDescription>Gli ultimi 20: chi l&apos;ha vista o copiata.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {license.keyAccesses.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nessuno ha ancora visto o copiato la chiave.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border-subtle text-sm">
+                  {license.keyAccesses.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-3 py-2">
+                      <span className="text-foreground">
+                        {a.user.name}{" "}
+                        <span className="text-muted-foreground">
+                          · {a.action === "copy" ? "copiata" : "mostrata"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {formatDate(a.createdAt)} {formatTime(a.createdAt)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

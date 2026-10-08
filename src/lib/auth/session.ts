@@ -10,7 +10,13 @@ import { syncUserOrg } from "@/lib/departments";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
 import { IMPERSONATABLE_ROLES, isAdminRole } from "@/lib/constants";
 
-const SESSION_DURATION_DAYS = 30; // placeholder, nessun requisito specifico ricevuto
+const SESSION_DURATION_DAYS = 30; // durata massima, anche con uso continuo
+// Senza attività per questi giorni la sessione scade (dispositivo dimenticato
+// acceso, cookie rubato e non usato subito...).
+const SESSION_IDLE_DAYS = 3;
+// lastSeenAt si aggiorna al massimo una volta ogni tanto, non a ogni richiesta.
+const LAST_SEEN_REFRESH_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Il cookie contiene il token in chiaro; solo il suo hash finisce nel DB, così una
 // fuga del file DB non espone token di sessione direttamente utilizzabili.
@@ -40,22 +46,42 @@ export async function createSession(
   { authMethod, tokens }: { authMethod: AuthMethod; tokens?: OidcTokens }
 ) {
   const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(
-    Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
-  );
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_DURATION_DAYS * DAY_MS);
 
-  await prisma.session.create({
-    data: {
-      userId,
-      token: hashToken(token),
-      expiresAt,
-      authMethod,
-      idToken: sealToken(tokens?.idToken),
-      refreshToken: sealToken(tokens?.refreshToken),
-      ssoCheckedAt: authMethod === "oidc" ? new Date() : null,
-      oidcSid: tokens?.sid ?? null,
+  // Pulizia delle sessioni scadute o inattive (di chiunque) a ogni login:
+  // nessun cron necessario. Le impersonificazioni ancora aperte si chiudono.
+  const expired = await prisma.session.findMany({
+    where: {
+      OR: [
+        { expiresAt: { lt: now } },
+        { lastSeenAt: { lt: new Date(now.getTime() - SESSION_IDLE_DAYS * DAY_MS) } },
+      ],
     },
+    select: { id: true },
   });
+  const expiredIds = expired.map((session) => session.id);
+
+  await prisma.$transaction([
+    prisma.impersonationLog.updateMany({
+      where: { sessionId: { in: expiredIds }, endedAt: null },
+      data: { endedAt: now },
+    }),
+    prisma.session.deleteMany({ where: { id: { in: expiredIds } } }),
+    prisma.session.create({
+      data: {
+        userId,
+        token: hashToken(token),
+        expiresAt,
+        lastSeenAt: now,
+        authMethod,
+        idToken: sealToken(tokens?.idToken),
+        refreshToken: sealToken(tokens?.refreshToken),
+        ssoCheckedAt: authMethod === "oidc" ? now : null,
+        oidcSid: tokens?.sid ?? null,
+      },
+    }),
+  ]);
 
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
@@ -133,11 +159,22 @@ export const getSession = cache(async () => {
     include: { user: true, impersonatedUser: true },
   });
 
-  if (!session || session.expiresAt < new Date()) {
+  const now = Date.now();
+  if (
+    !session ||
+    session.expiresAt.getTime() < now ||
+    session.lastSeenAt.getTime() < now - SESSION_IDLE_DAYS * DAY_MS
+  ) {
     return null;
   }
   if (!(await verifySsoSession(session))) {
     return null;
+  }
+  if (session.lastSeenAt.getTime() < now - LAST_SEEN_REFRESH_MS) {
+    await prisma.session.updateMany({
+      where: { id: session.id },
+      data: { lastSeenAt: new Date(now) },
+    });
   }
 
   // I token SSO restano qui: non servono alle pagine.

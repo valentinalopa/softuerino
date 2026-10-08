@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
 import { isOidcConfigured } from "@/lib/auth/oidc";
-import { getLeaveBalancesForUsers, type LeaveBalance } from "@/lib/leave-balance";
-import { formatAmount } from "@/lib/leave-format";
+import { balanceFigures, getLeaveBalancesForUsers } from "@/lib/leave-balance";
+import { formatToRecover } from "@/lib/leave-format";
+import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
+import { getInitials } from "@/lib/utils";
 import {
   EMPLOYMENT_TYPE_LABELS,
   assignableRoles,
@@ -13,8 +15,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { RoleBadge } from "@/components/team/RoleBadge";
 import { UserRowActions } from "@/components/team/UserRowActions";
-import { TeamMemberRow } from "@/components/team/TeamMemberRow";
+import { LinkRow } from "@/components/LinkRow";
 import { NewTeamMemberDialog } from "@/components/team/NewTeamMemberDialog";
+import { BalanceMeters } from "@/components/team/BalanceMeters";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table,
   TableBody,
@@ -32,12 +36,17 @@ export default async function TeamPage() {
     orderBy: { createdAt: "asc" },
   });
 
-  const balances = await getLeaveBalancesForUsers(
-    users.map((user) => ({
-      id: user.id,
-      employmentType: user.employmentType as EmploymentType,
-    }))
-  );
+  const year = new Date().getFullYear();
+  const [balances, recoveryCredits] = await Promise.all([
+    getLeaveBalancesForUsers(
+      users.map((user) => ({
+        id: user.id,
+        employmentType: user.employmentType as EmploymentType,
+      })),
+      year
+    ),
+    getRecoveryCreditsForUsers(users.map((user) => user.id)),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -45,7 +54,8 @@ export default async function TeamPage() {
         <div>
           <h1>Team</h1>
           <p className="text-sm text-muted-foreground">
-            Membri del team, ruolo e saldo ferie/permessi.
+            Membri del team e saldi dell&apos;anno. Apri un membro per profilo, saldi,
+            richieste, presenze e ore.
           </p>
         </div>
         <NewTeamMemberDialog roles={roles} ssoEnabled={isOidcConfigured()} />
@@ -56,36 +66,50 @@ export default async function TeamPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Ruolo</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Ferie/Assenze rim.</TableHead>
-                <TableHead>Permesso rim. (h)</TableHead>
+                <TableHead>Membro</TableHead>
+                <TableHead>Ruolo e contratto</TableHead>
+                <TableHead>Saldo {year}</TableHead>
                 <TableHead>Stato</TableHead>
-                <TableHead></TableHead>
+                <TableHead>
+                  <span className="sr-only">Azioni</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.map((user) => (
-                <TeamMemberRow key={user.id} href={`/team/${user.id}`}>
-                  <TableCell className="font-medium">{user.name}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {user.email}
+                <LinkRow key={user.id} href={`/team/${user.id}`}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar size="sm">
+                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <span className="block truncate font-medium text-foreground">
+                          {user.name}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {user.email}
+                        </span>
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <RoleBadge role={user.role} />
+                    <div className="flex flex-col items-start gap-1">
+                      <RoleBadge role={user.role} />
+                      <span className="text-xs text-muted-foreground">
+                        {EMPLOYMENT_TYPE_LABELS[
+                          user.employmentType as keyof typeof EMPLOYMENT_TYPE_LABELS
+                        ] ?? user.employmentType}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell>
-                    {EMPLOYMENT_TYPE_LABELS[
-                      user.employmentType as keyof typeof EMPLOYMENT_TYPE_LABELS
-                    ] ?? user.employmentType}
-                  </TableCell>
-                  <TableCell>
-                    <BalanceDaysCell balance={balances.get(user.id)} />
-                  </TableCell>
-                  <TableCell>
-                    <BalanceHoursCell balance={balances.get(user.id)} />
+                    {balances.get(user.id) && (
+                      <BalanceMeters
+                        balances={balanceFigures(balances.get(user.id)!)}
+                        toRecover={formatToRecover(recoveryCredits.get(user.id) ?? [])}
+                      />
+                    )}
                   </TableCell>
                   <TableCell>
                     <ActiveBadge active={user.active} />
@@ -98,11 +122,11 @@ export default async function TeamPage() {
                       }
                     />
                   </TableCell>
-                </TeamMemberRow>
+                </LinkRow>
               ))}
               {users.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     Nessun membro del team ancora.
                   </TableCell>
                 </TableRow>
@@ -112,42 +136,5 @@ export default async function TeamPage() {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-// Colonna giorni: ferie per i dipendenti, monte assenze per le partite IVA.
-function BalanceDaysCell({ balance }: { balance?: LeaveBalance }) {
-  if (!balance) return <>—</>;
-  if (balance.kind === "assenze") {
-    return (
-      <>
-        <Remaining value={balance.assenzeRemaining} /> / {formatAmount(balance.assenzeAllowance)}
-      </>
-    );
-  }
-  return (
-    <>
-      <Remaining value={balance.ferieRemaining} /> / {formatAmount(balance.ferieAllowance)}
-    </>
-  );
-}
-
-// Le partite IVA non hanno un monte ore di permesso.
-function BalanceHoursCell({ balance }: { balance?: LeaveBalance }) {
-  if (!balance || balance.kind === "assenze") return <>—</>;
-  return (
-    <>
-      <Remaining value={balance.permessoRemaining} /> / {formatAmount(balance.permessoAllowance)}
-    </>
-  );
-}
-
-// Residuo in rosso quando è in negativo (richieste oltre il monte).
-function Remaining({ value }: { value: number }) {
-  if (value >= 0) return <>{formatAmount(value)}</>;
-  return (
-    <span className="font-medium text-destructive" title="In negativo">
-      {formatAmount(value)}
-    </span>
   );
 }
