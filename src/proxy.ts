@@ -31,6 +31,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Icone del sito (favicon, icon.svg, apple-icon.png) pubbliche: servono
-  // anche nella pagina di login.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)"],
+  // anche nella pagina di login. robots.txt pubblico: chiede ai motori di
+  // ricerca di non indicizzare nulla.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|robots.txt).*)"],
 };

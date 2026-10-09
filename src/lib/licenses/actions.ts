@@ -6,6 +6,7 @@ import { requireWritableUser } from "@/lib/auth/session";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
 import { canAccessDepartment, canAccessLicense, licenseScopeFor, type LicenseMode } from "@/lib/licenses/access";
 import { LICENSE_KINDS, type LicenseKind } from "@/lib/constants";
+import { RENEWAL_PERIODS } from "@/lib/licenses/expiry";
 
 type ActionResult = { error: string } | undefined;
 
@@ -52,6 +53,9 @@ function parseLicenseForm(formData: FormData) {
   const reminderRaw = String(formData.get("reminderDays") ?? "7").trim();
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const visibleToAll = formData.get("visibleToAll") === "true";
+  const autoRenew = formData.get("autoRenew") === "true";
+  const renewalMonths = Number(formData.get("renewalMonths") ?? 12);
+  const notifyExpiry = formData.get("notifyExpiry") !== "false";
 
   // Reparti con cui è condivisa, oltre al principale.
   const sharedDepartmentIds = [
@@ -73,6 +77,10 @@ function parseLicenseForm(formData: FormData) {
   if (expiresRaw && !/^\d{4}-\d{2}-\d{2}$/.test(expiresRaw)) {
     return { error: "Data di scadenza non valida" } as const;
   }
+  if (autoRenew && !expiresRaw) return { error: "Con il rinnovo automatico indica la data del prossimo rinnovo" } as const;
+  if (autoRenew && !(RENEWAL_PERIODS as readonly number[]).includes(renewalMonths)) {
+    return { error: "Cadenza di rinnovo non valida" } as const;
+  }
   const reminderDays = Number(reminderRaw);
   if (!Number.isInteger(reminderDays) || reminderDays < 1 || reminderDays > 365) {
     return { error: "Giorni di preavviso non validi (da 1 a 365)" } as const;
@@ -89,6 +97,9 @@ function parseLicenseForm(formData: FormData) {
       reminderDays,
       notes,
       visibleToAll,
+      autoRenew,
+      renewalMonths: autoRenew ? renewalMonths : 12,
+      notifyExpiry,
     },
     sharedDepartmentIds,
   } as const;

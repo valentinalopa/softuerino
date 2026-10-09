@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getEmailSettings, sendMail } from "@/lib/email/mailer";
 import { licenseExpiryEmail } from "@/lib/email/templates";
-import { daysUntil } from "@/lib/licenses/expiry";
+import { daysUntil, nextRenewal } from "@/lib/licenses/expiry";
 
 // Avvisi di scadenza ai super admin, chiamati una volta al giorno dal timer
 // della VM: primo avviso entro reminderDays giorni, secondo 1 giorno prima.
@@ -16,8 +16,23 @@ export async function sendLicenseReminders(now = new Date()) {
     where: { role: "super_admin", active: true },
     select: { name: true, email: true },
   });
+  // Rinnovi automatici passati: la data avanza al prossimo rinnovo (i
+  // promemoria ripartono da soli, perché legati alla data).
+  const renewing = await prisma.license.findMany({
+    where: { autoRenew: true, expiresAt: { not: null } },
+    select: { id: true, expiresAt: true, renewalMonths: true },
+  });
+  for (const l of renewing) {
+    const next = nextRenewal(l.expiresAt!, l.renewalMonths, now);
+    if (next.getTime() !== l.expiresAt!.getTime()) {
+      await prisma.license.update({ where: { id: l.id }, data: { expiresAt: next } });
+    }
+  }
+
+  // Avvisi solo per chi li vuole (notifyExpiry): es. niente email ogni mese
+  // per ChatGPT.
   const licenses = await prisma.license.findMany({
-    where: { expiresAt: { not: null } },
+    where: { expiresAt: { not: null }, notifyExpiry: true },
     include: {
       department: { select: { name: true } },
       sharedDepartments: { select: { department: { select: { name: true } } } },
@@ -61,6 +76,7 @@ export async function sendLicenseReminders(now = new Date()) {
             ],
             expiresAt,
             daysLeft: left,
+            autoRenew: license.autoRenew,
           })
         );
         delivered++;
