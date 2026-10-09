@@ -11,7 +11,7 @@ import {
   requireLicenseAccess,
 } from "@/lib/licenses/access";
 import { updateLicense } from "@/lib/licenses/actions";
-import { formatExpiry } from "@/lib/licenses/expiry";
+import { licenseExpiry } from "@/lib/licenses/expiry";
 import { LICENSE_KIND_LABELS, type LicenseKind } from "@/lib/constants";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,7 +80,8 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
               {LICENSE_KIND_LABELS[license.kind as LicenseKind] ?? license.kind} ·{" "}
               {departmentsText}
               {license.vendor ? ` · ${license.vendor}` : ""} · Scadenza:{" "}
-              {formatExpiry(license.expiresAt)}
+              {licenseExpiry(license).label}
+              {!license.notifyExpiry && license.expiresAt && " · senza avviso email"}
             </p>
           </div>
           {canManage && <DeleteLicenseButton licenseId={license.id} name={license.name} />}
@@ -113,6 +114,9 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
                   visibleToAll: license.visibleToAll,
                   hasAccount: Boolean(license.accountEncrypted),
                   hasPassword: Boolean(license.passwordEncrypted),
+                  autoRenew: license.autoRenew,
+                  renewalMonths: license.renewalMonths,
+                  notifyExpiry: license.notifyExpiry,
                 }}
               />
             ) : (
@@ -121,7 +125,7 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
                   ["Tipo", LICENSE_KIND_LABELS[license.kind as LicenseKind] ?? license.kind],
                   ["Reparti", departmentsText],
                   ["Fornitore", license.vendor ?? "—"],
-                  ["Scadenza", formatExpiry(license.expiresAt)],
+                  [license.autoRenew ? "Rinnovo" : "Scadenza", licenseExpiry(license).label],
                   [
                     license.kind === "licenza" ? "Attivazioni massime" : "Utenti/posti",
                     license.activationLimit === null ? "Illimitate" : String(license.activationLimit),

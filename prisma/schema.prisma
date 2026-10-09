@@ -344,6 +344,12 @@ model License {
   passwordEncrypted String?
   expiresAt       DateTime?
   reminderDays    Int       @default(7) // primo avviso N giorni prima, il secondo 1 giorno prima
+  // Rinnovo automatico (es. ChatGPT mensile): expiresAt è il prossimo rinnovo
+  // e avanza da solo di renewalMonths (1 o 12) quando passa.
+  autoRenew       Boolean   @default(false)
+  renewalMonths   Int       @default(12)
+  // Email di scadenza ai super admin: si può spegnere (es. rinnovi mensili).
+  notifyExpiry    Boolean   @default(true)
   notes           String?
   // Scadenza per cui è già partito l'avviso: se la scadenza cambia (rinnovo)
   // gli avvisi ripartono da soli.

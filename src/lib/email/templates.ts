@@ -304,15 +304,21 @@ export function licenseExpiryEmail(
     secrets: string[];
     expiresAt: Date;
     daysLeft: number;
+    // Rinnovo automatico: avviso del prossimo addebito, non di una scadenza.
+    autoRenew?: boolean;
   }
 ): Mail {
   const what = data.kind === "abbonamento" ? "L'abbonamento" : "La licenza";
   const when = data.daysLeft <= 0 ? "oggi" : data.daysLeft === 1 ? "domani" : `tra ${data.daysLeft} giorni`;
   return render(recipient, appUrl, {
-    subject: `${data.daysLeft <= 1 ? "Scade " + when : "In scadenza"}: ${data.name}`,
-    intro: [`${what} `, { strong: data.name }, ` scade ${when}.`],
+    subject: data.autoRenew
+      ? `Rinnovo automatico ${when}: ${data.name}`
+      : `${data.daysLeft <= 1 ? "Scade " + when : "In scadenza"}: ${data.name}`,
+    intro: data.autoRenew
+      ? [`${what} `, { strong: data.name }, ` si rinnova automaticamente ${when}.`]
+      : [`${what} `, { strong: data.name }, ` scade ${when}.`],
     details: [
-      ["Scadenza", formatFullDate(data.expiresAt)],
+      [data.autoRenew ? "Rinnovo" : "Scadenza", formatFullDate(data.expiresAt)],
       ["Tipo", data.kind === "abbonamento" ? "Abbonamento" : "Licenza"],
       ...(data.vendor ? ([["Fornitore", data.vendor]] as Array<[string, string]>) : []),
       ["Reparti", data.departments],

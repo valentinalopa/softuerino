@@ -26,6 +26,9 @@ export type LicenseFormValues = {
   visibleToAll: boolean;
   hasAccount: boolean;
   hasPassword: boolean;
+  autoRenew: boolean;
+  renewalMonths: number;
+  notifyExpiry: boolean;
 };
 
 export function LicenseForm({
@@ -47,6 +50,8 @@ export function LicenseForm({
   const [clearKey, setClearKey] = useState(false);
   const [clearPassword, setClearPassword] = useState(false);
   const [clearAccount, setClearAccount] = useState(false);
+  const [autoRenew, setAutoRenew] = useState(initial?.autoRenew ?? false);
+  const [notifyExpiry, setNotifyExpiry] = useState(initial?.notifyExpiry ?? true);
   const [visibleToAll, setVisibleToAll] = useState(initial?.visibleToAll ?? false);
   const [mainDepartment, setMainDepartment] = useState(initial?.departmentId ?? departments[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -223,7 +228,7 @@ export function LicenseForm({
           </Label>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="license-expires">Scadenza</Label>
+          <Label htmlFor="license-expires">{autoRenew ? "Prossimo rinnovo" : "Scadenza"}</Label>
           <DateField
             id="license-expires"
             name="expiresAt"
@@ -240,9 +245,45 @@ export function LicenseForm({
             type="number"
             min={1}
             max={365}
+            disabled={!notifyExpiry}
             defaultValue={initial?.reminderDays ?? LICENSE_REMINDER_DAYS_DEFAULT}
           />
+          {/* Campo disabilitato = non inviato: il valore resta quello salvato. */}
+          {!notifyExpiry && (
+            <input type="hidden" name="reminderDays" value={initial?.reminderDays ?? LICENSE_REMINDER_DAYS_DEFAULT} />
+          )}
         </div>
+      </div>
+
+      {/* Rinnovo automatico (la data avanza da sola) e avviso di scadenza
+          facoltativo: es. ChatGPT mensile senza un'email ogni mese. */}
+      <div className="space-y-2 rounded-lg border border-border p-3">
+        <Label className="flex items-center gap-2 text-sm font-normal">
+          <Checkbox checked={autoRenew} onCheckedChange={(next) => setAutoRenew(Boolean(next))} />
+          Rinnovo automatico
+        </Label>
+        <input type="hidden" name="autoRenew" value={autoRenew ? "true" : "false"} />
+        {autoRenew && (
+          <div className="flex flex-wrap items-center gap-2 pl-6 text-sm">
+            <span className="text-muted-foreground">Si rinnova</span>
+            <NativeSelectField
+              name="renewalMonths"
+              defaultValue={String(initial?.renewalMonths ?? 12)}
+              items={[
+                { value: "1", label: "ogni mese" },
+                { value: "12", label: "ogni anno" },
+              ]}
+            />
+            <span className="text-xs text-muted-foreground">
+              la data indicata sopra avanza da sola dopo ogni rinnovo
+            </span>
+          </div>
+        )}
+        <Label className="flex items-center gap-2 text-sm font-normal">
+          <Checkbox checked={notifyExpiry} onCheckedChange={(next) => setNotifyExpiry(Boolean(next))} />
+          {autoRenew ? "Avvisa via email prima del rinnovo" : "Avvisa via email prima della scadenza"} (ai super admin)
+        </Label>
+        <input type="hidden" name="notifyExpiry" value={notifyExpiry ? "true" : "false"} />
       </div>
 
       <div className="flex flex-col gap-1.5">

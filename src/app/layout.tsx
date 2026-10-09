@@ -15,6 +15,8 @@ export const metadata: Metadata = {
   title: "Softuerino | Gestionale team",
   description:
     "Gestionale per team: ferie, permessi, malattia, presenze, calendario e ore",
+  // Raggiungibile anche da internet: niente indicizzazione nei motori di ricerca.
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({

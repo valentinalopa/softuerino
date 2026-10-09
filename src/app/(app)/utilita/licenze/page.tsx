@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { byName } from "@/lib/utils";
 import { ensureConfiguredDepartments } from "@/lib/departments";
 import { accountForViewer, licenseScopeFor, licenseWhere, maskedAccount, maskedKey, requireLicenseAccess } from "@/lib/licenses/access";
-import { expiryStatus, formatExpiry } from "@/lib/licenses/expiry";
+import { licenseExpiry } from "@/lib/licenses/expiry";
+import { RefreshCw } from "lucide-react";
 import { LICENSE_KINDS, type LicenseKind } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -100,7 +101,7 @@ export default async function LicenzePage({
           <CardContent>
             <MobileList>
               {rows.map((l) => {
-                const status = expiryStatus(l.expiresAt, l.reminderDays);
+                const expiry = licenseExpiry(l);
                 return (
                   <MobileListItem key={l.id} href={`/utilita/licenze/${l.id}`} label={l.name}>
                     <div>
@@ -119,13 +120,7 @@ export default async function LicenzePage({
                         {kind === "licenza" ? "Attivazioni" : "Utenti/posti"}: {l._count.activations} /{" "}
                         {l.activationLimit ?? "∞"}
                       </span>
-                      {status === "expired" || status === "soon" ? (
-                        <Badge variant={status === "expired" ? "danger" : "warning"}>
-                          {formatExpiry(l.expiresAt)}
-                        </Badge>
-                      ) : (
-                        <span>Scadenza: {formatExpiry(l.expiresAt)}</span>
-                      )}
+                      <ExpiryLabel expiry={expiry} prefix />
                     </div>
                   </MobileListItem>
                 );
@@ -148,7 +143,7 @@ export default async function LicenzePage({
               </TableHeader>
               <TableBody>
                 {rows.map((l) => {
-                  const status = expiryStatus(l.expiresAt, l.reminderDays);
+                  const expiry = licenseExpiry(l);
                   return (
                     <LinkRow key={l.id} href={`/utilita/licenze/${l.id}`}>
                       <TableCell>
@@ -169,13 +164,7 @@ export default async function LicenzePage({
                         {l._count.activations} / {l.activationLimit ?? "∞"}
                       </TableCell>
                       <TableCell>
-                        {status === "expired" || status === "soon" ? (
-                          <Badge variant={status === "expired" ? "danger" : "warning"}>
-                            {formatExpiry(l.expiresAt)}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">{formatExpiry(l.expiresAt)}</span>
-                        )}
+                        <ExpiryLabel expiry={expiry} />
                       </TableCell>
                     </LinkRow>
                   );
@@ -243,5 +232,27 @@ function LicenseSecrets({
         ))}
       {hasPassword && <LicenseQuickKey {...common} masked="••••••••" field="password" />}
     </div>
+  );
+}
+
+// Scadenza: rossa se scaduta, arancione se vicina, con l'icona di rinnovo se
+// si rinnova da solo.
+function ExpiryLabel({ expiry, prefix = false }: { expiry: ReturnType<typeof licenseExpiry>; prefix?: boolean }) {
+  if (expiry.status === "expired" || expiry.status === "soon") {
+    return <Badge variant={expiry.status === "expired" ? "danger" : "warning"}>{expiry.label}</Badge>;
+  }
+  if (expiry.status === "renews") {
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <RefreshCw className="size-3.5 shrink-0" aria-hidden="true" />
+        {expiry.label}
+      </span>
+    );
+  }
+  return (
+    <span className="text-muted-foreground">
+      {prefix && "Scadenza: "}
+      {expiry.label}
+    </span>
   );
 }
