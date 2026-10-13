@@ -5,6 +5,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
 import { syncUserOrg } from "@/lib/departments";
+import { addUpcomingClosuresFor } from "@/lib/closures";
 
 // Login con Keycloak (OpenID Connect, Authorization Code + PKCE, client
 // confidenziale). Configurazione solo da ambiente:
@@ -227,6 +228,7 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
       passwordHash: await hashPassword(randomBytes(32).toString("base64")),
     },
   });
+  await addUpcomingClosuresFor(user.id);
   await syncUserOrg(user.id, claims);
   return { user, tokens };
 }

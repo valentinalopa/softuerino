@@ -38,6 +38,7 @@ export default async function PanoramicaPage() {
     }),
     prisma.leaveRequest.findMany({
       where: { startDate: { lte: yearEnd }, endDate: { gte: yearStart } },
+      include: { user: { select: { employmentType: true } } },
     }),
     // Stesso criterio di /richieste-team: tutte quelle in attesa.
     prisma.leaveRequest.findMany({
@@ -62,7 +63,11 @@ export default async function PanoramicaPage() {
 
   const hoursByClientByMonth = buildHoursByClientByMonth(hoursEntries, MONTHS_BACK);
   const clientTotals = buildClientTotals(hoursEntries);
-  const leaveTotals = buildLeaveTotals(leaveRequests, yearStart, yearEnd);
+  // La chiusura aziendale scala ferie o assenze a seconda del contratto.
+  const employmentTypeByUser = new Map(leaveRequests.map((r) => [r.userId, r.user.employmentType]));
+  const leaveTotals = buildLeaveTotals(leaveRequests, yearStart, yearEnd, (userId) =>
+    employmentTypeByUser.get(userId)
+  );
 
   return (
     <div className="space-y-8">

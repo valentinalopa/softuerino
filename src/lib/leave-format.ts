@@ -98,7 +98,7 @@ export function formatDuration(request: LeaveRequestRow) {
     const hours = `${formatAmount(request.hours)} ore`;
     return range ? `${range} (${hours})` : hours;
   }
-  // Stessa convenzione del saldo (domeniche escluse), così la durata mostrata
+  // Stessa convenzione del saldo (weekend e feste comandate esclusi), così la durata mostrata
   // coincide con i giorni effettivamente scalati.
   return `${countedLeaveDays(request.startDate, request.endDate)} gg`;
 }

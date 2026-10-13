@@ -110,7 +110,7 @@ model ImpersonationLog {
 model LeaveRequest {
   id        String   @id @default(cuid())
   userId    String
-  type      String // ferie | permesso | malattia
+  type      String // ferie | permesso | malattia | ... | chiusura (vedi LEAVE_TYPES)
   startDate DateTime
   endDate   DateTime
   hours     Float? // valorizzato solo per le richieste a ore (permesso, recupero a ore)
@@ -124,13 +124,34 @@ model LeaveRequest {
   createdAt DateTime @default(now())
   // Solo per type = "recupero": quale recupero da fare sta smaltendo.
   recoveryCreditId String?
+  // Solo per type = "chiusura": la chiusura aziendale da cui nasce.
+  closureId String?
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   recoveryCredit RecoveryCredit? @relation(fields: [recoveryCreditId], references: [id], onDelete: SetNull)
+  closure        CompanyClosure? @relation(fields: [closureId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([startDate, endDate])
   @@index([recoveryCreditId])
+  @@index([closureId])
+}
+
+// Chiusura aziendale (es. ponte di agosto), inserita da admin e super admin.
+// Vale per tutto il team: per ogni membro attivo nasce una richiesta
+// "chiusura" già approvata, che scala le ferie (dipendenti) o le assenze
+// (partite IVA) come una richiesta normale. Eliminando la chiusura spariscono
+// anche le richieste collegate.
+model CompanyClosure {
+  id        String   @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  note      String?
+  createdAt DateTime @default(now())
+
+  requests LeaveRequest[]
+
+  @@index([startDate, endDate])
 }
 
 // Rettifica del saldo ferie/permessi/assenze, impostata dal super admin

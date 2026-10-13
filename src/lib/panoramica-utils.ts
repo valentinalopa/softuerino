@@ -90,6 +90,7 @@ export type LeaveTotals = {
 // due anni viene spalmata, contando solo i giorni dentro questo intervallo.
 export function buildLeaveTotals(
   requests: {
+    userId: string;
     type: string;
     status: string;
     startDate: Date;
@@ -97,9 +98,10 @@ export function buildLeaveTotals(
     hours: number | null;
   }[],
   yearStart: Date,
-  yearEnd: Date
+  yearEnd: Date,
+  employmentTypeOf: (userId: string) => string | undefined
 ): LeaveTotals {
-  const tally = tallyLeave(requests, yearStart, yearEnd);
+  const tally = tallyLeave(requests, yearStart, yearEnd, employmentTypeOf);
   return {
     ferieDays: tally.ferieUsed,
     permessoHours: tally.permessoUsed,
