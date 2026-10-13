@@ -4,7 +4,7 @@ import {
   type BalanceKind,
   type EmploymentType,
 } from "@/lib/constants";
-import { clippedDaysInRange, countedLeaveDays } from "@/lib/leave-days";
+import { clippedDayKeysInRange, clippedDaysInRange, countedLeaveDays } from "@/lib/leave-days";
 import { formatAmount } from "@/lib/leave-format";
 
 export type LeaveTally = {
@@ -19,6 +19,7 @@ export type LeaveTally = {
 };
 
 type TallyableRequest = {
+  userId: string;
   type: string;
   status: string;
   startDate: Date;
@@ -28,28 +29,44 @@ type TallyableRequest = {
 
 // Unica sede della regola di classificazione ferie/permesso/malattia: usata sia
 // dal saldo individuale sia dagli aggregati di team (panoramica).
+// La chiusura aziendale scala le ferie dei dipendenti e le assenze delle
+// partite IVA (employmentType della persona). Ferie/assenze e chiusure si
+// contano per giorno e per persona, così un giorno coperto da entrambe (es.
+// ferie già approvate dentro una chiusura) si scala una volta sola.
 export function tallyLeave(
   requests: TallyableRequest[],
   yearStart: Date,
-  yearEnd: Date
+  yearEnd: Date,
+  employmentTypeOf: (userId: string) => string | undefined
 ): LeaveTally {
-  let ferieUsed = 0;
+  const ferieDays = new Set<string>();
+  const assenzaDaysSet = new Set<string>();
   let permessoUsed = 0;
   let malattiaDays = 0;
-  let assenzaDays = 0;
   let recuperoDays = 0;
   let recuperoHours = 0;
   let assenzaExtraDays = 0;
 
+  const addDays = (target: Set<string>, request: TallyableRequest) => {
+    for (const key of clippedDayKeysInRange(request.startDate, request.endDate, yearStart, yearEnd)) {
+      target.add(`${request.userId}|${key}`);
+    }
+  };
+
   for (const request of requests) {
     if (request.type === "ferie" && request.status === "approved") {
-      ferieUsed += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
+      addDays(ferieDays, request);
+    } else if (request.type === "chiusura" && request.status === "approved") {
+      addDays(
+        employmentTypeOf(request.userId) === "partita_iva" ? assenzaDaysSet : ferieDays,
+        request
+      );
     } else if (request.type === "permesso" && request.status === "approved") {
       permessoUsed += request.hours ?? 0;
     } else if (request.type === "malattia" && request.status === "registrata") {
       malattiaDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
     } else if (request.type === "assenza" && request.status === "approved") {
-      assenzaDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
+      addDays(assenzaDaysSet, request);
     } else if (request.type === "recupero" && request.status === "approved") {
       if (request.hours !== null) {
         recuperoHours += request.hours;
@@ -62,10 +79,10 @@ export function tallyLeave(
   }
 
   return {
-    ferieUsed,
+    ferieUsed: ferieDays.size,
     permessoUsed,
     malattiaDays,
-    assenzaDays,
+    assenzaDays: assenzaDaysSet.size,
     recuperoDays,
     recuperoHours,
     assenzaExtraDays,
@@ -178,7 +195,7 @@ function computeBalance(
     let tally = tallies.get(y);
     if (!tally) {
       const { yearStart, yearEnd } = yearRange(y);
-      tally = tallyLeave(requests, yearStart, yearEnd);
+      tally = tallyLeave(requests, yearStart, yearEnd, () => subject.employmentType);
       tallies.set(y, tally);
     }
     return tally;
@@ -333,9 +350,10 @@ export function remainingByLeaveType(balance: LeaveBalance): RemainingByLeaveTyp
 }
 
 // Saldo che un tipo di richiesta scala (residuo e unità), o null se il tipo è
-// fuori monte.
+// fuori monte. La chiusura aziendale scala ferie o assenze, a seconda del contratto.
 function chargedBalance(balance: LeaveBalance, type: string) {
-  const remaining = remainingByLeaveType(balance)[type as keyof RemainingByLeaveType];
+  const charged = type === "chiusura" ? (balance.kind === "assenze" ? "assenza" : "ferie") : type;
+  const remaining = remainingByLeaveType(balance)[charged as keyof RemainingByLeaveType];
   if (remaining === undefined) return null;
   return { remaining, unit: type === "permesso" ? "h" : "gg" };
 }

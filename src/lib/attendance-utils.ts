@@ -11,6 +11,7 @@ export const DAY_LEAVE_TYPES = [
   "malattia",
   "assenza",
   "assenza_extra",
+  "chiusura",
 ] as const;
 export type DayLeaveType = (typeof DAY_LEAVE_TYPES)[number];
 

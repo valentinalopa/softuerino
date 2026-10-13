@@ -89,13 +89,15 @@ export const LEAVE_TYPES = [
   "malattia",
   "assenza",
   "assenza_extra",
+  "chiusura",
 ] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
 
 // Tipi richiedibili per tipo di rapporto. "recupero" (riposo compensativo per
 // lavoro in più, es. una trasferta) vale per tutti; "assenza_extra" (giorno
 // fuori monte di una partita IVA, senza lavoro da compensare) solo per le
-// partite IVA. Nessuno dei due consuma il monte annuale.
+// partite IVA. Nessuno dei due consuma il monte annuale. "chiusura" non si
+// richiede: nasce da una chiusura aziendale inserita da un admin.
 export const DIPENDENTE_LEAVE_TYPES = ["ferie", "permesso", "recupero", "malattia"] as const;
 export const PARTITA_IVA_LEAVE_TYPES = ["assenza", "recupero", "assenza_extra"] as const;
 
@@ -120,6 +122,7 @@ export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   malattia: "Malattia",
   assenza: "Assenza",
   assenza_extra: "Assenza extra",
+  chiusura: "Chiusura aziendale",
 };
 
 // Pagina di atterraggio dopo il login: admin e super admin partono dalla

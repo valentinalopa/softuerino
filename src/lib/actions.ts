@@ -11,6 +11,7 @@ import {
   revokeSessions,
 } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
+import { addUpcomingClosuresFor } from "@/lib/closures";
 import { hoursBetween } from "@/lib/leave-format";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -116,16 +117,19 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await hashPassword(password);
 
+  let userId: string;
   try {
-    await prisma.user.create({
+    const created = await prisma.user.create({
       data: { name, email, passwordHash, role, employmentType },
     });
+    userId = created.id;
   } catch (err) {
     if (isUniqueViolation(err)) {
       return { error: "Questa email è già in uso" };
     }
     throw err;
   }
+  await addUpcomingClosuresFor(userId);
 
   revalidatePath("/team");
   revalidatePath("/reparto");
@@ -674,6 +678,73 @@ export async function deleteRecoveryCredit(creditId: string): Promise<ActionResu
 
   await prisma.recoveryCredit.delete({ where: { id: creditId } });
   revalidateLeavePaths(credit.userId);
+}
+
+// --- Chiusure aziendali (admin e super admin) ---
+
+// Una chiusura vale per tutto il team: per ogni membro attivo nasce una
+// richiesta "chiusura" già approvata, che scala ferie o assenze. Le ferie già
+// approvate negli stessi giorni restano: il giorno si scala una volta sola.
+export async function createCompanyClosure(formData: FormData): Promise<ActionResult> {
+  await requireAdmin();
+
+  const startDateRaw = String(formData.get("startDate") ?? "");
+  const endDateRaw = String(formData.get("endDate") ?? "") || startDateRaw;
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (!startDateRaw) return { error: "La data è obbligatoria" };
+  if (endDateRaw < startDateRaw) {
+    return { error: "La data di fine non può precedere quella di inizio" };
+  }
+  const startDate = localDate(startDateRaw);
+  const endDate = localDate(endDateRaw);
+
+  const overlapping = await prisma.companyClosure.findFirst({
+    where: { startDate: { lte: endDate }, endDate: { gte: startDate } },
+  });
+  if (overlapping) {
+    return { error: "C'è già una chiusura aziendale che copre (in parte) queste date" };
+  }
+
+  const members = await prisma.user.findMany({ where: { active: true }, select: { id: true } });
+  await prisma.companyClosure.create({
+    data: {
+      startDate,
+      endDate,
+      note,
+      requests: {
+        create: members.map((member) => ({
+          userId: member.id,
+          type: "chiusura",
+          status: "approved",
+          startDate,
+          endDate,
+          note,
+        })),
+      },
+    },
+  });
+  revalidateClosurePaths();
+}
+
+// Elimina la chiusura e le richieste collegate di tutti i membri.
+export async function deleteCompanyClosure(closureId: string): Promise<ActionResult> {
+  await requireAdmin();
+  const deleted = await prisma.companyClosure.deleteMany({ where: { id: closureId } });
+  if (deleted.count === 0) {
+    return { error: "Chiusura non trovata (forse è già stata eliminata)" };
+  }
+  revalidateClosurePaths();
+}
+
+// Una chiusura tocca le richieste e i saldi di tutto il team.
+function revalidateClosurePaths() {
+  revalidatePath("/team", "layout");
+  revalidatePath("/richieste");
+  revalidatePath("/richieste-team");
+  revalidatePath("/panoramica");
+  revalidatePath("/presenze");
+  revalidatePath("/calendario");
+  revalidatePath("/");
 }
 
 function revalidateLeavePaths(userId: string) {

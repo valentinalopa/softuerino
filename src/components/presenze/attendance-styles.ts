@@ -3,6 +3,7 @@ import {
   Building2,
   CalendarOff,
   Clock3,
+  DoorClosed,
   Home,
   CalendarMinus,
   Palmtree,
@@ -47,6 +48,12 @@ export const LEAVE_STYLES = {
     title: "Assenza extra",
     icon: CalendarMinus,
   },
+  // Chiusura aziendale: vale per tutto il team, scala ferie o assenze.
+  chiusura: {
+    chip: TONE_CHIP.success,
+    title: "Chiusura aziendale",
+    icon: DoorClosed,
+  },
 } as const;
 
 export const MODE_STYLES = {
@@ -83,6 +90,8 @@ const PRESENCE_CATEGORY_KEYS = (Object.keys(MODE_STYLES) as (keyof typeof MODE_S
 
 const CATEGORY_ORDER = [
   ...PRESENCE_CATEGORY_KEYS,
+  "chiusura",
+  "chiusura-pending",
   "ferie",
   "ferie-pending",
   "recupero",
