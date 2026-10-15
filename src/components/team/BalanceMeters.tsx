@@ -1,4 +1,4 @@
-import { annualAllowance, type BalanceKind } from "@/lib/constants";
+import type { BalanceKind } from "@/lib/constants";
 import { formatAmount } from "@/lib/leave-format";
 import type { BalanceFigures } from "@/lib/leave-balance";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,7 @@ export function BalanceMeters({
   return (
     <div className={cn("flex flex-wrap gap-x-8 gap-y-3", className)}>
       {KIND_ORDER.filter((kind) => balances[kind]).map((kind) => (
-        <BalanceMeter key={kind} kind={kind} remaining={balances[kind]!.remaining} />
+        <BalanceMeter key={kind} kind={kind} figures={balances[kind]!} />
       ))}
       {toRecover && (
         <div>
@@ -43,13 +43,14 @@ export function BalanceMeters({
   );
 }
 
-// Residuo in evidenza rispetto al monte annuale, con una barra di quanto
-// resta. In negativo la barra è rossa e mostra di quanto si è sotto.
-function BalanceMeter({ kind, remaining }: { kind: BalanceKind; remaining: number }) {
+// Residuo in evidenza rispetto al riferimento (monte annuale, per le ferie il
+// maturato), con una barra di quanto resta. In negativo la barra è rossa e
+// mostra di quanto si è sotto.
+function BalanceMeter({ kind, figures }: { kind: BalanceKind; figures: BalanceFigures }) {
   const { label, unit } = BALANCE_KIND_LABELS[kind];
-  const perYear = annualAllowance(kind);
+  const { remaining, reference, referenceNote } = figures;
   const negative = remaining < 0;
-  const ratio = perYear > 0 ? Math.min(Math.abs(remaining) / perYear, 1) : 0;
+  const ratio = reference > 0 ? Math.min(Math.abs(remaining) / reference, 1) : 0;
   return (
     <div className="w-32">
       <span className="block text-xs text-muted-foreground">{label}</span>
@@ -62,9 +63,9 @@ function BalanceMeter({ kind, remaining }: { kind: BalanceKind; remaining: numbe
         >
           {formatAmount(remaining)}
         </span>
-        <span className="text-xs text-muted-foreground" title="Monte annuale">
+        <span className="text-xs text-muted-foreground" title={referenceNote ?? "Monte annuale"}>
           {" "}
-          / {formatAmount(perYear)} {unit}
+          / {formatAmount(reference)} {unit}
         </span>
       </span>
       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
@@ -73,6 +74,9 @@ function BalanceMeter({ kind, remaining }: { kind: BalanceKind; remaining: numbe
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
+      {referenceNote && (
+        <span className="mt-1 block text-xs text-muted-foreground">{referenceNote}</span>
+      )}
       {negative && (
         <span className="mt-1 block text-xs font-medium text-destructive">In negativo</span>
       )}

@@ -54,7 +54,7 @@ export default async function Home() {
             <StatCard
               label="Ferie rimanenti (giorni)"
               value={balance.ferieRemaining}
-              sub={`su ${formatAmount(annualAllowance("ferie"))} l'anno`}
+              sub={`su ${formatAmount(balance.ferieMatured)} maturate (${formatAmount(annualAllowance("ferie"))} l'anno)`}
               href="/richieste"
             />
             <StatCard

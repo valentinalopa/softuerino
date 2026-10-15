@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import {
   LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE,
+  annualAllowance,
+  ferieAccruedInMonth,
   type BalanceKind,
   type EmploymentType,
 } from "@/lib/constants";
@@ -91,11 +93,13 @@ export function tallyLeave(
 
 // Dipendenti: ferie (giorni) + permessi (ore) + malattia senza tetto.
 // Partite IVA: un unico monte "assenze" in giorni.
-// Allowance = disponibile nell'anno: monte annuale + residuo riportato (o
-// rettifica del super admin).
+// Allowance = disponibile nell'anno: monte annuale (per le ferie: maturato
+// finora) + residuo riportato (o rettifica del super admin).
 export type LeaveBalance =
   | {
       kind: "dipendente";
+      // Ferie maturate nell'anno a oggi (dal mese di creazione dell'utente).
+      ferieMatured: number;
       ferieAllowance: number;
       ferieUsed: number;
       ferieRemaining: number;
@@ -118,7 +122,7 @@ export type LeaveBalance =
       assenzaExtraDays: number;
     };
 
-type BalanceAdjustment = { kind: string; year: number; amount: number };
+type BalanceAdjustment = { kind: string; year: number; amount: number; setAt: Date };
 
 // Contesto per il calcolo: da quando l'utente esiste (punto di partenza del
 // riporto se non ci sono rettifiche) e le rettifiche del super admin.
@@ -140,15 +144,32 @@ function yearRange(year: number) {
   };
 }
 
-// Anno da cui parte il riporto di un saldo da dipendente: l'ultima rettifica
-// fino a `year` (che fissa il residuo di quell'anno), altrimenti l'anno di
-// creazione dell'utente.
+// Ferie maturate nell'anno `year` fino ad `asOf`. Maturano a fine mese: un
+// mese conta dal 1° del mese dopo, e solo se finisce dopo `from` (la creazione
+// dell'utente, il cui mese conta intero, o la rettifica, che comprende già le
+// ferie maturate fino a lì).
+export function ferieAccrued(year: number, from: Date, asOf: Date) {
+  let days = 0;
+  for (let month = 0; month < 12; month++) {
+    const monthEnd = new Date(year, month + 1, 1);
+    if (monthEnd > from && monthEnd <= asOf) days += ferieAccruedInMonth(month);
+  }
+  return days;
+}
+
+// Punto di partenza del riporto di un saldo da dipendente: l'ultima rettifica
+// fino a `year` (che fissa il residuo di quell'anno nel momento in cui è
+// salvata), altrimenti la creazione dell'utente.
 function carryBaseline(subject: BalanceSubject, kind: BalanceKind, year: number) {
   const latest = subject.adjustments
     .filter((a) => a.kind === kind && a.year <= year)
     .sort((a, b) => b.year - a.year)[0];
-  if (latest) return { baseYear: latest.year, baseAmount: latest.amount };
-  return { baseYear: Math.min(subject.createdAt.getFullYear(), year), baseAmount: 0 };
+  if (latest) return { baseYear: latest.year, baseAmount: latest.amount, baseFrom: latest.setAt };
+  return {
+    baseYear: Math.min(subject.createdAt.getFullYear(), year),
+    baseAmount: 0,
+    baseFrom: subject.createdAt,
+  };
 }
 
 // Primo anno di cui servono le richieste per calcolare il saldo di `year`.
@@ -160,22 +181,24 @@ function firstYearNeeded(subject: BalanceSubject, year: number) {
   );
 }
 
-// Saldo da dipendente con riporto: l'anno base vale monte + rettifica, ogni
-// anno successivo monte + residuo dell'anno prima.
+// Saldo da dipendente con riporto: l'anno base vale rettifica + quanto
+// matura da lì, ogni anno successivo quanto matura + residuo dell'anno prima.
+// `accrue(y, from)` = quanto matura nell'anno y a partire da `from` (permessi:
+// il monte intero dal 1° gennaio; ferie: i mesi finiti).
 function carriedBalance(
   subject: BalanceSubject,
   kind: "ferie" | "permesso",
-  perYear: number,
+  accrue: (y: number, from: Date) => number,
   year: number,
   tallyFor: (y: number) => LeaveTally
 ) {
-  const { baseYear, baseAmount } = carryBaseline(subject, kind, year);
+  const { baseYear, baseAmount, baseFrom } = carryBaseline(subject, kind, year);
   const usedIn = (y: number) => (kind === "ferie" ? tallyFor(y).ferieUsed : tallyFor(y).permessoUsed);
 
-  let allowance = perYear + baseAmount;
+  let allowance = baseAmount + accrue(baseYear, baseFrom);
   let used = usedIn(baseYear);
   for (let y = baseYear + 1; y <= year; y++) {
-    allowance = perYear + (allowance - used);
+    allowance = accrue(y, subject.createdAt) + (allowance - used);
     used = usedIn(y);
   }
   return {
@@ -218,11 +241,14 @@ function computeBalance(
     };
   }
 
-  const monte = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE.dipendente;
-  const ferie = carriedBalance(subject, "ferie", monte.ferieDaysPerYear, year, tallyFor);
-  const permesso = carriedBalance(subject, "permesso", monte.permessoHoursPerYear, year, tallyFor);
+  const now = new Date();
+  const ferieAccruedFrom = (y: number, from: Date) => ferieAccrued(y, from, now);
+  const permessoPerYear = () => LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE.dipendente.permessoHoursPerYear;
+  const ferie = carriedBalance(subject, "ferie", ferieAccruedFrom, year, tallyFor);
+  const permesso = carriedBalance(subject, "permesso", permessoPerYear, year, tallyFor);
   return {
     kind: "dipendente",
+    ferieMatured: ferieAccruedFrom(year, subject.createdAt),
     ferieAllowance: ferie.allowance,
     ferieUsed: ferie.used,
     ferieRemaining: ferie.remaining,
@@ -258,7 +284,7 @@ export async function getLeaveBalancesForUsers(
       createdAt: true,
       balanceAdjustments: {
         where: { year: { lte: year } },
-        select: { kind: true, year: true, amount: true },
+        select: { kind: true, year: true, amount: true, setAt: true },
       },
     },
   });
@@ -310,15 +336,37 @@ export async function getLeaveBalancesForUsers(
 }
 
 // Residuo e goduto per saldo (solo quelli del contratto del membro): dati
-// semplici per le barrette di Team e della scheda membro.
-export type BalanceFigures = { remaining: number; used: number };
+// semplici per le barrette di Team e della scheda membro. `reference` è il
+// riferimento accanto al residuo: per le ferie il maturato nell'anno, per gli
+// altri il monte annuale.
+export type BalanceFigures = {
+  remaining: number;
+  used: number;
+  reference: number;
+  referenceNote?: string;
+};
 
 export function balanceFigures(balance: LeaveBalance): Partial<Record<BalanceKind, BalanceFigures>> {
   return balance.kind === "assenze"
-    ? { assenze: { remaining: balance.assenzeRemaining, used: balance.assenzeUsed } }
+    ? {
+        assenze: {
+          remaining: balance.assenzeRemaining,
+          used: balance.assenzeUsed,
+          reference: annualAllowance("assenze"),
+        },
+      }
     : {
-        ferie: { remaining: balance.ferieRemaining, used: balance.ferieUsed },
-        permesso: { remaining: balance.permessoRemaining, used: balance.permessoUsed },
+        ferie: {
+          remaining: balance.ferieRemaining,
+          used: balance.ferieUsed,
+          reference: balance.ferieMatured,
+          referenceNote: `maturate, ${formatAmount(annualAllowance("ferie"))} l'anno`,
+        },
+        permesso: {
+          remaining: balance.permessoRemaining,
+          used: balance.permessoUsed,
+          reference: annualAllowance("permesso"),
+        },
       };
 }
 

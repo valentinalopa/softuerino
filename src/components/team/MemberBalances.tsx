@@ -87,7 +87,7 @@ export function MemberBalances({
 }
 
 // Residui scritti a mano (es. ricopiati dall'Excel): ognuno diventa una
-// rettifica sull'anno corrente, poi le richieste approvate lo scalano.
+// rettifica sull'anno corrente, poi le richieste approvate lo scalano e le ferie continuano a maturare a fine mese.
 function BalanceForm({
   userId,
   balances,
@@ -150,7 +150,7 @@ function BalanceForm({
         <CardTitle>Aggiorna saldi</CardTitle>
         <CardDescription>
           Scrivi il residuo che deve risultare oggi (anche con la virgola, es. 2,5). Da qui in poi
-          le richieste approvate lo scalano.
+          le richieste approvate lo scalano e le ferie continuano a maturare a fine mese.
         </CardDescription>
       </CardHeader>
       <CardContent>

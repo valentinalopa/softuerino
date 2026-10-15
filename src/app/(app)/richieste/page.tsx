@@ -107,7 +107,8 @@ export default async function RichiestePage({
             <BalanceCard
               label="Ferie rimanenti"
               negative={balance.ferieRemaining < 0}
-              value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(annualAllowance("ferie"))} giorni`}
+              value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieMatured)} giorni`}
+              detail="Maturate a oggi"
             />
             <BalanceCard
               label="Permesso rimanente"
