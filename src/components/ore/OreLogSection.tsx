@@ -4,7 +4,10 @@ import { Pencil } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { appendQuery } from "@/lib/utils";
 import { addDays, formatFullDateNoYear, startOfDay } from "@/lib/calendar-utils";
-import { dateKey } from "@/lib/attendance-utils";
+import { buildAttendanceMap, dateKey, lookupAttendance } from "@/lib/attendance-utils";
+import { isHoliday } from "@/lib/leave-days";
+import { formatHourlySlot } from "@/lib/leave-format";
+import { LEAVE_TYPE_LABELS } from "@/lib/constants";
 import { parseDateParam, buildMonthlySummary, formatHours } from "@/lib/ore-utils";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { DayStrip } from "@/components/ore/DayStrip";
@@ -132,8 +135,12 @@ async function DailyView({
     addDays(windowStart, i)
   );
   const windowEnd = addDays(windowStart, WINDOW_SIZE);
+  // Il giorno selezionato può stare fuori dalla finestra (frecce della strip).
+  const leavesFrom = selectedDate < windowStart ? selectedDate : windowStart;
+  const selectedEnd = addDays(selectedDate, 1);
+  const leavesTo = selectedEnd > windowEnd ? selectedEnd : windowEnd;
 
-  const [activeClients, dayEntries, windowEntries] = await Promise.all([
+  const [activeClients, dayEntries, windowEntries, leaveRequests] = await Promise.all([
     prisma.client.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -150,7 +157,46 @@ async function DailyView({
       where: { userId, date: { gte: windowStart, lt: windowEnd } },
       select: { date: true },
     }),
+    // Solo assenze confermate: una richiesta in attesa non toglie il giorno
+    // da quelli da registrare.
+    prisma.leaveRequest.findMany({
+      where: {
+        userId,
+        status: { in: ["approved", "registrata"] },
+        startDate: { lt: leavesTo },
+        endDate: { gte: leavesFrom },
+      },
+      select: {
+        userId: true,
+        type: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        hours: true,
+        startTime: true,
+        endTime: true,
+      },
+    }),
   ]);
+
+  // Giorni da non registrare oltre ai weekend: feste comandate e assenze a
+  // giornata intera. Un permesso a ore no: il resto della giornata si lavora.
+  const absences = buildAttendanceMap({ leaveRequests, presenceEntries: [] });
+  const absentKeys = new Set(
+    windowDays
+      .filter((day) => lookupAttendance(absences, userId, day)?.leave)
+      .map(dateKey)
+  );
+  const selectedAbsence = lookupAttendance(absences, userId, selectedDate);
+  const weekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+  const restLabel = selectedAbsence?.leave
+    ? LEAVE_TYPE_LABELS[selectedAbsence.leave.type]
+    : weekend
+      ? "Weekend"
+      : isHoliday(selectedDate)
+        ? "Festività"
+        : null;
+  const hourlyLeave = selectedAbsence?.hourly;
 
   // In modifica il form include anche i clienti disattivati che hanno già ore
   // quel giorno: il salvataggio sostituisce l'intera giornata e senza queste
@@ -182,6 +228,7 @@ async function DailyView({
         selectedKey={selectedKey}
         windowKey={windowKey}
         loggedKeys={loggedKeys}
+        absentKeys={absentKeys}
         basePath={basePath}
         prevHref={appendQuery(basePath, {
           date: selectedKey,
@@ -198,19 +245,28 @@ async function DailyView({
           {formatFullDateNoYear(selectedDate)}
         </h2>
         <span
-          className={
-            alreadyLogged
-              ? `text-sm font-medium ${TONE_TEXT.success}`
-              : `text-sm font-medium ${TONE_TEXT.danger}`
-          }
+          className={`text-sm font-medium ${
+            TONE_TEXT[alreadyLogged ? "success" : restLabel ? "neutral" : "danger"]
+          }`}
         >
           {alreadyLogged
             ? `Registrate ${formatHours(totalLogged)}h`
-            : "Non ancora registrato"}
+            : (restLabel ?? "Non ancora registrato")}
         </span>
       </div>
 
       <div className="mx-auto max-w-xl space-y-3">
+        {!alreadyLogged && restLabel && (
+          <p className="text-sm text-muted-foreground">
+            Giornata da non registrare: se si è lavorato comunque, le ore si possono segnare qui sotto.
+          </p>
+        )}
+        {hourlyLeave && (
+          <p className="text-sm text-muted-foreground">
+            {LEAVE_TYPE_LABELS[hourlyLeave.type]} {formatHourlySlot(hourlyLeave)}: vanno registrate
+            le ore lavorate nel resto della giornata.
+          </p>
+        )}
         {alreadyLogged && !editing ? (
           <>
             <LoggedHoursSummary
