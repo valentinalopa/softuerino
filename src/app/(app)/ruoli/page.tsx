@@ -6,7 +6,7 @@ import { departmentRules, generalRules } from "@/lib/permissions";
 import { DEPARTMENT_ROLES, PERMISSION_ROLES } from "@/lib/permission-rules";
 import { formatDate } from "@/lib/leave-format";
 import { updateAccountNotify } from "@/lib/accounts/actions";
-import { updateDepartmentRules, updateGeneralRules, updateLeaveNotify } from "@/lib/roles/actions";
+import { updateDepartmentRules, updateGeneralRules, updateHoursReminder, updateLeaveNotify } from "@/lib/roles/actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
@@ -68,7 +68,15 @@ export default async function RuoliPage({
     prisma.user.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, email: true, role: true, leaveNotify: true, accountNotify: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        leaveNotify: true,
+        accountNotify: true,
+        hoursReminder: true,
+      },
     }),
     managedDepartmentNames(),
     prisma.emailSettings.findFirst({ select: { enabled: true } }),
@@ -258,6 +266,24 @@ export default async function RuoliPage({
           <PeopleChoiceForm
             people={people.map((p) => ({ id: p.id, name: p.name, summary: summary(p), checked: p.leaveNotify }))}
             onSave={updateLeaveNotify}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Promemoria ore (19:00)</CardTitle>
+          <CardDescription>
+            Nei giorni lavorativi, alle 19, un&apos;email a chi non ha ancora registrato le ore della giornata. Non
+            arriva a chi è assente tutto il giorno (ferie, malattia, chiusura aziendale) né nei weekend e nelle
+            feste.
+            {!email?.enabled && " Attenzione: le notifiche email sono spente (Sistema → Email)."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PeopleChoiceForm
+            people={people.map((p) => ({ id: p.id, name: p.name, summary: summary(p), checked: p.hoursReminder }))}
+            onSave={updateHoursReminder}
           />
         </CardContent>
       </Card>

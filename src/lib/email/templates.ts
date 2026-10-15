@@ -276,6 +276,20 @@ export function taskAssignedEmail(
   });
 }
 
+// Promemoria serale: ore della giornata non ancora registrate.
+export function hoursReminderEmail(recipient: Recipient, appUrl: string, data: { date: Date }): Mail {
+  return render(recipient, appUrl, {
+    subject: `Ore di oggi da registrare (${formatDate(data.date)})`,
+    intro: [
+      "non risultano ore registrate per oggi, ",
+      { strong: formatFullDate(data.date) },
+      ". Ricordati di inserirle in Log ore prima di chiudere la giornata.",
+    ],
+    note: "Se oggi eri assente, registra l'assenza in Giorni off: il promemoria non arriverà più per quel giorno.",
+    link: { path: "/ore", label: "Registra le ore" },
+  });
+}
+
 export function smtpTestEmail(recipient: Recipient, appUrl: string): Mail {
   return render(recipient, appUrl, {
     subject: "Softuerino: email di prova",

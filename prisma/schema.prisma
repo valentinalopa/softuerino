@@ -31,6 +31,10 @@ model User {
   leaveNotify    Boolean  @default(false)
   // Riceve le richieste di nuovi utenti (se nessuno: tutti i super admin).
   accountNotify  Boolean  @default(false)
+  // Promemoria email alle 19 se non ha registrato le ore della giornata
+  // (scelto in Ruoli e permessi); hoursReminderSentFor = ultimo giorno avvisato.
+  hoursReminder        Boolean   @default(true)
+  hoursReminderSentFor DateTime?
 
   sessions               Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")
