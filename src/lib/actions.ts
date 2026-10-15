@@ -598,20 +598,24 @@ export async function setLeaveBalances(
   );
   const monte = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE;
 
+  const setAt = new Date();
+
   await prisma.$transaction(
     entries.map((entry) => {
       const balance = balances.get(entry.userId)!;
       // Rettifica = residuo voluto − monte annuale + già goduto quest'anno.
+      // Le ferie non hanno monte: il residuo comprende quelle maturate fino a
+      // oggi, da qui maturano i mesi che finiscono dopo setAt.
       const amount =
         balance.kind === "assenze"
           ? entry.remaining - monte.partita_iva.assenzeDaysPerYear + balance.assenzeUsed
           : entry.kind === "ferie"
-            ? entry.remaining - monte.dipendente.ferieDaysPerYear + balance.ferieUsed
+            ? entry.remaining + balance.ferieUsed
             : entry.remaining - monte.dipendente.permessoHoursPerYear + balance.permessoUsed;
       return prisma.leaveBalanceAdjustment.upsert({
         where: { userId_year_kind: { userId: entry.userId, year, kind: entry.kind } },
-        create: { userId: entry.userId, year, kind: entry.kind, amount },
-        update: { amount },
+        create: { userId: entry.userId, year, kind: entry.kind, amount, setAt },
+        update: { amount, setAt },
       });
     })
   );

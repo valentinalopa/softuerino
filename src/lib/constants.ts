@@ -42,18 +42,29 @@ export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
 // Dipendenti: il residuo non goduto passa all'anno dopo. Partite IVA: il
 // monte si azzera ogni 1° gennaio. Il saldo può andare in negativo (nessun
 // blocco sulle richieste): l'app lo segnala.
+// Le ferie dei dipendenti non arrivano tutte a gennaio: maturano a fine mese
+// (FERIE_ACCRUAL), per un totale di 26 giorni l'anno.
 export const LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE = {
   dipendente: { ferieDaysPerYear: 26, permessoHoursPerYear: 36 },
   partita_iva: { assenzeDaysPerYear: 26 },
 } as const;
+
+// Ferie maturate a fine di ogni mese: 2 giorni, 4 a dicembre (tredicesima).
+// 11 × 2 + 4 = ferieDaysPerYear.
+export const FERIE_ACCRUAL = { daysPerMonth: 2, decemberDays: 4 } as const;
+
+export function ferieAccruedInMonth(month: number): number {
+  return month === 11 ? FERIE_ACCRUAL.decemberDays : FERIE_ACCRUAL.daysPerMonth;
+}
 
 // Saldi rettificabili dal super admin (LeaveBalanceAdjustment.kind).
 export const BALANCE_KINDS = ["ferie", "permesso", "assenze"] as const;
 export type BalanceKind = (typeof BALANCE_KINDS)[number];
 
 // Monte annuale di un saldo: è il riferimento mostrato accanto al residuo
-// ("5 / 26 giorni"). Non il disponibile (monte + riporto o rettifica), che
-// dopo una rettifica coincide col residuo e non dice nulla.
+// ("5 / 36 ore"; per le ferie invece il maturato nell'anno). Non il
+// disponibile (monte + riporto o rettifica), che dopo una rettifica coincide
+// col residuo e non dice nulla.
 export function annualAllowance(kind: BalanceKind): number {
   const { dipendente, partita_iva } = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE;
   if (kind === "ferie") return dipendente.ferieDaysPerYear;
