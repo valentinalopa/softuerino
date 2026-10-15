@@ -5,12 +5,14 @@ import { appendQuery, cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { shortDayLabel } from "@/lib/calendar-utils";
 import { dateKey } from "@/lib/attendance-utils";
+import { isWorkingDay } from "@/lib/leave-days";
 
 export function DayStrip({
   days,
   selectedKey,
   windowKey,
   loggedKeys,
+  absentKeys,
   prevHref,
   nextHref,
   basePath = "/ore",
@@ -19,6 +21,8 @@ export function DayStrip({
   selectedKey: string;
   windowKey: string;
   loggedKeys: Set<string>;
+  // Giorni di assenza approvata a giornata intera: non vanno registrati.
+  absentKeys: Set<string>;
   prevHref: string;
   nextHref: string;
   // Pagina che ospita la strip (es. "/ore" o "/team/abc?tab=ore").
@@ -41,12 +45,13 @@ export function DayStrip({
           const key = dateKey(day);
           const selected = key === selectedKey;
           const logged = loggedKeys.has(key);
-          const weekend = day.getDay() === 0 || day.getDay() === 6;
+          // Weekend, feste comandate e assenze: grigi come i giorni futuri.
+          const rest = !isWorkingDay(day) || absentKeys.has(key);
           const future = key > todayKey;
 
           const dotClass = logged
             ? TONE_DOT.success
-            : weekend || future
+            : rest || future
               ? "bg-muted-foreground/30"
               : TONE_DOT.danger;
 
