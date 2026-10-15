@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -29,6 +29,7 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   EarthLock,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
@@ -128,6 +129,47 @@ function writeCollapsed(value: boolean) {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
+// Sezioni aperte o chiuse a mano (titolo → aperta), stesso schema della
+// preferenza qui sopra. Senza una scelta salvata la sezione è chiusa.
+const SECTIONS_KEY = "softuerino:sidebar-sections";
+const SECTIONS_EVENT = "softuerino:sidebar-sections-change";
+
+function subscribeSections(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(SECTIONS_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(SECTIONS_EVENT, onChange);
+  };
+}
+
+// Stringa grezza: useSyncExternalStore vuole uno snapshot stabile.
+function readSections() {
+  try {
+    return window.localStorage.getItem(SECTIONS_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function parseSections(raw: string): Record<string, boolean> {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value && typeof value === "object" ? (value as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSections(value: Record<string, boolean>) {
+  try {
+    window.localStorage.setItem(SECTIONS_KEY, JSON.stringify(value));
+  } catch {
+    // Senza storage le sezioni ripartono chiuse, ma si aprono lo stesso.
+  }
+  window.dispatchEvent(new Event(SECTIONS_EVENT));
+}
+
 export function AppSidebar({
   currentUser,
   teamPendingCount = 0,
@@ -160,6 +202,11 @@ export function AppSidebar({
   const [animate, setAnimate] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const closeMobile = () => setMobileOpen(false);
+  const sectionsRaw = useSyncExternalStore(subscribeSections, readSections, () => "");
+  const sectionChoices = useMemo(() => parseSections(sectionsRaw), [sectionsRaw]);
+  // Pagina su cui l'utente ha chiuso la sezione attiva: lì resta chiusa, ma
+  // andando su un'altra pagina della sezione si riapre da sola.
+  const [activeClosedOn, setActiveClosedOn] = useState<string | null>(null);
 
   function toggle() {
     setAnimate(true);
@@ -175,7 +222,7 @@ export function AppSidebar({
     ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),
   ];
   const sections = [
-    { label: null, links: COMMON_LINKS },
+    { label: "Personale", links: COMMON_LINKS },
     { label: "Operatività", links: OPERATIVITA_LINKS },
     ...(utilityLinks.length > 0 ? [{ label: "Utilità", links: utilityLinks }] : []),
     ...(isAdminRole(currentUser.role)
@@ -189,93 +236,151 @@ export function AppSidebar({
     ...(currentUser.role === "super_admin" ? [{ label: "Sistema", links: SYSTEM_LINKS }] : []),
   ];
 
+  // Confronto per segmento: "/richieste" non deve accendersi su
+  // "/richieste-team".
+  function isActive(link: NavLink) {
+    if (link.external) return false;
+    return link.href === "/"
+      ? pathname === "/"
+      : pathname === link.href || pathname.startsWith(`${link.href}/`);
+  }
+
+  function badgeFor(href: string) {
+    if (href === "/richieste-team") return teamPendingCount;
+    if (href === "/reparto") return repartoPendingCount;
+    return 0;
+  }
+
+  // Sezioni chiuse finché l'utente non le apre; quella della pagina corrente
+  // si apre da sola.
+  const activeSection = sections.find((section) => section.links.some(isActive))?.label;
+
+  function isSectionOpen(label: string) {
+    if (label === activeSection) return activeClosedOn !== pathname;
+    return sectionChoices[label] === true;
+  }
+
+  function toggleSection(label: string) {
+    const open = isSectionOpen(label);
+    writeSections({ ...sectionChoices, [label]: !open });
+    if (label === activeSection) setActiveClosedOn(open ? pathname : null);
+  }
+
   // Navigazione e menu utente: uguali nella sidebar (desktop) e nel menu a
   // scomparsa (mobile, sempre esteso).
   function renderBody(isCollapsed: boolean, onNavigate?: () => void) {
     return (
       <>
-        <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 pb-4">
-          {sections.map((section, index) => (
-            <div key={section.label ?? "common"} className="flex flex-col gap-1">
-              {index > 0 && isCollapsed && (
-                <div className="mx-2 mb-2 border-t border-sidebar-border" aria-hidden="true" />
-              )}
-              {section.label && !isCollapsed && (
-                <div className="px-2 pb-1 text-xs leading-4 font-semibold tracking-label text-muted-foreground uppercase">
-                  {section.label}
-                </div>
-              )}
-              {section.links.map((link) => {
-                // Confronto per segmento: "/richieste" non deve accendersi su
-                // "/richieste-team".
-                const active =
-                  link.href === "/"
-                    ? pathname === "/"
-                    : pathname === link.href || pathname.startsWith(`${link.href}/`);
-                const Icon = link.icon;
-                const badge =
-                link.href === "/richieste-team"
-                  ? teamPendingCount
-                  : link.href === "/reparto"
-                    ? repartoPendingCount
-                    : 0;
-                if (link.external) {
-                  return (
-                    <a
-                      key={link.href}
-                      href={link.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={onNavigate}
-                      title={isCollapsed ? `${link.label} (nuova scheda)` : undefined}
-                      className={cn(NAV_ITEM, NAV_ITEM_IDLE, isCollapsed && "justify-center px-0")}
-                    >
-                      <Icon className="size-4.5 shrink-0" strokeWidth={1.5} />
-                      {!isCollapsed && <span className="truncate">{link.label}</span>}
-                      {!isCollapsed && (
-                        <ExternalLink
-                          className="ml-auto size-3.5 shrink-0 text-muted-foreground"
-                          aria-label="si apre in una nuova scheda"
-                        />
-                      )}
-                    </a>
-                  );
-                }
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={onNavigate}
-                    title={isCollapsed ? link.label : undefined}
-                    className={cn(
-                      NAV_ITEM,
-                      active ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
-                      isCollapsed && "justify-center px-0"
-                    )}
+        <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4">
+          {sections.map((section, index) => {
+            // Compressa a icone non ci sono titoli: le voci restano tutte visibili.
+            const open = isCollapsed || isSectionOpen(section.label);
+            const sectionBadge = section.links.reduce((sum, link) => sum + badgeFor(link.href), 0);
+            const contentId = `sidebar-section-${index}`;
+            return (
+              <div key={section.label} className="flex flex-col gap-1">
+                {index > 0 && isCollapsed && (
+                  <div className="mx-2 mb-2 border-t border-sidebar-border" aria-hidden="true" />
+                )}
+                {!isCollapsed && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(section.label)}
+                    aria-expanded={open}
+                    aria-controls={contentId}
+                    className="flex items-center gap-2 rounded-md px-2 py-1 text-xs leading-4 font-semibold tracking-label text-muted-foreground uppercase outline-none transition-colors duration-ds ease-ds hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring"
                   >
-                    <span className="relative flex shrink-0">
-                      <Icon className="size-4.5" strokeWidth={1.5} />
-                      {isCollapsed && badge > 0 && (
-                        <span
-                          className={`absolute -top-1 -right-1 size-2 rounded-full ${TONE_DOT.warning}`}
-                          aria-hidden="true"
-                        />
-                      )}
-                    </span>
-                    {!isCollapsed && <span className="truncate">{link.label}</span>}
-                    {!isCollapsed && badge > 0 && (
+                    <span className="truncate">{section.label}</span>
+                    {!open && sectionBadge > 0 && (
                       <span
-                        className={`ml-auto rounded-full px-1.5 text-xs leading-5 font-semibold ${TONE_SOFT.warning}`}
-                        aria-label={`${badge} in attesa`}
-                      >
-                        {badge}
-                      </span>
+                        className={`size-2 shrink-0 rounded-full ${TONE_DOT.warning}`}
+                        aria-label={`${sectionBadge} in attesa`}
+                      />
                     )}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+                    <ChevronDown
+                      className={cn(
+                        "ml-auto size-3.5 shrink-0 transition-transform duration-ds ease-ds",
+                        !open && "-rotate-90"
+                      )}
+                      aria-hidden="true"
+                    />
+                  </button>
+                )}
+                {/* Altezza animata con grid-rows 0fr/1fr; inert toglie le voci
+                    nascoste dal Tab e dagli screen reader. */}
+                <div
+                  id={contentId}
+                  inert={!open}
+                  className={cn(
+                    "grid transition-[grid-template-rows] duration-ds ease-ds",
+                    open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                  )}
+                >
+                  <div className="flex min-h-0 flex-col gap-1 overflow-hidden">
+                    {section.links.map((link) => {
+                      const active = isActive(link);
+                      const Icon = link.icon;
+                      const badge = badgeFor(link.href);
+                      if (link.external) {
+                        return (
+                          <a
+                            key={link.href}
+                            href={link.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={onNavigate}
+                            title={isCollapsed ? `${link.label} (nuova scheda)` : undefined}
+                            className={cn(NAV_ITEM, NAV_ITEM_IDLE, isCollapsed && "justify-center px-0")}
+                          >
+                            <Icon className="size-4.5 shrink-0" strokeWidth={1.5} />
+                            {!isCollapsed && <span className="truncate">{link.label}</span>}
+                            {!isCollapsed && (
+                              <ExternalLink
+                                className="ml-auto size-3.5 shrink-0 text-muted-foreground"
+                                aria-label="si apre in una nuova scheda"
+                              />
+                            )}
+                          </a>
+                        );
+                      }
+                      return (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          onClick={onNavigate}
+                          title={isCollapsed ? link.label : undefined}
+                          className={cn(
+                            NAV_ITEM,
+                            active ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
+                            isCollapsed && "justify-center px-0"
+                          )}
+                        >
+                          <span className="relative flex shrink-0">
+                            <Icon className="size-4.5" strokeWidth={1.5} />
+                            {isCollapsed && badge > 0 && (
+                              <span
+                                className={`absolute -top-1 -right-1 size-2 rounded-full ${TONE_DOT.warning}`}
+                                aria-hidden="true"
+                              />
+                            )}
+                          </span>
+                          {!isCollapsed && <span className="truncate">{link.label}</span>}
+                          {!isCollapsed && badge > 0 && (
+                            <span
+                              className={`ml-auto rounded-full px-1.5 text-xs leading-5 font-semibold ${TONE_SOFT.warning}`}
+                              aria-label={`${badge} in attesa`}
+                            >
+                              {badge}
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div
