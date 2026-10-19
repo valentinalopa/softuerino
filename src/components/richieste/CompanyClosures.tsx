@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 export type CompanyClosureRow = {
   id: string;
@@ -59,8 +60,8 @@ export function NewCompanyClosureDialog() {
         return;
       }
       setOpen(false);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setPending(false);
     }

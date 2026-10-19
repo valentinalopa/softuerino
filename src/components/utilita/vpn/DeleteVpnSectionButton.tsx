@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 export function DeleteVpnSectionButton({ id, name }: { id: string; name: string }) {
   const [open, setOpen] = useState(false);
@@ -31,8 +32,8 @@ export function DeleteVpnSectionButton({ id, name }: { id: string; name: string 
           return;
         }
         setOpen(false);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

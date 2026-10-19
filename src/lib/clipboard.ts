@@ -1,3 +1,5 @@
+import { unexpectedErrorMessage } from "@/lib/action-error";
+
 // Copia negli appunti un testo che arriva dal server (es. la chiave di una
 // licenza). Safari (iPhone, iPad, Mac) accetta la copia solo dentro il clic:
 // dopo l'attesa della risposta la rifiuterebbe. Con un ClipboardItem la copia
@@ -26,8 +28,8 @@ export async function copyFromServer(load: () => Promise<Loaded>): Promise<{ err
   let result: Loaded;
   try {
     result = await pending;
-  } catch {
-    return { error: "Errore imprevisto" };
+  } catch (error) {
+    return { error: unexpectedErrorMessage(error) };
   }
   if ("error" in result) return result;
   try {

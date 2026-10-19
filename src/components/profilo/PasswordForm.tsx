@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TONE_TEXT } from "@/lib/tones";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 export function PasswordForm() {
   const [error, setError] = useState<string | null>(null);
@@ -25,8 +26,8 @@ export function PasswordForm() {
       }
       form.reset();
       setSuccess(true);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setPending(false);
     }

@@ -16,6 +16,7 @@ import {
 import { TONE_TEXT } from "@/lib/tones";
 import { copyFromServer } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type Activation = { id: string; label: string; note: string | null };
 type KeyAction = "show" | "copy";
@@ -89,8 +90,8 @@ export function LicenseQuickKey({
         const result = await revealLicenseKey(licenseId, "show", formData);
         if ("error" in result) setError(result.error);
         else setKey(result.key);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

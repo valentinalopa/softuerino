@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Check, X } from "lucide-react";
 import { handleAccountRequest } from "@/lib/accounts/actions";
 import { Button } from "@/components/ui/button";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 // "Creato" (account fatto in Keycloak) o "Rifiuta": chi l'ha chiesta riceve un'email.
 export function AccountRequestActions({ requestId }: { requestId: string }) {
@@ -16,8 +17,8 @@ export function AccountRequestActions({ requestId }: { requestId: string }) {
       try {
         const result = await handleAccountRequest(requestId, status);
         if (result?.error) setError(result.error);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

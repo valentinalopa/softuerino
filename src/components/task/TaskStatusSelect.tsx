@@ -6,6 +6,7 @@ import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskStatus } from "@/lib/consta
 import { NativeSelect } from "@/components/ui/native-select";
 import { TONE_SOFT, type Tone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 // Un colore per stato, per distinguerli a colpo d'occhio nella tabella.
 export const TASK_STATUS_TONES: Record<TaskStatus, Tone> = {
@@ -50,9 +51,9 @@ export function TaskStatusSelect({
                 setValue(previous);
                 setError(result.error);
               }
-            } catch {
+            } catch (error) {
               setValue(previous);
-              setError("Errore imprevisto");
+              setError(unexpectedErrorMessage(error));
             }
           });
         }}

@@ -11,6 +11,7 @@ import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger }
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { TONE_TEXT } from "@/lib/tones";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 // Richiesta di un nuovo utente: nome, cognome ed email (e il reparto, per
 // metterlo nel gruppo giusto in Keycloak). Arriva una notifica a chi gestisce
@@ -32,8 +33,8 @@ export function RequestAccountDialog({ departments }: { departments: { id: strin
       }
       form.reset();
       setSent(true);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setPending(false);
     }

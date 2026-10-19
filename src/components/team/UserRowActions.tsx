@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type TeamUser = {
   id: string;
@@ -43,8 +44,8 @@ export function UserRowActions({
           return;
         }
         setDeleteOpen(false);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { formatDate } from "@/lib/leave-format";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type Activation = {
   id: string;
@@ -39,8 +40,8 @@ export function LicenseActivations({
         const result = await action();
         if (result?.error) setError(result.error);
         else resetForm?.reset();
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

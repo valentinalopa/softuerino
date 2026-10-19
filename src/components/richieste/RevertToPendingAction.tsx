@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Undo2 } from "lucide-react";
 import { revertLeaveToPending } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 // Solo admin: riporta in attesa una richiesta già decisa, per ridecidere.
 // compact: solo icona (righe di tabella), con il testo come tooltip.
@@ -25,8 +26,8 @@ export function RevertToPendingAction({
         if (result?.error) {
           setError(result.error);
         }
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

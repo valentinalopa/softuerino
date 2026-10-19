@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 const POLL_MS = 3000;
 
@@ -102,8 +103,8 @@ export function UpdatePanel({ initial }: { initial: UpdateStatusResponse }) {
         }
         checkStartedAt.current = status?.checkedAt ?? "";
         setChecking(true);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }
@@ -119,8 +120,8 @@ export function UpdatePanel({ initial }: { initial: UpdateStatusResponse }) {
         }
         setConfirmOpen(false);
         await refresh();
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

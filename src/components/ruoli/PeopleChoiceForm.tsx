@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { TONE_TEXT } from "@/lib/tones";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type Person = { id: string; name: string; summary: string; checked: boolean };
 
@@ -25,8 +26,8 @@ export function PeopleChoiceForm({
     try {
       const result = await onSave(formData);
       setMessage(result?.error ? { kind: "error", text: result.error } : { kind: "success", text: "Salvato." });
-    } catch {
-      setMessage({ kind: "error", text: "Errore imprevisto" });
+    } catch (error) {
+      setMessage({ kind: "error", text: unexpectedErrorMessage(error) });
     } finally {
       setPending(false);
     }
