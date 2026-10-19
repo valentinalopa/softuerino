@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type VpnValues = { id: string; name: string; notes: string | null; configFileName: string | null };
 
@@ -28,8 +29,8 @@ export function VpnSectionDialog({ initial }: { initial?: VpnValues }) {
         return;
       }
       setOpen(false);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setPending(false);
     }

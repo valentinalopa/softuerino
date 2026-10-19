@@ -34,6 +34,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type ClientRow = { id: string; name: string; active: boolean; categories: string };
 
@@ -55,8 +56,8 @@ export function ClientRowActions({ client }: { client: ClientRow }) {
         return;
       }
       setEditOpen(false);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setEditPending(false);
     }
@@ -72,8 +73,8 @@ export function ClientRowActions({ client }: { client: ClientRow }) {
           return;
         }
         setDeleteOpen(false);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

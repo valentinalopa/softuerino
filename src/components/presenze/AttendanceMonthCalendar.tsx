@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { MonthNav } from "./MonthNav";
 import { AttendanceDayContent } from "./AttendanceDayContent";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
@@ -134,8 +135,8 @@ export function AttendanceMonthCalendar({
           return;
         }
         setSelected(new Set());
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }
@@ -155,8 +156,8 @@ export function AttendanceMonthCalendar({
         }
         setSelected(new Set());
         setDeleteConfirmOpen(false);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

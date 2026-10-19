@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { formatHours } from "@/lib/ore-utils";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 export function DailyHoursForm({
   dateValue,
@@ -46,8 +47,8 @@ export function DailyHoursForm({
       if (doneHref) {
         router.push(doneHref);
       }
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     }
   }
 

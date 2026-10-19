@@ -23,6 +23,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 // `roles`: i ruoli che l'utente corrente può assegnare (un admin non crea
 // super admin).
@@ -50,8 +51,8 @@ export function NewTeamMemberDialog({
         return;
       }
       setOpen(false);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setPending(false);
     }

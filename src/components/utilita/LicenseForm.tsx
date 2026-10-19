@@ -11,6 +11,7 @@ import { NativeSelectField } from "@/components/form/native-select-field";
 import { DateField } from "@/components/form/date-field";
 import { TONE_TEXT } from "@/lib/tones";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 export type LicenseFormValues = {
   name: string;
@@ -69,8 +70,8 @@ export function LicenseForm({
         return;
       }
       setSuccess(true);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setPending(false);
     }

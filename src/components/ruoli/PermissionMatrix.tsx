@@ -13,6 +13,7 @@ import {
   type PermissionRole,
   type Rules,
 } from "@/lib/permission-rules";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 // Griglia dei permessi: per ogni permesso e ruolo, fin dove arriva (No / Il
 // suo reparto / Tutti). Usata per le impostazioni generali (per ruolo) e per i
@@ -43,8 +44,8 @@ export function PermissionMatrix({
     try {
       const result = await onSave(formData);
       setMessage(result?.error ? { kind: "error", text: result.error } : { kind: "success", text: "Salvato." });
-    } catch {
-      setMessage({ kind: "error", text: "Errore imprevisto" });
+    } catch (error) {
+      setMessage({ kind: "error", text: unexpectedErrorMessage(error) });
     } finally {
       setPending(false);
     }

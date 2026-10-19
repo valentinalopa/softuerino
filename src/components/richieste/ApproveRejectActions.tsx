@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Check, X } from "lucide-react";
 import { updateLeaveStatus } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 export function ApproveRejectActions({ requestId }: { requestId: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -17,8 +18,8 @@ export function ApproveRejectActions({ requestId }: { requestId: string }) {
         if (result?.error) {
           setError(result.error);
         }
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

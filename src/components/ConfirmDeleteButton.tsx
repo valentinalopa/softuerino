@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 // Cestino con conferma (task, richieste). I clic restano qui dentro: spesso
 // sta in una riga cliccabile, e anche i clic nel popup (portal) risalirebbero
@@ -47,8 +48,8 @@ export function ConfirmDeleteButton({
           return;
         }
         setOpen(false);
-      } catch {
-        setError("Errore imprevisto");
+      } catch (error) {
+        setError(unexpectedErrorMessage(error));
       }
     });
   }

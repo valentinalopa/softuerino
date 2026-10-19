@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { NameEmailFields } from "@/components/form/name-email-fields";
 import { TONE_TEXT } from "@/lib/tones";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 export function ProfileForm({
   user,
@@ -30,8 +31,8 @@ export function ProfileForm({
         return;
       }
       setSuccess(true);
-    } catch {
-      setError("Errore imprevisto");
+    } catch (error) {
+      setError(unexpectedErrorMessage(error));
     } finally {
       setPending(false);
     }

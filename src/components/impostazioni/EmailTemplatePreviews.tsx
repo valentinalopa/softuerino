@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { sendSampleNotification, sendTestEmail } from "@/lib/email/actions";
 import { Button } from "@/components/ui/button";
 import { TONE_TEXT } from "@/lib/tones";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type Preview = { kind: string; label: string; subject: string; html: string };
 type Feedback = { kind: "error" | "success"; message: string } | null;
@@ -20,8 +21,8 @@ function PreviewItem({ preview }: { preview: Preview }) {
           preview.kind === "smtp" ? await sendTestEmail() : await sendSampleNotification(preview.kind);
         if (result && "error" in result) setFeedback({ kind: "error", message: result.error });
         else if (result) setFeedback({ kind: "success", message: result.success });
-      } catch {
-        setFeedback({ kind: "error", message: "Errore imprevisto" });
+      } catch (error) {
+        setFeedback({ kind: "error", message: unexpectedErrorMessage(error) });
       }
     });
   }

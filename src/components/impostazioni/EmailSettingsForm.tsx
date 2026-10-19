@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { TONE_TEXT } from "@/lib/tones";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { unexpectedErrorMessage } from "@/lib/action-error";
 
 type Settings = {
   enabled: boolean;
@@ -60,8 +61,8 @@ export function EmailSettingsForm({
       try {
         setSaveFeedback(toFeedback(await saveEmailSettings(formData)));
         setClearPassword(false);
-      } catch {
-        setSaveFeedback({ kind: "error", message: "Errore imprevisto" });
+      } catch (error) {
+        setSaveFeedback({ kind: "error", message: unexpectedErrorMessage(error) });
       }
     });
   }
