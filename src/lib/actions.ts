@@ -764,10 +764,19 @@ function revalidateLeavePaths(userId: string) {
 
 // --- Calendario eventi (riunioni / shooting / altro) ---
 
-export async function createEvent(formData: FormData) {
-  const user = await requireWritableUser();
-  if (!user) return READ_ONLY_ERROR;
+type EventFormData = {
+  title: string;
+  type: string;
+  startAt: Date;
+  endAt: Date;
+  location: string | null;
+  description: string | null;
+};
 
+// Campi del form evento, condivisi tra creazione e modifica.
+function parseEventForm(
+  formData: FormData
+): { error: string } | { data: EventFormData; participantIds: string[] } {
   const title = String(formData.get("title") ?? "").trim();
   const type = String(formData.get("type") ?? "");
   const startAtRaw = String(formData.get("startAt") ?? "");
@@ -775,7 +784,7 @@ export async function createEvent(formData: FormData) {
   const location = String(formData.get("location") ?? "").trim() || null;
   const description =
     String(formData.get("description") ?? "").trim() || null;
-  const participantIds = formData.getAll("participantIds").map(String);
+  const participantIds = [...new Set(formData.getAll("participantIds").map(String))];
 
   if (!title || !EVENT_TYPES.includes(type as (typeof EVENT_TYPES)[number])) {
     return { error: "Dati evento non validi" };
@@ -792,57 +801,96 @@ export async function createEvent(formData: FormData) {
     return { error: "La fine non può precedere l'inizio" };
   }
 
-  // Chi è assente (giornata intera, già approvata/registrata) nelle date
-  // dell'evento non può essere invitato: il form lo impedisce, qui lo si garantisce.
-  if (participantIds.length > 0) {
-    const [absences, participants] = await Promise.all([
-      prisma.leaveRequest.findMany({
-        where: {
-          userId: { in: participantIds },
-          status: { not: "rejected" },
-          startDate: { lte: endAt },
-          endDate: { gte: new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()) },
-        },
-        select: {
-          userId: true,
-          type: true,
-          status: true,
-          startDate: true,
-          endDate: true,
-          hours: true,
-          startTime: true,
-          endTime: true,
-        },
-      }),
-      prisma.user.findMany({
-        where: { id: { in: participantIds } },
-        select: { id: true, name: true },
-      }),
-    ]);
-    for (const participant of participants) {
-      // Il motivo finisce nel messaggio d'errore: niente "Malattia" dei colleghi.
-      const conflict = absenceConflict(
-        absences.map((absence) => maskLeaveForViewer(absence, user)),
-        participant.id,
-        startAt,
-        endAt
-      );
-      if (conflict?.kind === "blocked") {
-        return {
-          error: `${participant.name} è assente in quelle date (${conflict.reason}). Rimuovi questa persona dai partecipanti`,
-        };
-      }
+  return {
+    data: { title, type, startAt, endAt, location, description },
+    participantIds,
+  };
+}
+
+// Chi è assente (giornata intera, già approvata/registrata) nelle date
+// dell'evento non può essere invitato: il form lo impedisce, qui lo si garantisce.
+async function participantAbsenceError(
+  participantIds: string[],
+  startAt: Date,
+  endAt: Date,
+  viewer: Parameters<typeof maskLeaveForViewer>[1]
+): Promise<ActionResult> {
+  if (participantIds.length === 0) return;
+  const [absences, participants] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: {
+        userId: { in: participantIds },
+        status: { not: "rejected" },
+        startDate: { lte: endAt },
+        endDate: { gte: new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()) },
+      },
+      select: {
+        userId: true,
+        type: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        hours: true,
+        startTime: true,
+        endTime: true,
+      },
+    }),
+    prisma.user.findMany({
+      where: { id: { in: participantIds } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  for (const participant of participants) {
+    // Il motivo finisce nel messaggio d'errore: niente "Malattia" dei colleghi.
+    const conflict = absenceConflict(
+      absences.map((absence) => maskLeaveForViewer(absence, viewer)),
+      participant.id,
+      startAt,
+      endAt
+    );
+    if (conflict?.kind === "blocked") {
+      return {
+        error: `${participant.name} è assente in quelle date (${conflict.reason}). Rimuovi questa persona dai partecipanti`,
+      };
     }
   }
+}
+
+// Può modificare ed eliminare un evento: admin, chi l'ha creato, o un partecipante.
+async function eventAccessError(
+  eventId: string,
+  user: { id: string; role: string }
+): Promise<ActionResult> {
+  const event = await prisma.calendarEvent.findUnique({
+    where: { id: eventId },
+    select: { createdById: true },
+  });
+  if (!event) {
+    return { error: "Evento non trovato (forse è stato eliminato)" };
+  }
+  if (isAdminRole(user.role) || event.createdById === user.id) return;
+  const isParticipant = await prisma.eventParticipant.findUnique({
+    where: { eventId_userId: { eventId, userId: user.id } },
+  });
+  if (!isParticipant) {
+    return { error: "Non autorizzato" };
+  }
+}
+
+export async function createEvent(formData: FormData): Promise<ActionResult> {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+
+  const parsed = parseEventForm(formData);
+  if ("error" in parsed) return { error: parsed.error };
+  const { data, participantIds } = parsed;
+
+  const absenceError = await participantAbsenceError(participantIds, data.startAt, data.endAt, user);
+  if (absenceError) return absenceError;
 
   const event = await prisma.calendarEvent.create({
     data: {
-      title,
-      type,
-      startAt,
-      endAt,
-      location,
-      description,
+      ...data,
       createdById: user.id,
       participants: {
         create: participantIds.map((userId) => ({ userId })),
@@ -855,28 +903,51 @@ export async function createEvent(formData: FormData) {
   after(() => notifyEventInvite(event.id, participantIds, user.id));
 }
 
-export async function deleteEvent(eventId: string) {
+// Modifica dal dettaglio dell'evento: tutti i campi, partecipanti compresi.
+export async function updateEvent(eventId: string, formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  // Può eliminare: admin, chi ha creato l'evento, o un partecipante.
-  if (!isAdminRole(user.role)) {
-    const event = await prisma.calendarEvent.findUnique({
-      where: { id: eventId },
-      select: { createdById: true },
-    });
-    if (!event) {
-      return { error: "Evento non trovato" };
-    }
-    if (event.createdById !== user.id) {
-      const isParticipant = await prisma.eventParticipant.findUnique({
-        where: { eventId_userId: { eventId, userId: user.id } },
-      });
-      if (!isParticipant) {
-        return { error: "Non autorizzato" };
-      }
-    }
-  }
+  const accessError = await eventAccessError(eventId, user);
+  if (accessError) return accessError;
+
+  const parsed = parseEventForm(formData);
+  if ("error" in parsed) return { error: parsed.error };
+  const { data, participantIds } = parsed;
+
+  const absenceError = await participantAbsenceError(participantIds, data.startAt, data.endAt, user);
+  if (absenceError) return absenceError;
+
+  const previous = await prisma.eventParticipant.findMany({
+    where: { eventId },
+    select: { userId: true },
+  });
+
+  await prisma.calendarEvent.update({
+    where: { id: eventId },
+    data: {
+      ...data,
+      participants: {
+        deleteMany: {},
+        create: participantIds.map((userId) => ({ userId })),
+      },
+    },
+  });
+
+  revalidatePath("/");
+  revalidatePath("/calendario");
+  // Invita solo chi è stato aggiunto adesso.
+  const previousIds = new Set(previous.map((p) => p.userId));
+  const added = participantIds.filter((id) => !previousIds.has(id));
+  if (added.length > 0) after(() => notifyEventInvite(eventId, added, user.id));
+}
+
+export async function deleteEvent(eventId: string): Promise<ActionResult> {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+
+  const accessError = await eventAccessError(eventId, user);
+  if (accessError) return accessError;
 
   await prisma.calendarEvent.delete({ where: { id: eventId } });
   revalidatePath("/");
