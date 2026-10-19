@@ -123,6 +123,7 @@ function ChartTooltipContent({
   indicator = "dot",
   hideLabel = false,
   hideIndicator = false,
+  hideZero = false,
   label,
   labelFormatter,
   labelClassName,
@@ -134,6 +135,8 @@ function ChartTooltipContent({
   React.ComponentProps<"div"> & {
     hideLabel?: boolean
     hideIndicator?: boolean
+    // Nasconde le voci a 0 (es. grafici impilati con molte serie).
+    hideZero?: boolean
     indicator?: "line" | "dot" | "dashed"
     nameKey?: string
     labelKey?: string
@@ -182,11 +185,15 @@ function ChartTooltipContent({
     labelKey,
   ])
 
-  if (!active || !payload?.length) {
+  const items = (payload ?? []).filter(
+    (item) => item.type !== "none" && !(hideZero && !item.value)
+  )
+
+  if (!active || !items.length) {
     return null
   }
 
-  const nestLabel = payload.length === 1 && indicator !== "dot"
+  const nestLabel = items.length === 1 && indicator !== "dot"
 
   return (
     <div
@@ -197,9 +204,7 @@ function ChartTooltipContent({
     >
       {!nestLabel ? tooltipLabel : null}
       <div className="grid gap-1.5">
-        {payload
-          .filter((item) => item.type !== "none")
-          .map((item, index) => {
+        {items.map((item, index) => {
             const key = `${nameKey ?? item.name ?? item.dataKey ?? "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
             const indicatorColor = color ?? item.payload?.fill ?? item.color
@@ -242,7 +247,7 @@ function ChartTooltipContent({
                     )}
                     <div
                       className={cn(
-                        "flex flex-1 justify-between leading-none",
+                        "flex flex-1 justify-between gap-4 leading-none",
                         nestLabel ? "items-end" : "items-center"
                       )}
                     >

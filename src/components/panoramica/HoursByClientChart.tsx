@@ -45,7 +45,11 @@ export function HoursByClientChart({
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
         <YAxis tickLine={false} axisLine={false} tickMargin={8} width={32} />
-        <ChartTooltip content={<ChartTooltipContent />} />
+        <ChartTooltip
+          // Sopra la legenda, che altrimenti si sovrappone al tooltip.
+          wrapperStyle={{ zIndex: 10 }}
+          content={<ChartTooltipContent hideZero />}
+        />
         {!compact && <ChartLegend content={<ChartLegendContent />} />}
         {clients.map((client) => (
           <Bar
