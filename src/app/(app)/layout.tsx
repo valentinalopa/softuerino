@@ -4,10 +4,13 @@ import { managedDepartmentNames } from "@/lib/departments";
 import { can, peopleWhere } from "@/lib/permissions";
 import { hasLicenseAccess } from "@/lib/licenses/access";
 import { ssoAccountUrl } from "@/lib/auth/oidc";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AppSidebar } from "@/components/AppSidebar";
+import { AppSidebar, MobileTopBar } from "@/components/AppSidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
-import { isAdminRole, type Role } from "@/lib/constants";
+import { homePathFor, isAdminRole, type Role } from "@/lib/constants";
 
 export default async function AppLayout({
   children,
@@ -52,28 +55,41 @@ export default async function AppLayout({
       ? await prisma.leaveRequest.count({ where: { status: "pending", user: await peopleWhere(user, "approvare") } })
       : 0;
 
+  // Sidebar aperta o compressa: la ricorda il cookie del SidebarProvider di
+  // shadcn, letto qui così la pagina arriva già nello stato giusto.
+  const sidebarOpen = (await cookies()).get("sidebar_state")?.value !== "false";
+
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
-      <AppSidebar
-        currentUser={{
-          name: user.name,
-          email: user.email,
-          role: user.role as Role,
-          managedDepartments: managed,
-        }}
-        teamPendingCount={teamPendingCount}
-        showLicenses={showLicenses}
-        showClients={!isAdmin && addClients}
-        showReparto={showReparto}
-        repartoPendingCount={repartoPendingCount}
-        ssoAccountUrl={ssoAccountUrl()}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        {impersonating && <ImpersonationBanner userName={user.name} />}
-        <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 sm:px-6 sm:py-8 md:px-10">
-          <div className="mx-auto w-full max-w-5xl">{children}</div>
-        </main>
-      </div>
-    </div>
+    <TooltipProvider>
+      <SidebarProvider defaultOpen={sidebarOpen}>
+        <AppSidebar
+          currentUser={{
+            name: user.name,
+            email: user.email,
+            role: user.role as Role,
+            managedDepartments: managed,
+          }}
+          teamPendingCount={teamPendingCount}
+          showLicenses={showLicenses}
+          showClients={!isAdmin && addClients}
+          showReparto={showReparto}
+          repartoPendingCount={repartoPendingCount}
+          ssoAccountUrl={ssoAccountUrl()}
+        />
+        {/* SidebarInset occupa tutto lo spazio lasciato dalla sidebar: quando
+            si comprime, il contenuto si allarga. */}
+        <SidebarInset className="min-w-0">
+          {impersonating && <ImpersonationBanner userName={user.name} />}
+          <MobileTopBar
+            homeHref={homePathFor(user.role as Role)}
+            pendingCount={teamPendingCount + repartoPendingCount}
+          />
+          <div className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 sm:px-6 sm:py-8 md:px-10">
+            {/* Il tetto evita righe chilometriche sugli schermi enormi. */}
+            <div className="mx-auto w-full max-w-screen-2xl">{children}</div>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
