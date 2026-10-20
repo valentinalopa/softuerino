@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarPlus, ExternalLink, X } from "lucide-react";
+import { CalendarPlus, ExternalLink, Pencil, X } from "lucide-react";
 import { googleCalendarUrl } from "@/lib/ics";
 import { deleteEvent } from "@/lib/actions";
 import { EVENT_TYPE_LABELS } from "@/lib/constants";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import {
   Card,
   CardAction,
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { formatFullDate, formatTime } from "@/lib/calendar-utils";
+import { formatFullDate, formatTime, isSameDay } from "@/lib/calendar-utils";
 import { eventTypeStyle, type CalendarEventData } from "./types";
 
 // Dettaglio di un evento: riquadro accanto al calendario su schermi larghi,
@@ -22,16 +22,17 @@ import { eventTypeStyle, type CalendarEventData } from "./types";
 export function EventDetails({
   event,
   onClose,
-  canDelete,
+  onEdit,
+  canManage,
   inDialog = false,
 }: {
   event: CalendarEventData;
   onClose: () => void;
-  canDelete: boolean;
+  onEdit: () => void;
+  // Modifica ed eliminazione: admin, chi ha creato l'evento, o un partecipante.
+  canManage: boolean;
   inDialog?: boolean;
 }) {
-  const [error, setError] = useState<string | null>(null);
-
   return (
     <Card
       className={
@@ -55,8 +56,19 @@ export function EventDetails({
         </Badge>
         <p className="text-sm text-muted-foreground">
           <span className="capitalize">{formatFullDate(event.startAt)}</span>
-          <br />
-          {formatTime(event.startAt)} – {formatTime(event.endAt)}
+          {isSameDay(event.startAt, event.endAt) ? (
+            <>
+              <br />
+              {formatTime(event.startAt)} – {formatTime(event.endAt)}
+            </>
+          ) : (
+            // Evento su più giorni: serve anche la data di fine.
+            <>
+              , {formatTime(event.startAt)} –
+              <br />
+              <span className="capitalize">{formatFullDate(event.endAt)}</span>, {formatTime(event.endAt)}
+            </>
+          )}
         </p>
         {event.location && <p className="text-sm break-words text-muted-foreground">{event.location}</p>}
         {event.description && <p className="text-sm break-words whitespace-pre-line">{event.description}</p>}
@@ -81,23 +93,25 @@ export function EventDetails({
             {event.participants.map((p) => p.user.name).join(", ")}
           </p>
         )}
-        {canDelete && (
-          <form
-            action={async () => {
-              setError(null);
-              const result = await deleteEvent(event.id);
-              if (result?.error) {
-                setError(result.error);
-                return;
-              }
-              onClose();
-            }}
-          >
-            <Button type="submit" variant="destructive" size="sm">
-              Elimina
+        {canManage && (
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+              <Pencil className="size-4" />
+              Modifica
             </Button>
-            {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
-          </form>
+            {/* Stessa conferma dei task: l'eliminazione vale per tutti i partecipanti. */}
+            <ConfirmDeleteButton
+              withText
+              label={`Elimina ${event.title}`}
+              title={`Eliminare "${event.title}"?`}
+              description="L'evento viene eliminato dal calendario di tutti i partecipanti. L'operazione non è reversibile."
+              onConfirm={async () => {
+                const result = await deleteEvent(event.id);
+                if (!result?.error) onClose();
+                return result;
+              }}
+            />
+          </div>
         )}
       </CardContent>
     </Card>

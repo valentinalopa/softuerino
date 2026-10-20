@@ -8,6 +8,7 @@ import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
 import { DayView } from "./DayView";
 import { EventDetails } from "./EventDetails";
+import { EditEventSheet } from "./EditEventSheet";
 import { DayAbsences, type CalendarAbsence } from "./DayAbsences";
 import type { CalendarEventData } from "./types";
 import { dateKey } from "@/lib/attendance-utils";
@@ -59,10 +60,19 @@ export function CalendarView({
 }) {
   const [view, setView] = useState<ViewMode>("month");
   const [current, setCurrent] = useState(() => startOfDay(new Date()));
-  const [selected, setSelected] = useState<CalendarEventData | null>(null);
+  // Si tiene l'id, non l'evento: dopo una modifica il dettaglio mostra i dati
+  // aggiornati, e se l'evento sparisce (eliminato) il dettaglio si chiude.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const selected = events.find((event) => event.id === selectedId) ?? null;
+  const editing = events.find((event) => event.id === editingId) ?? null;
   const isWide = useSyncExternalStore(subscribeWide, readWide, () => true);
 
-  function canDelete(event: CalendarEventData) {
+  function setSelected(event: CalendarEventData | null) {
+    setSelectedId(event?.id ?? null);
+  }
+
+  function canManage(event: CalendarEventData) {
     return (
       isAdmin ||
       event.createdById === currentUserId ||
@@ -176,7 +186,12 @@ export function CalendarView({
           )}
         </div>
         {selected && isWide && (
-          <EventDetails event={selected} onClose={() => setSelected(null)} canDelete={canDelete(selected)} />
+          <EventDetails
+            event={selected}
+            onClose={() => setSelected(null)}
+            onEdit={() => setEditingId(selected.id)}
+            canManage={canManage(selected)}
+          />
         )}
       </div>
 
@@ -185,10 +200,23 @@ export function CalendarView({
         <DialogContent className="max-h-[85dvh] overflow-y-auto">
           <DialogTitle className="sr-only">{selected?.title ?? "Evento"}</DialogTitle>
           {selected && (
-            <EventDetails event={selected} onClose={() => setSelected(null)} canDelete={canDelete(selected)} inDialog />
+            <EventDetails
+              event={selected}
+              onClose={() => setSelected(null)}
+              onEdit={() => setEditingId(selected.id)}
+              canManage={canManage(selected)}
+              inDialog
+            />
           )}
         </DialogContent>
       </Dialog>
+
+      <EditEventSheet
+        event={editing}
+        users={users}
+        absences={absences}
+        onClose={() => setEditingId(null)}
+      />
     </div>
   );
 }

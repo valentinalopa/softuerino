@@ -1,15 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/lib/constants";
 import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Tone } from "@/lib/tones";
 import { TaskStatusSelect } from "@/components/task/TaskStatusSelect";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { deleteTask } from "@/lib/actions";
 import { EditTaskSheet } from "@/components/task/EditTaskSheet";
+import { cn } from "@/lib/utils";
 import { MobileList, MobileListItem } from "@/components/MobileList";
+import {
+  DEFAULT_SORT_DIR,
+  parseTaskSort,
+  sortTasks,
+  type TaskSort,
+  type TaskSortKey,
+} from "@/lib/task-sort";
 import {
   Table,
   TableBody,
@@ -39,6 +50,36 @@ export function PriorityBadge({ priority }: { priority: TaskPriority }) {
   return <Badge variant={PRIORITY_TONES[priority]}>{TASK_PRIORITY_LABELS[priority]}</Badge>;
 }
 
+// Intestazione cliccabile: primo clic nel verso proposto, poi alterna.
+function SortableHead({
+  sortKey,
+  sort,
+  onSort,
+  children,
+}: {
+  sortKey: TaskSortKey;
+  sort: TaskSort;
+  onSort: (key: TaskSortKey) => void;
+  children: ReactNode;
+}) {
+  const active = sort?.key === sortKey;
+  const Icon = !active ? ChevronsUpDownIcon : sort.dir === "asc" ? ArrowUpIcon : ArrowDownIcon;
+  return (
+    <TableHead aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      {/* Pattern "data table" di shadcn: Button ghost nell'intestazione. */}
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={() => onSort(sortKey)}
+        className={cn("-ml-2.5 font-semibold tracking-label uppercase", !active && "text-muted-foreground")}
+      >
+        {children}
+        <Icon className={cn(!active && "opacity-50")} aria-hidden />
+      </Button>
+    </TableHead>
+  );
+}
+
 export function TasksTable({
   tasks,
   users,
@@ -55,10 +96,25 @@ export function TasksTable({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = tasks.find((task) => task.id === selectedId) ?? null;
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const sort = parseTaskSort(searchParams.get("sort"), searchParams.get("dir"));
+  const sortedTasks = sortTasks(tasks, sort);
+
+  function handleSort(key: TaskSortKey) {
+    const params = new URLSearchParams(searchParams.toString());
+    const dir = sort?.key === key ? (sort.dir === "asc" ? "desc" : "asc") : DEFAULT_SORT_DIR[key];
+    params.set("sort", key);
+    params.set("dir", dir);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
   return (
     <>
-      <MobileList>
-        {tasks.map((task) => (
+      {/* Sette colonne non stanno su tablet: schede fino a lg. */}
+      <MobileList className="md:block lg:hidden">
+        {sortedTasks.map((task) => (
           <MobileListItem key={task.id} onOpen={() => setSelectedId(task.id)} label={`Modifica ${task.title}`}>
             <div className="flex items-start justify-between gap-2">
               <p className="min-w-0 pt-1.5 font-medium break-words text-foreground">{task.title}</p>
@@ -84,20 +140,20 @@ export function TasksTable({
           <MobileListItem className="text-center text-muted-foreground">{emptyMessage}</MobileListItem>
         )}
       </MobileList>
-      <Table containerClassName="hidden md:block">
+      <Table containerClassName="hidden lg:block">
         <TableHeader>
           <TableRow>
-            <TableHead>Task</TableHead>
-            <TableHead>Cliente</TableHead>
-            <TableHead>Assegnatari</TableHead>
-            <TableHead>Stato</TableHead>
-            <TableHead>Priorità</TableHead>
-            <TableHead>Scadenza</TableHead>
+            <SortableHead sortKey="title" sort={sort} onSort={handleSort}>Task</SortableHead>
+            <SortableHead sortKey="client" sort={sort} onSort={handleSort}>Cliente</SortableHead>
+            <SortableHead sortKey="assignees" sort={sort} onSort={handleSort}>Assegnatari</SortableHead>
+            <SortableHead sortKey="status" sort={sort} onSort={handleSort}>Stato</SortableHead>
+            <SortableHead sortKey="priority" sort={sort} onSort={handleSort}>Priorità</SortableHead>
+            <SortableHead sortKey="dueDate" sort={sort} onSort={handleSort}>Scadenza</SortableHead>
             <TableHead className="text-right">Azioni</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tasks.map((task) => (
+          {sortedTasks.map((task) => (
             <TableRow
               key={task.id}
               tabIndex={0}
@@ -116,7 +172,9 @@ export function TasksTable({
                 }
               }}
             >
-              <TableCell className="font-medium">{task.title}</TableCell>
+              {/* Titolo e assegnatari vanno a capo: la tabella resta nella card
+                  invece di scorrere in orizzontale nascondendo il titolo. */}
+              <TableCell className="min-w-48 font-medium whitespace-normal break-words">{task.title}</TableCell>
               <TableCell className="text-muted-foreground">
                 {task.client ? (
                   // Neutro: i colori della riga restano a stato e priorità.
@@ -125,7 +183,7 @@ export function TasksTable({
                   "—"
                 )}
               </TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell className="min-w-40 whitespace-normal text-muted-foreground">
                 {task.assignees.length > 0
                   ? task.assignees.map((a) => a.user.name).join(", ")
                   : "—"}

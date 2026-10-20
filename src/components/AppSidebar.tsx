@@ -12,8 +12,6 @@ import {
   Users,
   Building2,
   ChartColumn,
-  PanelLeft,
-  Menu,
   LogOut,
   UserRound,
   Settings,
@@ -43,7 +41,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Marchio } from "@/components/brand/Marchio";
 import { LevelAvatar, levelSummary } from "@/components/team/UserLevel";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { TONE_DOT, TONE_SOFT } from "@/lib/tones";
 
@@ -86,48 +100,6 @@ const SYSTEM_LINKS: NavLink[] = [
   { href: "/impostazioni/aggiornamenti", label: "Aggiornamenti", icon: RefreshCw },
   { href: "/impostazioni/email", label: "Email", icon: Mail },
 ];
-
-// Voce di navigazione — DS Sidebar: 14px, padding 10px, raggio 10px.
-const NAV_ITEM =
-  "flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm transition-colors duration-ds ease-ds";
-const NAV_ITEM_ACTIVE =
-  "bg-sidebar-accent font-semibold text-sidebar-accent-foreground";
-const NAV_ITEM_IDLE =
-  "font-medium text-sidebar-foreground hover:bg-subtle hover:text-foreground";
-
-const STORAGE_KEY = "softuerino:sidebar-collapsed";
-// L'evento "storage" arriva solo dalle altre schede: per la scheda corrente
-// ne emettiamo uno nostro quando la preferenza cambia.
-const CHANGE_EVENT = "softuerino:sidebar-collapsed-change";
-
-// Preferenza "sidebar chiusa" letta dal localStorage come store esterno: il
-// server (che non lo vede) parte da aperta, il browser legge subito il valore
-// salvato, senza setState dentro un effect.
-function subscribeCollapsed(onChange: () => void) {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(CHANGE_EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(CHANGE_EVENT, onChange);
-  };
-}
-
-function readCollapsed() {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === "1";
-  } catch {
-    return false; // storage non disponibile (es. navigazione privata)
-  }
-}
-
-function writeCollapsed(value: boolean) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, value ? "1" : "0");
-  } catch {
-    // Senza storage la preferenza non si ricorda, ma la sidebar funziona.
-  }
-  window.dispatchEvent(new Event(CHANGE_EVENT));
-}
 
 // Sezioni aperte o chiuse a mano (titolo → aperta), stesso schema della
 // preferenza qui sopra. Senza una scelta salvata la sezione è chiusa.
@@ -196,22 +168,18 @@ export function AppSidebar({
 }) {
   const pathname = usePathname();
   const managed = currentUser.managedDepartments ?? [];
-  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
-  // La larghezza si anima solo dopo un clic dell'utente: al caricamento la
-  // sidebar compare già nello stato salvato, senza animazione.
-  const [animate, setAnimate] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const closeMobile = () => setMobileOpen(false);
+  // Stato aperta/compressa e menu mobile li gestisce il SidebarProvider di shadcn.
+  const { state, isMobile, setOpenMobile } = useSidebar();
+  const collapsed = state === "collapsed" && !isMobile;
+  // Su mobile la sidebar è un Sheet: si chiude quando si sceglie una voce.
+  const onNavigate = () => {
+    if (isMobile) setOpenMobile(false);
+  };
   const sectionsRaw = useSyncExternalStore(subscribeSections, readSections, () => "");
   const sectionChoices = useMemo(() => parseSections(sectionsRaw), [sectionsRaw]);
   // Pagina su cui l'utente ha chiuso la sezione attiva: lì resta chiusa, ma
   // andando su un'altra pagina della sezione si riapre da sola.
   const [activeClosedOn, setActiveClosedOn] = useState<string | null>(null);
-
-  function toggle() {
-    setAnimate(true);
-    writeCollapsed(!collapsed);
-  }
 
   const utilityLinks: NavLink[] = [
     ...(showReparto ? [REPARTO_LINK] : []),
@@ -260,260 +228,183 @@ export function AppSidebar({
     return sectionChoices[label] === true;
   }
 
-  function toggleSection(label: string) {
-    const open = isSectionOpen(label);
-    writeSections({ ...sectionChoices, [label]: !open });
-    if (label === activeSection) setActiveClosedOn(open ? pathname : null);
+  function setSectionOpen(label: string, open: boolean) {
+    writeSections({ ...sectionChoices, [label]: open });
+    if (label === activeSection) setActiveClosedOn(open ? null : pathname);
   }
 
-  // Navigazione e menu utente: uguali nella sidebar (desktop) e nel menu a
-  // scomparsa (mobile, sempre esteso).
-  function renderBody(isCollapsed: boolean, onNavigate?: () => void) {
-    return (
-      <>
-        <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4">
-          {sections.map((section, index) => {
-            // Compressa a icone non ci sono titoli: le voci restano tutte visibili.
-            const open = isCollapsed || isSectionOpen(section.label);
-            const sectionBadge = section.links.reduce((sum, link) => sum + badgeFor(link.href), 0);
-            const contentId = `sidebar-section-${index}`;
-            return (
-              <div key={section.label} className="flex flex-col gap-1">
-                {index > 0 && isCollapsed && (
-                  <div className="mx-2 mb-2 border-t border-sidebar-border" aria-hidden="true" />
-                )}
-                {!isCollapsed && (
-                  <button
-                    type="button"
-                    onClick={() => toggleSection(section.label)}
-                    aria-expanded={open}
-                    aria-controls={contentId}
-                    className="flex items-center gap-2 rounded-md px-2 py-1 text-xs leading-4 font-semibold tracking-label text-muted-foreground uppercase outline-none transition-colors duration-ds ease-ds hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring"
-                  >
-                    <span className="truncate">{section.label}</span>
-                    {!open && sectionBadge > 0 && (
-                      <span
-                        className={`size-2 shrink-0 rounded-full ${TONE_DOT.warning}`}
-                        aria-label={`${sectionBadge} in attesa`}
-                      />
-                    )}
-                    <ChevronDown
-                      className={cn(
-                        "ml-auto size-3.5 shrink-0 transition-transform duration-ds ease-ds",
-                        !open && "-rotate-90"
-                      )}
-                      aria-hidden="true"
-                    />
-                  </button>
-                )}
-                {/* Altezza animata con grid-rows 0fr/1fr; inert toglie le voci
-                    nascoste dal Tab e dagli screen reader. */}
-                <div
-                  id={contentId}
-                  inert={!open}
-                  className={cn(
-                    "grid transition-[grid-template-rows] duration-ds ease-ds",
-                    open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-                  )}
-                >
-                  <div className="flex min-h-0 flex-col gap-1 overflow-hidden">
-                    {section.links.map((link) => {
-                      const active = isActive(link);
-                      const Icon = link.icon;
-                      const badge = badgeFor(link.href);
-                      if (link.external) {
-                        return (
-                          <a
-                            key={link.href}
-                            href={link.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={onNavigate}
-                            title={isCollapsed ? `${link.label} (nuova scheda)` : undefined}
-                            className={cn(NAV_ITEM, NAV_ITEM_IDLE, isCollapsed && "justify-center px-0")}
-                          >
-                            <Icon className="size-4.5 shrink-0" strokeWidth={1.5} />
-                            {!isCollapsed && <span className="truncate">{link.label}</span>}
-                            {!isCollapsed && (
-                              <ExternalLink
-                                className="ml-auto size-3.5 shrink-0 text-muted-foreground"
-                                aria-label="si apre in una nuova scheda"
-                              />
-                            )}
-                          </a>
-                        );
-                      }
-                      return (
-                        <Link
-                          key={link.href}
-                          href={link.href}
-                          onClick={onNavigate}
-                          title={isCollapsed ? link.label : undefined}
-                          className={cn(
-                            NAV_ITEM,
-                            active ? NAV_ITEM_ACTIVE : NAV_ITEM_IDLE,
-                            isCollapsed && "justify-center px-0"
-                          )}
-                        >
-                          <span className="relative flex shrink-0">
-                            <Icon className="size-4.5" strokeWidth={1.5} />
-                            {isCollapsed && badge > 0 && (
-                              <span
-                                className={`absolute -top-1 -right-1 size-2 rounded-full ${TONE_DOT.warning}`}
-                                aria-hidden="true"
-                              />
-                            )}
-                          </span>
-                          {!isCollapsed && <span className="truncate">{link.label}</span>}
-                          {!isCollapsed && badge > 0 && (
-                            <span
-                              className={`ml-auto rounded-full px-1.5 text-xs leading-5 font-semibold ${TONE_SOFT.warning}`}
-                              aria-label={`${badge} in attesa`}
-                            >
-                              {badge}
-                            </span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </nav>
-
-        <div
-          className={cn(
-            "mx-4 border-t border-sidebar-border py-4",
-            isCollapsed && "mx-2"
-          )}
-        >
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-ds hover:bg-subtle",
-                isCollapsed && "justify-center"
-              )}
-              title={isCollapsed ? currentUser.name : undefined}
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu className="flex-row items-center gap-1 group-data-[collapsible=icon]:flex-col">
+          <SidebarMenuItem className="min-w-0 flex-1">
+            <SidebarMenuButton
+              size="lg"
+              tooltip={isAdminRole(currentUser.role) ? "Panoramica" : "Dashboard"}
+              render={<Link href={homePathFor(currentUser.role)} onClick={onNavigate} />}
             >
-              <LevelAvatar name={currentUser.name} role={currentUser.role} departments={managed} />
-              {!isCollapsed && (
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="block truncate text-sm font-semibold text-foreground">
-                    {currentUser.name}
-                  </span>
-                  <span className="block truncate text-xs text-muted-foreground">
+              {/* Riquadro quadrato come nel "team switcher" di shadcn: resta
+                  intero anche con la sidebar compressa a icone. */}
+              <span className="flex aspect-square size-8 shrink-0 items-center justify-center">
+                <Marchio className="h-6! w-auto!" />
+              </span>
+              <span className="truncate font-heading text-lg font-semibold text-foreground">Softuerino</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {/* Su mobile il Sheet ha già la sua chiusura. */}
+          {!isMobile && (
+            <SidebarMenuItem>
+              <SidebarTrigger title={collapsed ? "Espandi" : "Comprimi"} />
+            </SidebarMenuItem>
+          )}
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        {sections.map((section) => {
+          // Compressa a icone non ci sono titoli: le voci restano tutte visibili.
+          const open = collapsed || isSectionOpen(section.label);
+          const sectionBadge = section.links.reduce((sum, link) => sum + badgeFor(link.href), 0);
+          return (
+            <Collapsible
+              key={section.label}
+              open={open}
+              onOpenChange={(next) => setSectionOpen(section.label, next)}
+            >
+              <SidebarGroup>
+                <SidebarGroupLabel render={<CollapsibleTrigger />}>
+                  {section.label}
+                  {!open && sectionBadge > 0 && (
+                    <span
+                      className={cn("ml-2 size-2 rounded-full", TONE_DOT.warning)}
+                      aria-label={`${sectionBadge} in attesa`}
+                    />
+                  )}
+                  <ChevronDown className={cn("ml-auto transition-transform", !open && "-rotate-90")} />
+                </SidebarGroupLabel>
+                <CollapsibleContent>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {section.links.map((link) => {
+                        const Icon = link.icon;
+                        const badge = badgeFor(link.href);
+                        return (
+                          <SidebarMenuItem key={link.href}>
+                            <SidebarMenuButton
+                              isActive={isActive(link)}
+                              tooltip={
+                                link.external
+                                  ? `${link.label} (nuova scheda)`
+                                  : badge > 0
+                                    ? `${link.label} (${badge} in attesa)`
+                                    : link.label
+                              }
+                              render={
+                                link.external ? (
+                                  <a href={link.href} target="_blank" rel="noopener noreferrer" onClick={onNavigate} />
+                                ) : (
+                                  <Link href={link.href} onClick={onNavigate} />
+                                )
+                              }
+                            >
+                              <Icon />
+                              <span>{link.label}</span>
+                              {link.external && (
+                                <ExternalLink
+                                  className="ml-auto text-muted-foreground"
+                                  aria-label="si apre in una nuova scheda"
+                                />
+                              )}
+                            </SidebarMenuButton>
+                            {badge > 0 && (
+                              <SidebarMenuBadge className={cn("rounded-full", TONE_SOFT.warning)}>
+                                {badge}
+                              </SidebarMenuBadge>
+                            )}
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
+          );
+        })}
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<SidebarMenuButton size="lg" tooltip={currentUser.name} />}>
+                <LevelAvatar name={currentUser.name} role={currentUser.role} departments={managed} />
+                <span className="grid min-w-0 flex-1 leading-tight">
+                  <span className="truncate text-sm font-semibold text-foreground">{currentUser.name}</span>
+                  <span className="truncate text-xs text-muted-foreground">
                     {levelSummary(currentUser.role, managed)}
                   </span>
                 </span>
-              )}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top" className="w-56">
-              <div className="px-1.5 py-1.5">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {currentUser.name}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {currentUser.email}
-                </p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href="/profilo" onClick={onNavigate} />}>
-                <UserRound />
-                Profilo
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/impostazioni" onClick={onNavigate} />}>
-                <Settings />
-                Impostazioni
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <form action={logoutAction} className="contents">
-                <DropdownMenuItem
-                  nativeButton
-                  variant="destructive"
-                  render={<button type="submit" className="w-full" />}
-                >
-                  <LogOut />
-                  Esci
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side={isMobile ? "top" : "right"} className="w-56">
+                <div className="px-1.5 py-1.5">
+                  <p className="truncate text-sm font-medium text-foreground">{currentUser.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{currentUser.email}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem render={<Link href="/profilo" onClick={onNavigate} />}>
+                  <UserRound />
+                  Profilo
                 </DropdownMenuItem>
-              </form>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </>
-    );
-  }
-
-  const brand = (isCollapsed: boolean, onNavigate?: () => void) => (
-    <Link
-      href={homePathFor(currentUser.role)}
-      onClick={onNavigate}
-      className={cn("flex min-w-0 flex-1 items-center gap-2.5", isCollapsed && "flex-none")}
-      title={isAdminRole(currentUser.role) ? "Panoramica" : "Dashboard"}
-    >
-      <Marchio className={isCollapsed ? "h-6" : "h-[26px]"} />
-      {!isCollapsed && (
-        <span className="truncate font-heading text-lg leading-7 font-semibold text-foreground">
-          Softuerino
-        </span>
-      )}
-    </Link>
+                <DropdownMenuItem render={<Link href="/impostazioni" onClick={onNavigate} />}>
+                  <Settings />
+                  Impostazioni
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <form action={logoutAction} className="contents">
+                  <DropdownMenuItem
+                    nativeButton
+                    variant="destructive"
+                    render={<button type="submit" className="w-full" />}
+                  >
+                    <LogOut />
+                    Esci
+                  </DropdownMenuItem>
+                </form>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   );
+}
 
+// Mobile: barra in alto con il pulsante che apre la sidebar (Sheet di shadcn).
+export function MobileTopBar({
+  homeHref,
+  pendingCount = 0,
+}: {
+  homeHref: string;
+  // Richieste in attesa: pallino sul pulsante del menu.
+  pendingCount?: number;
+}) {
   return (
-    <>
-      {/* Mobile: barra in alto con il menu a scomparsa. */}
-      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2 border-b border-sidebar-border bg-sidebar px-2 md:hidden">
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetTrigger
-            render={
-              <button
-                type="button"
-                aria-label="Apri il menu"
-                className="relative flex size-10 shrink-0 items-center justify-center rounded-lg text-foreground transition-colors duration-ds hover:bg-subtle"
-              />
-            }
-          >
-            <Menu className="size-5" />
-            {teamPendingCount + repartoPendingCount > 0 && (
-              <span className={`absolute top-2 right-2 size-2 rounded-full ${TONE_DOT.warning}`} aria-hidden="true" />
-            )}
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[280px] max-w-[85vw] bg-sidebar text-sidebar-foreground">
-            <SheetTitle className="sr-only">Menu</SheetTitle>
-            <div className="flex h-14 shrink-0 items-center px-5 pr-14">{brand(false, closeMobile)}</div>
-            {renderBody(false, closeMobile)}
-          </SheetContent>
-        </Sheet>
-        {brand(false)}
-      </header>
-
-      <aside
-        className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-ds-slow ease-ds md:flex",
-          collapsed ? "w-[72px]" : "w-[248px]",
-          !animate && "transition-none"
+    <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2 border-b border-sidebar-border bg-sidebar px-2 md:hidden">
+      <span className="relative flex">
+        <SidebarTrigger aria-label="Apri il menu" className="size-10" />
+        {pendingCount > 0 && (
+          <span
+            className={cn("pointer-events-none absolute top-2 right-2 size-2 rounded-full", TONE_DOT.warning)}
+            aria-hidden="true"
+          />
         )}
-      >
-        <div
-          className={cn(
-            "flex h-[72px] shrink-0 items-center gap-2.5 px-6",
-            collapsed && "flex-col justify-center gap-1 px-0"
-          )}
-        >
-          {brand(collapsed)}
-          <button
-            type="button"
-            onClick={toggle}
-            title={collapsed ? "Espandi" : "Comprimi"}
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-ds hover:bg-subtle hover:text-foreground"
-          >
-            <PanelLeft className="size-4" />
-          </button>
-        </div>
-        {renderBody(collapsed)}
-      </aside>
-    </>
+      </span>
+      <Link href={homeHref} className="flex min-w-0 items-center gap-2.5">
+        <Marchio className="h-[26px]" />
+        <span className="truncate font-heading text-lg leading-7 font-semibold text-foreground">Softuerino</span>
+      </Link>
+    </header>
   );
 }
