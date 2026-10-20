@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { CalendarPlus, ExternalLink, Pencil, X } from "lucide-react";
 import { googleCalendarUrl } from "@/lib/ics";
 import { deleteEvent } from "@/lib/actions";
 import { EVENT_TYPE_LABELS } from "@/lib/constants";
-import { unexpectedErrorMessage } from "@/lib/action-error";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import {
   Card,
   CardAction,
@@ -34,8 +33,6 @@ export function EventDetails({
   canManage: boolean;
   inDialog?: boolean;
 }) {
-  const [error, setError] = useState<string | null>(null);
-
   return (
     <Card
       className={
@@ -97,32 +94,24 @@ export function EventDetails({
           </p>
         )}
         {canManage && (
-          <form
-            action={async () => {
-              setError(null);
-              try {
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+              <Pencil className="size-4" />
+              Modifica
+            </Button>
+            {/* Stessa conferma dei task: l'eliminazione vale per tutti i partecipanti. */}
+            <ConfirmDeleteButton
+              withText
+              label={`Elimina ${event.title}`}
+              title={`Eliminare "${event.title}"?`}
+              description="L'evento viene eliminato dal calendario di tutti i partecipanti. L'operazione non è reversibile."
+              onConfirm={async () => {
                 const result = await deleteEvent(event.id);
-                if (result?.error) {
-                  setError(result.error);
-                  return;
-                }
-                onClose();
-              } catch (error) {
-                setError(unexpectedErrorMessage(error));
-              }
-            }}
-          >
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={onEdit}>
-                <Pencil className="size-4" />
-                Modifica
-              </Button>
-              <Button type="submit" variant="destructive" size="sm">
-                Elimina
-              </Button>
-            </div>
-            {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
-          </form>
+                if (!result?.error) onClose();
+                return result;
+              }}
+            />
+          </div>
         )}
       </CardContent>
     </Card>

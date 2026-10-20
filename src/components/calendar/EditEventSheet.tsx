@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { DiscardChangesDialog, useUnsavedChanges } from "@/components/form/unsaved-changes";
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { EventFields } from "./EventFields";
 import type { CalendarEventData } from "./types";
@@ -30,29 +31,48 @@ export function EditEventSheet({
   absences: PlanningAbsence[];
   onClose: () => void;
 }) {
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const { formRef, isDirty } = useUnsavedChanges();
+
   return (
     <Sheet
       open={event !== null}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (open) return;
+        // Annulla, Esc, X o clic fuori con modifiche: prima si chiede conferma.
+        if (isDirty()) {
+          setConfirmDiscard(true);
+          return;
+        }
+        onClose();
       }}
     >
       <SheetContent>
         {event && (
           // Rimonta il form a ogni evento: i campi ripartono dai valori salvati.
-          <EditEventForm key={event.id} event={event} users={users} absences={absences} onSaved={onClose} />
+          <EditEventForm
+            key={event.id}
+            formRef={formRef}
+            event={event}
+            users={users}
+            absences={absences}
+            onSaved={onClose}
+          />
         )}
       </SheetContent>
+      <DiscardChangesDialog open={confirmDiscard} onOpenChange={setConfirmDiscard} onDiscard={onClose} />
     </Sheet>
   );
 }
 
 function EditEventForm({
+  formRef,
   event,
   users,
   absences,
   onSaved,
 }: {
+  formRef: (element: HTMLFormElement | null) => void;
   event: CalendarEventData;
   users: { id: string; name: string }[];
   absences: PlanningAbsence[];
@@ -83,7 +103,7 @@ function EditEventForm({
       <SheetHeader>
         <SheetTitle>Modifica evento</SheetTitle>
       </SheetHeader>
-      <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
+      <form ref={formRef} onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
         <SheetBody className="space-y-3">
           <EventFields idPrefix="edit-event" users={users} absences={absences} values={event} />
           {error && <p className="text-sm text-destructive">{error}</p>}

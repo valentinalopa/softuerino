@@ -15,6 +15,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
+import { DiscardChangesDialog, useUnsavedChanges } from "@/components/form/unsaved-changes";
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { EventFields } from "./EventFields";
 
@@ -30,6 +31,8 @@ export function NewEventDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const { formRef, isDirty } = useUnsavedChanges();
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -52,6 +55,11 @@ export function NewEventDialog({
     <Sheet
       open={open}
       onOpenChange={(next) => {
+        // Esc, X o clic fuori con dati inseriti: prima si chiede conferma.
+        if (!next && isDirty()) {
+          setConfirmDiscard(true);
+          return;
+        }
         setOpen(next);
         if (next) setError(null);
       }}
@@ -64,7 +72,7 @@ export function NewEventDialog({
         <SheetHeader>
           <SheetTitle>Nuovo evento</SheetTitle>
         </SheetHeader>
-        <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
+        <form ref={formRef} onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
           <SheetBody className="space-y-3">
             {/* Si rimonta a ogni apertura: i campi ripartono vuoti. */}
             {open && (
@@ -79,6 +87,7 @@ export function NewEventDialog({
           </SheetFooter>
         </form>
       </SheetContent>
+      <DiscardChangesDialog open={confirmDiscard} onOpenChange={setConfirmDiscard} onDiscard={() => setOpen(false)} />
     </Sheet>
   );
 }
