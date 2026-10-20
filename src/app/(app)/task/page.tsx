@@ -13,11 +13,12 @@ type View = "attivi" | "completati";
 export default async function TaskPage({
   searchParams,
 }: {
-  searchParams: Promise<{ user?: string; client?: string; view?: string }>;
+  searchParams: Promise<{ user?: string; client?: string; view?: string; sort?: string; dir?: string }>;
 }) {
   await requireUser();
 
-  const { user: userParam, client: clientParam, view: viewParam } = await searchParams;
+  const { user: userParam, client: clientParam, view: viewParam, sort: sortParam, dir: dirParam } =
+    await searchParams;
   const view: View = viewParam === "completati" ? "completati" : "attivi";
 
   // Il purge gira in parallelo alle letture (niente round-trip bloccante in
@@ -59,6 +60,9 @@ export default async function TaskPage({
   const carriedParams = new URLSearchParams();
   if (userParam) carriedParams.set("user", userParam);
   if (clientParam) carriedParams.set("client", clientParam);
+  // L'ordinamento (lo applica TasksTable) resta passando tra Attivi e Completati.
+  if (sortParam) carriedParams.set("sort", sortParam);
+  if (dirParam) carriedParams.set("dir", dirParam);
   const viewHref = (v: View) => {
     const params = new URLSearchParams(carriedParams);
     if (v !== "attivi") params.set("view", v);
