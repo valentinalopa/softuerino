@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon, NotebookTextIcon } from "lucide-react";
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/lib/constants";
 import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ import {
 type TaskRow = {
   id: string;
   title: string;
+  notes: string;
   status: string;
   priority: string | null;
   dueDate: Date | null;
@@ -45,6 +46,24 @@ const PRIORITY_TONES: Record<TaskPriority, Tone> = {
   medium: "warning",
   high: "danger",
 };
+
+// Titolo con il segno delle note: le note si leggono aprendo il task.
+function TaskTitle({ task }: { task: TaskRow }) {
+  return (
+    <>
+      {task.title}
+      {task.notes && (
+        <NotebookTextIcon
+          className="ml-1.5 inline size-4 align-[-2px] text-muted-foreground"
+          role="img"
+          aria-label="Con note"
+        >
+          <title>Con note</title>
+        </NotebookTextIcon>
+      )}
+    </>
+  );
+}
 
 export function PriorityBadge({ priority }: { priority: TaskPriority }) {
   return <Badge variant={PRIORITY_TONES[priority]}>{TASK_PRIORITY_LABELS[priority]}</Badge>;
@@ -117,7 +136,9 @@ export function TasksTable({
         {sortedTasks.map((task) => (
           <MobileListItem key={task.id} onOpen={() => setSelectedId(task.id)} label={`Modifica ${task.title}`}>
             <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 pt-1.5 font-medium break-words text-foreground">{task.title}</p>
+              <p className="min-w-0 pt-1.5 font-medium break-words text-foreground">
+                <TaskTitle task={task} />
+              </p>
               <ConfirmDeleteButton
                 label={`Elimina ${task.title}`}
                 title={`Eliminare "${task.title}"?`}
@@ -174,7 +195,9 @@ export function TasksTable({
             >
               {/* Titolo e assegnatari vanno a capo: la tabella resta nella card
                   invece di scorrere in orizzontale nascondendo il titolo. */}
-              <TableCell className="min-w-48 font-medium whitespace-normal break-words">{task.title}</TableCell>
+              <TableCell className="min-w-48 font-medium whitespace-normal break-words">
+                <TaskTitle task={task} />
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {task.client ? (
                   // Neutro: i colori della riga restano a stato e priorità.
@@ -221,6 +244,7 @@ export function TasksTable({
           selected && {
             id: selected.id,
             title: selected.title,
+            notes: selected.notes,
             clientId: selected.client?.id ?? null,
             client: selected.client,
             status: selected.status,

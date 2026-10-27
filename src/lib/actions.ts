@@ -1332,6 +1332,7 @@ export async function saveDailyTimeEntries(formData: FormData) {
 // Campi del form task (nuovo e modifica), già validati.
 type TaskFormData = {
   title: string;
+  notes: string;
   clientId: string | null;
   status: string;
   priority: string | null;
@@ -1342,6 +1343,7 @@ function parseTaskForm(
   formData: FormData
 ): { error: string } | { data: TaskFormData; assigneeIds: string[] } {
   const title = String(formData.get("title") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
   const clientIdRaw = String(formData.get("clientId") ?? "").trim();
   const clientId = clientIdRaw && clientIdRaw !== "none" ? clientIdRaw : null;
   const status = String(formData.get("status") ?? "not_started");
@@ -1366,6 +1368,7 @@ function parseTaskForm(
   return {
     data: {
       title,
+      notes,
       clientId,
       status,
       priority,

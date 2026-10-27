@@ -294,6 +294,8 @@ model TimeEntry {
 model Task {
   id          String    @id @default(cuid())
   title       String
+  // Specifiche del task (facoltative, testo libero su più righe).
+  notes       String    @default("")
   clientId    String?
   status      String    @default("not_started") // not_started | in_progress | in_pausa | done
   priority    String? // low | medium | high

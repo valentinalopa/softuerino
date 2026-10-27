@@ -9,6 +9,7 @@ import {
 } from "@/lib/constants";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { DateField } from "@/components/form/date-field";
 import { CheckboxGroupField } from "@/components/form/checkbox-group-field";
@@ -17,6 +18,7 @@ export const NO_CLIENT = "none";
 
 export type TaskFieldValues = {
   title: string;
+  notes: string;
   clientId: string | null;
   // Il cliente attuale, che potrebbe non essere più tra quelli attivi.
   client?: { id: string; name: string } | null;
@@ -114,6 +116,18 @@ export function TaskFields({
           name="dueDate"
           className="w-full"
           defaultValue={values?.dueDate ? format(values.dueDate, "yyyy-MM-dd") : undefined}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-notes`}>
+          Note <span className="font-normal text-muted-foreground">(facoltative)</span>
+        </Label>
+        <Textarea
+          id={`${idPrefix}-notes`}
+          name="notes"
+          placeholder="Specifiche, link, dettagli del task…"
+          defaultValue={values?.notes}
         />
       </div>
     </>
