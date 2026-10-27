@@ -35,10 +35,25 @@ import {
 } from "@/components/ui/alert-dialog";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { ClientStructureFields, type ClientStructureOptions } from "@/components/clienti/ClientStructureFields";
 
-type ClientRow = { id: string; name: string; active: boolean; categories: string };
+type ClientRow = {
+  id: string;
+  name: string;
+  active: boolean;
+  categories: string;
+  parentId: string | null;
+  loggerIds: string[];
+  hasChildren: boolean;
+};
 
-export function ClientRowActions({ client }: { client: ClientRow }) {
+export function ClientRowActions({
+  client,
+  structure,
+}: {
+  client: ClientRow;
+  structure: ClientStructureOptions;
+}) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [active, setActive] = useState(client.active);
@@ -130,6 +145,17 @@ export function ClientRowActions({ client }: { client: ClientRow }) {
                   }))}
                 />
               </div>
+              <ClientStructureFields
+                idPrefix={`client-${client.id}`}
+                options={{
+                  ...structure,
+                  parents: structure.parents.filter((p) => p.id !== client.id),
+                }}
+                defaultParentId={client.parentId ?? ""}
+                defaultLoggerIds={client.loggerIds}
+                parentLocked={client.hasChildren}
+                resetKey={editOpen ? "open" : "closed"}
+              />
               {error && <p className="text-sm text-destructive">{error}</p>}
             </SheetBody>
             <SheetFooter>

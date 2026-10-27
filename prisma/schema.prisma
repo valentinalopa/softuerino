@@ -42,6 +42,7 @@ model User {
   presenceEntries        PresenceEntry[]
   timeEntries            TimeEntry[]
   taskAssignments        TaskAssignee[]
+  clientLogging          ClientLogger[]
   balanceAdjustments     LeaveBalanceAdjustment[]
   recoveryCredits        RecoveryCredit[]
   departments            UserDepartment[]
@@ -245,9 +246,31 @@ model Client {
   active     Boolean  @default(true)
   categories String   @default("") // CSV di categorie: comunicazione | it_design | produzione
   createdAt  DateTime @default(now())
+  // Voce interna di un cliente (es. "Organizzazione IT" di Colibri Vision):
+  // le sue ore contano nel totale del cliente padre. Un solo livello.
+  parentId   String?
 
+  parent      Client?        @relation("ClientParent", fields: [parentId], references: [id], onDelete: Restrict)
+  children    Client[]       @relation("ClientParent")
   timeEntries TimeEntry[]
   tasks       Task[]
+  // Chi può loggarci le ore: nessuno = tutti (gli admin correggono sempre).
+  loggers     ClientLogger[]
+
+  @@index([parentId])
+}
+
+// Persone che possono loggare ore su un cliente riservato
+model ClientLogger {
+  id       String @id @default(cuid())
+  clientId String
+  userId   String
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([userId])
 }
 
 // Log ore lavorate su un cliente/progetto

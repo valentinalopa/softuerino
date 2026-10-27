@@ -19,6 +19,7 @@ import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import { absenceConflict } from "@/lib/absence-conflicts";
 import { can, canOnPerson } from "@/lib/permissions";
+import { loggableClientsWhere } from "@/lib/clients";
 import {
   notifyEventInvite,
   notifyLeaveDecision,
@@ -1108,11 +1109,37 @@ export async function deletePresenceEntries({
 
 // --- Clienti (admin e super admin) ---
 
+// "Fa parte di" e "Chi può loggare" (solo admin). Un solo livello: il padre
+// non può essere a sua volta una voce, né un cliente che ha già voci.
+async function parseClientStructure(
+  formData: FormData,
+  clientId?: string
+): Promise<{ error: string } | { parentId: string | null; loggerIds: string[] }> {
+  const parentId = String(formData.get("parentId") ?? "").trim() || null;
+  const loggerIds = [...new Set(formData.getAll("loggerIds").map(String).filter(Boolean))];
+
+  if (parentId) {
+    if (parentId === clientId) return { error: "Un cliente non può far parte di sé stesso" };
+    const parent = await prisma.client.findUnique({ where: { id: parentId }, select: { parentId: true } });
+    if (!parent) return { error: "Cliente padre non trovato" };
+    if (parent.parentId) return { error: "Il cliente padre è già una voce di un altro cliente" };
+    if (clientId && (await prisma.client.count({ where: { parentId: clientId } })) > 0) {
+      return { error: "Questo cliente ha già delle voci: non può far parte di un altro cliente" };
+    }
+  }
+  if (loggerIds.length > 0) {
+    const found = await prisma.user.count({ where: { id: { in: loggerIds } } });
+    if (found !== loggerIds.length) return { error: "Persona non valida" };
+  }
+  return { parentId, loggerIds };
+}
+
 export async function createClient(formData: FormData) {
   // Admin e super admin, o chi ha il permesso "Aggiungere clienti".
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-  if (!isAdminRole(user.role) && !(await can(user, "clienti"))) return { error: "Non autorizzato" };
+  const isAdmin = isAdminRole(user.role);
+  if (!isAdmin && !(await can(user, "clienti"))) return { error: "Non autorizzato" };
 
   const name = String(formData.get("name") ?? "").trim();
   const categories = formData.getAll("categories").map(String);
@@ -1126,10 +1153,18 @@ export async function createClient(formData: FormData) {
   ) {
     return { error: "Categoria non valida" };
   }
+  // Chi non è admin aggiunge solo clienti semplici, aperti a tutti.
+  const structure = isAdmin ? await parseClientStructure(formData) : { parentId: null, loggerIds: [] };
+  if ("error" in structure) return structure;
 
   try {
     await prisma.client.create({
-      data: { name, categories: categories.join(",") },
+      data: {
+        name,
+        categories: categories.join(","),
+        parentId: structure.parentId,
+        loggers: { create: structure.loggerIds.map((userId) => ({ userId })) },
+      },
     });
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -1158,11 +1193,22 @@ export async function updateClient(clientId: string, formData: FormData) {
   ) {
     return { error: "Categoria non valida" };
   }
+  const structure = await parseClientStructure(formData, clientId);
+  if ("error" in structure) return structure;
 
   try {
     await prisma.client.update({
       where: { id: clientId },
-      data: { name, active, categories: categories.join(",") },
+      data: {
+        name,
+        active,
+        categories: categories.join(","),
+        parentId: structure.parentId,
+        loggers: {
+          deleteMany: {},
+          create: structure.loggerIds.map((userId) => ({ userId })),
+        },
+      },
     });
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -1177,10 +1223,14 @@ export async function updateClient(clientId: string, formData: FormData) {
 export async function deleteClient(clientId: string) {
   await requireAdmin();
 
-  const [timeEntryCount, taskCount] = await Promise.all([
+  const [timeEntryCount, taskCount, childCount] = await Promise.all([
     prisma.timeEntry.count({ where: { clientId } }),
     prisma.task.count({ where: { clientId } }),
+    prisma.client.count({ where: { parentId: clientId } }),
   ]);
+  if (childCount > 0) {
+    return { error: "Questo cliente ha delle voci collegate: spostale o eliminale prima." };
+  }
   if (timeEntryCount + taskCount > 0) {
     return {
       error:
@@ -1232,6 +1282,26 @@ export async function saveDailyTimeEntries(formData: FormData) {
     });
     if (alreadyLogged > 0) {
       return { error: "Questa giornata è già registrata" };
+    }
+  }
+
+  // Solo clienti su cui la persona può loggare (le voci riservate restano
+  // a chi è indicato), più quelli che hanno già ore quel giorno: in modifica
+  // un admin non deve perderle se nel frattempo il cliente è cambiato.
+  const requestedIds = [...new Set(entries.map((e) => e.clientId))];
+  if (requestedIds.length > 0) {
+    const allowed = await prisma.client.findMany({
+      where: {
+        id: { in: requestedIds },
+        OR: [
+          loggableClientsWhere(targetUserId),
+          { timeEntries: { some: { userId: targetUserId, date: { gte: day, lt: nextDay } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (allowed.length !== requestedIds.length) {
+      return { error: "Non puoi loggare ore su uno dei clienti indicati" };
     }
   }
 

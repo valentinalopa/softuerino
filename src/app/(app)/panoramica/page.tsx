@@ -3,10 +3,16 @@ import { Clock3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
 import {
+  buildClientBreakdown,
   buildClientTotals,
   buildHoursByClientByMonth,
   buildLeaveTotals,
+  rollUpToParent,
 } from "@/lib/panoramica-utils";
+import { loadClientHoursEntries } from "@/lib/client-hours";
+import { ClientBreakdownTable } from "@/components/panoramica/ClientBreakdownTable";
+import { buttonVariants } from "@/components/ui/button";
+import { Download } from "lucide-react";
 import { getPendingOverdrafts } from "@/lib/leave-balance";
 import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,15 +33,7 @@ export default async function PanoramicaPage() {
   const yearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
 
   const [timeEntries, leaveRequests, teamPending, teamPendingCount] = await Promise.all([
-    prisma.timeEntry.findMany({
-      where: { date: { gte: windowStart } },
-      select: {
-        date: true,
-        hours: true,
-        clientId: true,
-        client: { select: { name: true } },
-      },
-    }),
+    loadClientHoursEntries(windowStart),
     prisma.leaveRequest.findMany({
       where: { startDate: { lte: yearEnd }, endDate: { gte: yearStart } },
       include: { user: { select: { employmentType: true } } },
@@ -54,12 +52,10 @@ export default async function PanoramicaPage() {
   ]);
   const overdrafts = await getPendingOverdrafts(teamPending);
 
-  const hoursEntries = timeEntries.map((entry) => ({
-    date: entry.date,
-    hours: entry.hours,
-    clientId: entry.clientId,
-    clientName: entry.client.name,
-  }));
+  // Nei grafici le voci (es. "Organizzazione IT") contano nel loro cliente;
+  // la tabella sotto mostra la ripartizione.
+  const hoursEntries = rollUpToParent(timeEntries);
+  const clientBreakdown = buildClientBreakdown(timeEntries, MONTHS_BACK);
 
   const hoursByClientByMonth = buildHoursByClientByMonth(hoursEntries, MONTHS_BACK);
   const clientTotals = buildClientTotals(hoursEntries);
@@ -124,6 +120,22 @@ export default async function PanoramicaPage() {
           </CardHeader>
           <CardContent>
             <LeaveStatsChart totals={leaveTotals} />
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+            <CardTitle>Ore per cliente (ultimi {MONTHS_BACK} mesi)</CardTitle>
+            <a
+              href="/api/ore-clienti"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              <Download />
+              Esporta CSV
+            </a>
+          </CardHeader>
+          <CardContent>
+            <ClientBreakdownTable rows={clientBreakdown.rows} />
           </CardContent>
         </Card>
       </div>

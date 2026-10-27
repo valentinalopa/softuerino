@@ -8,6 +8,7 @@ import { buildAttendanceMap, dateKey, lookupAttendance } from "@/lib/attendance-
 import { isHoliday } from "@/lib/leave-days";
 import { formatHourlySlot } from "@/lib/leave-format";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
+import { clientLabel, loggableClientsWhere, sortClientsByParent } from "@/lib/clients";
 import { parseDateParam, buildMonthlySummary, formatHours } from "@/lib/ore-utils";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { DayStrip } from "@/components/ore/DayStrip";
@@ -141,17 +142,17 @@ async function DailyView({
   const leavesTo = selectedEnd > windowEnd ? selectedEnd : windowEnd;
 
   const [activeClients, dayEntries, windowEntries, leaveRequests] = await Promise.all([
+    // Le voci riservate (es. "Organizzazione IT") solo a chi è indicato.
     prisma.client.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      where: loggableClientsWhere(userId),
+      select: { id: true, name: true, parent: { select: { name: true } } },
     }),
     prisma.timeEntry.findMany({
       where: {
         userId,
         date: { gte: selectedDate, lt: addDays(selectedDate, 1) },
       },
-      include: { client: { select: { name: true } } },
+      include: { client: { select: { id: true, name: true, parent: { select: { name: true } } } } },
     }),
     prisma.timeEntry.findMany({
       where: { userId, date: { gte: windowStart, lt: windowEnd } },
@@ -201,12 +202,14 @@ async function DailyView({
   // In modifica il form include anche i clienti disattivati che hanno già ore
   // quel giorno: il salvataggio sostituisce l'intera giornata e senza queste
   // righe le loro ore sparirebbero in silenzio.
+  // Le voci compaiono come "Cliente › Voce", subito sotto il loro cliente.
   const inactiveWithEntries = dayEntries
     .filter((e) => !activeClients.some((c) => c.id === e.clientId))
-    .map((e) => ({ id: e.clientId, name: e.client.name }));
-  const formClients = [...activeClients, ...inactiveWithEntries].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+    .map((e) => e.client);
+  const formClients = sortClientsByParent([...activeClients, ...inactiveWithEntries]).map((c) => ({
+    id: c.id,
+    name: clientLabel(c),
+  }));
 
   const loggedKeys = new Set(windowEntries.map((e) => dateKey(e.date)));
   const hoursByClient = Object.fromEntries(
@@ -270,8 +273,8 @@ async function DailyView({
         {alreadyLogged && !editing ? (
           <>
             <LoggedHoursSummary
-              entries={dayEntries.map((e) => ({
-                clientName: e.client.name,
+              entries={sortClientsByParent(dayEntries.map((e) => ({ ...e.client, hours: e.hours }))).map((e) => ({
+                clientName: clientLabel(e),
                 hours: e.hours,
               }))}
             />

@@ -74,6 +74,90 @@ export function buildClientTotals(entries: ClientHoursEntry[]): ClientTotal[] {
   return Array.from(totals.values()).sort((a, b) => b.hours - a.hours);
 }
 
+// Ore con il cliente padre: le voci (es. "Organizzazione IT") contano nel
+// totale del loro cliente (Colibri Vision).
+export type ClientHoursEntryWithParent = ClientHoursEntry & {
+  parentId: string | null;
+  parentName: string | null;
+};
+
+// Le ore delle voci passano al cliente padre (grafici: un colore per cliente).
+export function rollUpToParent(entries: ClientHoursEntryWithParent[]): ClientHoursEntry[] {
+  return entries.map((entry) => ({
+    date: entry.date,
+    hours: entry.hours,
+    clientId: entry.parentId ?? entry.clientId,
+    clientName: entry.parentName ?? entry.clientName,
+  }));
+}
+
+export type ClientBreakdownPart = { id: string; name: string; hours: number; months: number[] };
+export type ClientBreakdownRow = ClientBreakdownPart & {
+  // Ripartizione (ore dirette sul cliente + ogni voce); vuota se il cliente
+  // non ha ore sulle voci.
+  parts: ClientBreakdownPart[];
+};
+
+// Totale per cliente (voci comprese) e ripartizione, con le ore mese per
+// mese sulla stessa finestra di buildHoursByClientByMonth.
+export function buildClientBreakdown(
+  entries: ClientHoursEntryWithParent[],
+  monthsBack: number
+): { months: string[]; rows: ClientBreakdownRow[] } {
+  const now = new Date();
+  const monthKeys = Array.from({ length: monthsBack }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (monthsBack - 1 - i), 1);
+    return { key: `${d.getFullYear()}-${d.getMonth() + 1}`, label: shortMonthLabel(d.getFullYear(), d.getMonth() + 1) };
+  });
+  const monthIndex = new Map(monthKeys.map((m, i) => [m.key, i]));
+  const emptyPart = (id: string, name: string): ClientBreakdownPart => ({
+    id,
+    name,
+    hours: 0,
+    months: monthKeys.map(() => 0),
+  });
+  const add = (part: ClientBreakdownPart, entry: ClientHoursEntry, i: number) => {
+    part.hours += entry.hours;
+    part.months[i] += entry.hours;
+  };
+
+  const rows = new Map<string, ClientBreakdownRow & { partsById: Map<string, ClientBreakdownPart>; hasChildHours: boolean }>();
+  for (const entry of entries) {
+    const i = monthIndex.get(`${entry.date.getFullYear()}-${entry.date.getMonth() + 1}`);
+    if (i === undefined) continue;
+    const topId = entry.parentId ?? entry.clientId;
+    const topName = entry.parentName ?? entry.clientName;
+    let row = rows.get(topId);
+    if (!row) {
+      row = { ...emptyPart(topId, topName), parts: [], partsById: new Map(), hasChildHours: false };
+      rows.set(topId, row);
+    }
+    add(row, entry, i);
+    if (entry.parentId) row.hasChildHours = true;
+    let part = row.partsById.get(entry.clientId);
+    if (!part) {
+      part = emptyPart(entry.clientId, entry.clientName);
+      row.partsById.set(entry.clientId, part);
+    }
+    add(part, entry, i);
+  }
+
+  return {
+    months: monthKeys.map((m) => m.label),
+    rows: Array.from(rows.values())
+      .map(({ partsById, hasChildHours, ...row }) => ({
+        ...row,
+        // Prima le ore dirette sul cliente, poi le voci per nome.
+        parts: hasChildHours
+          ? Array.from(partsById.values()).sort(
+              (a, b) => Number(b.id === row.id) - Number(a.id === row.id) || a.name.localeCompare(b.name)
+            )
+          : [],
+      }))
+      .sort((a, b) => b.hours - a.hours),
+  };
+}
+
 export type LeaveTotals = {
   ferieDays: number;
   permessoHours: number;

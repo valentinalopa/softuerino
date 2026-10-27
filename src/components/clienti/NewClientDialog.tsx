@@ -19,8 +19,11 @@ import {
 } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { ClientStructureFields, type ClientStructureOptions } from "@/components/clienti/ClientStructureFields";
 
-export function NewClientDialog() {
+// `structure` solo per gli admin: chi ha il permesso "Aggiungere clienti"
+// crea clienti semplici, aperti a tutti.
+export function NewClientDialog({ structure }: { structure?: ClientStructureOptions }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -75,6 +78,13 @@ export function NewClientDialog() {
                 }))}
               />
             </div>
+            {structure && (
+              <ClientStructureFields
+                idPrefix="new-client"
+                options={structure}
+                resetKey={open ? "open" : "closed"}
+              />
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
