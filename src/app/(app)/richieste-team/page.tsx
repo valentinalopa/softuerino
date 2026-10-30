@@ -101,7 +101,7 @@ export default async function RichiesteTeamPage({
         <h1>Richieste del team</h1>
         <p className="text-sm text-muted-foreground">
           Approvazioni, richieste in programma, storico e riepilogo mensile. Saldi e recuperi di una persona sono nella
-          sua scheda in Team.
+          sua scheda in Persone.
         </p>
       </div>
 

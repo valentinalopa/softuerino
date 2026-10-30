@@ -14,7 +14,7 @@ import { LEAVE_TYPE_LABELS, annualAllowance, type EmploymentType } from "@/lib/c
 import { Card, CardContent } from "@/components/ui/card";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Giorni off" };
+export const metadata: Metadata = { title: "Richieste" };
 
 type Range = "upcoming" | "past";
 
@@ -54,7 +54,7 @@ export default async function RichiestePage({
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1>Giorni off</h1>
+          <h1>Richieste</h1>
           <p className="text-sm text-muted-foreground">
             {user.employmentType === "partita_iva"
               ? "Richieste di assenza, anche fuori monte."

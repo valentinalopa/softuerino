@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/card";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export const metadata: Metadata = { title: "Oggi" };
 
 // Quanti giorni indietro guardare per le ore non registrate.
 const HOURS_LOOKBACK_DAYS = 14;
@@ -86,7 +86,7 @@ export default async function Home() {
   return (
     <div className="space-y-8">
       <div>
-        <h1>Dashboard</h1>
+        <h1>Oggi</h1>
         <p className="text-sm text-muted-foreground">
           Ciao {user.name}, ecco il tuo riepilogo.
         </p>
@@ -238,7 +238,7 @@ function HoursCard({ missingDays }: { missingDays: Date[] }) {
         <CardContent>
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <Timer className="size-4" aria-hidden />
-            Log ore
+            Ore
           </p>
           {missingDays.length > 0 ? (
             <>

@@ -21,7 +21,7 @@ import { ClientDistributionChart } from "@/components/panoramica/ClientDistribut
 import { LeaveStatsChart } from "@/components/panoramica/LeaveStatsChart";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Panoramica" };
+export const metadata: Metadata = { title: "Report" };
 
 const MONTHS_BACK = 12;
 // Quante richieste da approvare mostrare in cima: il resto è in /richieste-team.
@@ -71,9 +71,9 @@ export default async function PanoramicaPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1>Panoramica</h1>
+        <h1>Report</h1>
         <p className="text-sm text-muted-foreground">
-          Andamento ore per cliente e assenze di tutto il team.
+          Ore per cliente e assenze di tutto il team, con esportazione.
         </p>
       </div>
 

@@ -64,46 +64,46 @@ import { TONE_DOT, TONE_SOFT } from "@/lib/tones";
 // external: sito esterno (es. il cloud aziendale), aperto in una nuova scheda.
 type NavLink = { href: string; label: string; icon: LucideIcon; external?: boolean };
 
-const COMMON_LINKS: NavLink[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/richieste", label: "Giorni off", icon: ClipboardCheck },
-  { href: "/presenze", label: "Presenze", icon: Clock3 },
-  { href: "/ore", label: "Log ore", icon: Timer },
-];
-
-const OPERATIVITA_LINKS: NavLink[] = [
+// Menu per frequenza d'uso (vedi la proposta "nuova architettura UX"):
+// in alto il quotidiano, poi l'azienda, poi strumenti e accessi. La
+// configurazione rara sta nel menu utente, in basso.
+const DAILY_LINKS: NavLink[] = [
+  { href: "/", label: "Oggi", icon: LayoutDashboard },
+  { href: "/ore", label: "Ore", icon: Timer },
   { href: "/calendario", label: "Calendario", icon: CalendarDays },
+  { href: "/presenze", label: "Presenze", icon: Clock3 },
+  { href: "/richieste", label: "Richieste", icon: ClipboardCheck },
   { href: "/task", label: "Task", icon: ListTodo },
-  { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true },
 ];
 
-// Licenze: manager di reparto (organigramma Keycloak), admin e super admin.
-const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
-// Il mio reparto: per chi ha permessi sulle persone (Ruoli e permessi).
+// Azienda, admin e super admin: approvazioni, persone, clienti, report.
+const ADMIN_COMPANY_LINKS: NavLink[] = [
+  { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
+  { href: "/team", label: "Persone", icon: Users },
+  { href: "/clienti", label: "Clienti", icon: Building2 },
+  { href: "/panoramica", label: "Report", icon: ChartColumn },
+];
+// Il mio reparto: per chi (non admin) ha permessi sulle persone.
 const REPARTO_LINK: NavLink = { href: "/reparto", label: "Il mio reparto", icon: UserStar };
-// VPN e organigramma: per tutti.
-const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
+const CLIENTS_LINK: NavLink = { href: "/clienti", label: "Clienti", icon: Building2 };
 const ORG_LINK: NavLink = { href: "/organigramma", label: "Organigramma", icon: Network };
 
-const ADMIN_LINKS: NavLink[] = [
-  { href: "/panoramica", label: "Panoramica", icon: ChartColumn },
-  { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
-  { href: "/team", label: "Team", icon: Users },
-  { href: "/clienti", label: "Clienti", icon: Building2 },
-];
+// Risorse: strumenti e accessi aziendali. Licenze: responsabili con il
+// permesso, admin e super admin; il resto per tutti.
+const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
+const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
+const CLOUD_LINK: NavLink = { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true };
 
-// Ruoli e permessi: solo super admin, ma sta con l'amministrazione.
-const ROLES_LINK: NavLink = { href: "/ruoli", label: "Ruoli e permessi", icon: SlidersHorizontal };
-
-// Operazioni di sistema: solo super admin.
-const SYSTEM_LINKS: NavLink[] = [
+// Menu utente, solo super admin: permessi e operazioni di sistema.
+const SUPER_ADMIN_MENU_LINKS: NavLink[] = [
+  { href: "/ruoli", label: "Ruoli e permessi", icon: SlidersHorizontal },
   { href: "/impostazioni/aggiornamenti", label: "Aggiornamenti", icon: RefreshCw },
   { href: "/impostazioni/email", label: "Email", icon: Mail },
 ];
 
 // Sezioni aperte o chiuse a mano (titolo → aperta), stesso schema della
 // preferenza qui sopra. Senza una scelta salvata la sezione è chiusa
-// (tranne "Personale", vedi isSectionOpen).
+// (tranne "Ogni giorno", vedi isSectionOpen).
 const SECTIONS_KEY = "softuerino:sidebar-sections";
 const SECTIONS_EVENT = "softuerino:sidebar-sections-change";
 
@@ -160,7 +160,7 @@ export function AppSidebar({
   showLicenses?: boolean;
   // "Il mio reparto": chi (non admin) ha permessi sulle persone.
   showReparto?: boolean;
-  // Clienti in Utilità per chi (non admin) può aggiungerli.
+  // Clienti in Azienda per chi (non admin) può aggiungerli.
   showClients?: boolean;
   // Richieste del reparto in attesa, se il responsabile può approvarle.
   repartoPendingCount?: number;
@@ -182,28 +182,22 @@ export function AppSidebar({
   // andando su un'altra pagina della sezione si riapre da sola.
   const [activeClosedOn, setActiveClosedOn] = useState<string | null>(null);
 
-  const utilityLinks: NavLink[] = [
-    ...(showReparto ? [REPARTO_LINK] : []),
+  const isAdmin = isAdminRole(currentUser.role);
+  const companyLinks: NavLink[] = isAdmin
+    ? [...ADMIN_COMPANY_LINKS, ORG_LINK]
+    : [...(showReparto ? [REPARTO_LINK] : []), ...(showClients ? [CLIENTS_LINK] : []), ORG_LINK];
+  const resourceLinks: NavLink[] = [
     ...(showLicenses ? [LICENSES_LINK] : []),
-    ...(showClients ? [{ href: "/clienti", label: "Clienti", icon: Building2 }] : []),
-    ORG_LINK,
     VPN_LINK,
+    CLOUD_LINK,
     ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),
   ];
   const sections = [
-    { label: "Personale", links: COMMON_LINKS },
-    { label: "Operatività", links: OPERATIVITA_LINKS },
-    ...(utilityLinks.length > 0 ? [{ label: "Utilità", links: utilityLinks }] : []),
-    ...(isAdminRole(currentUser.role)
-      ? [
-          {
-            label: "Amministrazione",
-            links: currentUser.role === "super_admin" ? [...ADMIN_LINKS, ROLES_LINK] : ADMIN_LINKS,
-          },
-        ]
-      : []),
-    ...(currentUser.role === "super_admin" ? [{ label: "Sistema", links: SYSTEM_LINKS }] : []),
+    { label: "Ogni giorno", links: DAILY_LINKS },
+    { label: "Azienda", links: companyLinks },
+    { label: "Risorse", links: resourceLinks },
   ];
+  const userMenuLinks = currentUser.role === "super_admin" ? SUPER_ADMIN_MENU_LINKS : [];
 
   // Confronto per segmento: "/richieste" non deve accendersi su
   // "/richieste-team".
@@ -220,15 +214,15 @@ export function AppSidebar({
     return 0;
   }
 
-  // Sezioni chiuse finché l'utente non le apre ("Personale" aperta); quella della pagina corrente
+  // Sezioni chiuse finché l'utente non le apre ("Ogni giorno" aperta); quella della pagina corrente
   // si apre da sola.
   const activeSection = sections.find((section) => section.links.some(isActive))?.label;
 
   function isSectionOpen(label: string) {
     if (label === activeSection) return activeClosedOn !== pathname;
-    // "Personale" (log ore, giorni off) si usa ogni giorno: aperta finché
+    // "Ogni giorno" (ore, richieste…) si usa ogni giorno: aperta finché
     // l'utente non la chiude.
-    return sectionChoices[label] ?? label === "Personale";
+    return sectionChoices[label] ?? label === "Ogni giorno";
   }
 
   function setSectionOpen(label: string, open: boolean) {
@@ -243,7 +237,7 @@ export function AppSidebar({
           <SidebarMenuItem className="min-w-0 flex-1">
             <SidebarMenuButton
               size="lg"
-              tooltip={isAdminRole(currentUser.role) ? "Panoramica" : "Dashboard"}
+              tooltip={isAdmin ? "Report" : "Oggi"}
               render={<Link href={homePathFor(currentUser.role)} onClick={onNavigate} />}
             >
               {/* Riquadro quadrato come nel "team switcher" di shadcn: resta
@@ -363,6 +357,20 @@ export function AppSidebar({
                   <Settings />
                   Impostazioni
                 </DropdownMenuItem>
+                {userMenuLinks.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    {userMenuLinks.map((link) => {
+                      const Icon = link.icon;
+                      return (
+                        <DropdownMenuItem key={link.href} render={<Link href={link.href} onClick={onNavigate} />}>
+                          <Icon />
+                          {link.label}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <form action={logoutAction} className="contents">
                   <DropdownMenuItem

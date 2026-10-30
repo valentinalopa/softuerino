@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth/session";
 import { OreLogSection, type OreLogParams } from "@/components/ore/OreLogSection";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Log ore" };
+export const metadata: Metadata = { title: "Ore" };
 
 export default async function OrePage({
   searchParams,
@@ -15,9 +15,9 @@ export default async function OrePage({
   return (
     <div className="space-y-6">
       <div>
-        <h1>Log ore</h1>
+        <h1>Ore</h1>
         <p className="text-sm text-muted-foreground">
-          Log ore su cliente/progetto, giorno per giorno.
+          Le ore lavorate su ogni cliente o progetto, giorno per giorno.
         </p>
       </div>
 

@@ -28,7 +28,7 @@ const LEVELS: { badge: React.ReactNode; text: string }[] = [
   },
   {
     badge: <UserLevelBadges role="admin" departments={[]} />,
-    text: "Amministrazione del personale (Team, Richieste del team, Clienti, «Vedi come»); licenze secondo i permessi qui sotto.",
+    text: "Amministrazione del personale (Persone, Richieste del team, Clienti, Report, «Vedi come»); licenze secondo i permessi qui sotto.",
   },
   {
     badge: <ResponsabileBadge />,
@@ -94,7 +94,7 @@ export default async function RuoliPage({
         <p className="text-sm text-muted-foreground">
           Il ruolo di ognuno si cambia dalla sua scheda in{" "}
           <Link href="/team" className="underline underline-offset-2">
-            Team
+            Persone
           </Link>
           ; chi è responsabile di quale reparto si decide in Keycloak (organigramma).
         </p>

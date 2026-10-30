@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Team" };
+export const metadata: Metadata = { title: "Persone" };
 
 export default async function TeamPage({
   searchParams,
@@ -66,10 +66,9 @@ export default async function TeamPage({
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1>Team</h1>
+          <h1>Persone</h1>
           <p className="text-sm text-muted-foreground">
-            Membri del team e saldi dell&apos;anno. Apri un membro per profilo, saldi,
-            richieste, presenze e ore.
+            Le persone del team con i saldi dell&apos;anno: aprine una per profilo, richieste, presenze e ore.
           </p>
         </div>
         <NewTeamMemberDialog roles={roles} ssoEnabled={isOidcConfigured()} />

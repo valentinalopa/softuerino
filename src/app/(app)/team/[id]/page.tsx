@@ -78,7 +78,7 @@ export default async function TeamMemberPage({
         {/* Il link "torna a" sta sempre in alto a sinistra, sopra il titolo. */}
         <Link href="/team" className={buttonVariants({ variant: "ghost", size: "sm" })}>
           <ArrowLeft />
-          Torna al Team
+          Torna a Persone
         </Link>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
