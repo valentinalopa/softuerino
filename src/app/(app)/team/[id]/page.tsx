@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/session";
+import { ScopedMemberView } from "@/components/persone/ScopedMemberView";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import {
   balanceFigures,
@@ -14,6 +15,7 @@ import { formatToRecover } from "@/lib/leave-format";
 import {
   assignableRoles,
   IMPERSONATABLE_ROLES,
+  isAdminRole,
   type EmploymentType,
   type Role,
 } from "@/lib/constants";
@@ -48,9 +50,10 @@ const TAB_LABELS: Record<(typeof TABS)[number], string> = {
 };
 type Tab = (typeof TABS)[number];
 
-// Scheda membro: l'unico punto in cui un admin consulta e gestisce i
+// Scheda persona: per gli admin è l'unico punto in cui consultare e gestire i
 // dati di un'altra persona (profilo, saldi e recuperi, richieste, presenze,
-// ore). Le pagine /ore, /presenze e /richieste restano personali.
+// ore); gli altri vedono solo le schede consentite (ScopedMemberView). Le
+// pagine /ore, /presenze e /richieste restano personali.
 export default async function TeamMemberPage({
   params,
   searchParams,
@@ -58,9 +61,15 @@ export default async function TeamMemberPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<OreLogParams & { tab?: string; month?: string }>;
 }) {
-  const currentUser = await requireAdmin();
+  const currentUser = await requireUser();
   const { id } = await params;
   const { tab: tabParam, month: monthParam, ...oreParams } = await searchParams;
+  // Chi non è admin vede solo le schede su cui ha permessi (Ruoli e permessi).
+  if (!isAdminRole(currentUser.role)) {
+    return (
+      <ScopedMemberView viewer={currentUser} id={id} tabParam={tabParam} monthParam={monthParam} oreParams={oreParams} />
+    );
+  }
   const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "profilo";
 
   const member = await prisma.user.findUnique({ where: { id } });

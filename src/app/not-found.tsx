@@ -14,7 +14,7 @@ export default function NotFound() {
         Il link potrebbe essere vecchio o scritto male, oppure la pagina è stata spostata.
       </p>
       <Link href="/" className={buttonVariants()}>
-        Torna alla dashboard
+        Torna a Oggi
       </Link>
     </div>
   );

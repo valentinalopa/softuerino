@@ -133,7 +133,7 @@ export async function createUser(formData: FormData) {
   await addUpcomingClosuresFor(userId);
 
   revalidatePath("/team");
-  revalidatePath("/reparto");
+  revalidatePath("/team");
 }
 
 export async function updateUser(userId: string, formData: FormData) {
@@ -451,7 +451,7 @@ export async function createLeaveRequest(formData: FormData) {
 
   revalidatePath("/richieste");
   revalidatePath("/panoramica");
-  revalidatePath("/reparto");
+  revalidatePath("/team");
   revalidatePath("/");
   // Avviso ai responsabili ferie (e ai responsabili del reparto che possono
   // approvare): solo per le richieste fatte dalla persona stessa.
@@ -755,8 +755,7 @@ function revalidateLeavePaths(userId: string) {
   revalidatePath("/richieste");
   revalidatePath("/panoramica");
   revalidatePath(`/team/${userId}`);
-  revalidatePath("/reparto");
-  revalidatePath(`/reparto/${userId}`);
+  revalidatePath("/team");
   revalidatePath("/");
 }
 

@@ -36,20 +36,16 @@ export default async function AppLayout({
       : 0;
 
   // Reparti di cui è responsabile: simbolo nel menu e, secondo i permessi
-  // del reparto, licenze e "Il mio reparto".
+  // del reparto, licenze e l'elenco di Persone.
   const managed = (await managedDepartmentNames([user.id])).get(user.id) ?? [];
   // Voci del menu secondo i permessi (Ruoli e permessi). Gli admin hanno già
-  // Team e Clienti in Amministrazione.
+  // Persone e Clienti in Azienda.
   const isAdmin = isAdminRole(user.role);
-  const [seePresence, seeRequests, approve, requestUsers, addClients, showLicenses] = await Promise.all([
-    can(user, "presenze_ore"),
-    can(user, "richieste"),
+  const [approve, addClients, showLicenses] = await Promise.all([
     can(user, "approvare"),
-    can(user, "utenti"),
     can(user, "clienti"),
     hasLicenseAccess(user),
   ]);
-  const showReparto = !isAdmin && (seePresence || seeRequests || approve || requestUsers);
   // Richieste in attesa che può approvare.
   const repartoPendingCount =
     !isAdmin && approve
@@ -73,7 +69,6 @@ export default async function AppLayout({
           teamPendingCount={teamPendingCount}
           showLicenses={showLicenses}
           showClients={!isAdmin && addClients}
-          showReparto={showReparto}
           repartoPendingCount={repartoPendingCount}
           ssoAccountUrl={ssoAccountUrl()}
         />

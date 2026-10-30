@@ -233,7 +233,7 @@ export function accountRequestOutcomeEmail(
       ? ["l'account di ", { strong: who }, " è stato creato: può accedere a Softuerino con l'account aziendale."]
       : ["la richiesta di un account per ", { strong: who }, " non è stata accolta. Per chiarimenti scrivi all'amministrazione."],
     details: [["Email", data.email]],
-    link: { path: "/reparto", label: "Apri Il mio reparto" },
+    link: { path: "/team", label: "Apri Persone" },
   });
 }
 

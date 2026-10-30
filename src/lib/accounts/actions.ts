@@ -42,7 +42,7 @@ export async function requestAccount(formData: FormData): Promise<ActionResult> 
   const request = await prisma.accountRequest.create({
     data: { firstName, lastName, email, departmentId, note, requestedById: user.id },
   });
-  revalidatePath("/reparto");
+  revalidatePath("/team");
   revalidatePath("/ruoli");
   after(() => notifyAccountRequest(request.id));
 }
@@ -58,7 +58,7 @@ export async function handleAccountRequest(requestId: string, status: string): P
   });
   if (count === 0) return { error: "Richiesta già gestita o non trovata" };
   revalidatePath("/ruoli");
-  revalidatePath("/reparto");
+  revalidatePath("/team");
   after(() => notifyAccountRequestOutcome(requestId, admin.id));
 }
 

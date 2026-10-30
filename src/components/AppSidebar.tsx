@@ -21,8 +21,6 @@ import {
   Cloud,
   ExternalLink,
   KeyRound,
-  Network,
-  UserStar,
   SlidersHorizontal,
   ShieldCheck,
   EarthLock,
@@ -75,16 +73,16 @@ const DAILY_LINKS: NavLink[] = [
   { href: "/task", label: "Task", icon: ListTodo },
 ];
 
-// Azienda, admin e super admin: approvazioni, persone, clienti, report.
+// Persone: per tutti (elenco secondo i permessi, organigramma per ognuno).
+const PEOPLE_LINK: NavLink = { href: "/team", label: "Persone", icon: Users };
+
+// Azienda, admin e super admin: persone, clienti, report.
 const ADMIN_COMPANY_LINKS: NavLink[] = [
-  { href: "/team", label: "Persone", icon: Users },
+  PEOPLE_LINK,
   { href: "/clienti", label: "Clienti", icon: Building2 },
   { href: "/panoramica", label: "Report", icon: ChartColumn },
 ];
-// Il mio reparto: per chi (non admin) ha permessi sulle persone.
-const REPARTO_LINK: NavLink = { href: "/reparto", label: "Il mio reparto", icon: UserStar };
 const CLIENTS_LINK: NavLink = { href: "/clienti", label: "Clienti", icon: Building2 };
-const ORG_LINK: NavLink = { href: "/organigramma", label: "Organigramma", icon: Network };
 
 // Risorse: strumenti e accessi aziendali. Licenze: responsabili con il
 // permesso, admin e super admin; il resto per tutti.
@@ -145,7 +143,6 @@ export function AppSidebar({
   currentUser,
   teamPendingCount = 0,
   showLicenses = false,
-  showReparto = false,
   showClients = false,
   repartoPendingCount = 0,
   ssoAccountUrl = null,
@@ -156,8 +153,6 @@ export function AppSidebar({
   teamPendingCount?: number;
   // Licenze e abbonamenti: responsabile con il permesso, admin o super admin.
   showLicenses?: boolean;
-  // "Il mio reparto": chi (non admin) ha permessi sulle persone.
-  showReparto?: boolean;
   // Clienti in Azienda per chi (non admin) può aggiungerli.
   showClients?: boolean;
   // Richieste del reparto in attesa, se il responsabile può approvarle.
@@ -182,8 +177,8 @@ export function AppSidebar({
 
   const isAdmin = isAdminRole(currentUser.role);
   const companyLinks: NavLink[] = isAdmin
-    ? [...ADMIN_COMPANY_LINKS, ORG_LINK]
-    : [...(showReparto ? [REPARTO_LINK] : []), ...(showClients ? [CLIENTS_LINK] : []), ORG_LINK];
+    ? ADMIN_COMPANY_LINKS
+    : [PEOPLE_LINK, ...(showClients ? [CLIENTS_LINK] : [])];
   const resourceLinks: NavLink[] = [
     ...(showLicenses ? [LICENSES_LINK] : []),
     VPN_LINK,
