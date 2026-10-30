@@ -11,7 +11,7 @@ import {
   getSession,
   setImpersonation,
 } from "@/lib/auth/session";
-import { homePathFor, IMPERSONATABLE_ROLES, isAdminRole } from "@/lib/constants";
+import { HOME_PATH, IMPERSONATABLE_ROLES, isAdminRole } from "@/lib/constants";
 import { buildOidcLogoutUrl, isOidcConfigured } from "@/lib/auth/oidc";
 import { isPublicRequest, requestHost } from "@/lib/network";
 
@@ -48,7 +48,7 @@ export async function loginAction(formData: FormData) {
   }
 
   await createSession(user.id, { authMethod: "password" });
-  redirect(homePathFor(user.role));
+  redirect(HOME_PATH);
 }
 
 // "Esci": chiude la sessione Softuerino e, se era nata da SSO, anche la

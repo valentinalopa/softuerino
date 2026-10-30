@@ -136,11 +136,10 @@ export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   chiusura: "Chiusura aziendale",
 };
 
-// Pagina di atterraggio dopo il login: admin e super admin partono dalla
-// Panoramica (vista del team), i membri dalla propria Dashboard.
-export function homePathFor(role: string) {
-  return isAdminRole(role) ? "/panoramica" : "/";
-}
+// Pagina di atterraggio dopo il login: Oggi per tutti. Le cose da fare del
+// team (richieste da approvare) sono lì anche per gli admin; i grafici in
+// Report.
+export const HOME_PATH = "/";
 
 export const LEAVE_STATUSES = [
   "pending",

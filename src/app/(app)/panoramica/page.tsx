@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clock3 } from "lucide-react";
+import { ChevronRight, Download } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/session";
 import {
@@ -12,9 +12,7 @@ import {
 import { loadClientHoursEntries } from "@/lib/client-hours";
 import { ClientBreakdownTable } from "@/components/panoramica/ClientBreakdownTable";
 import { buttonVariants } from "@/components/ui/button";
-import { Download } from "lucide-react";
-import { getPendingOverdrafts } from "@/lib/leave-balance";
-import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
+import { monthQuery } from "@/lib/attendance-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
 import { ClientDistributionChart } from "@/components/panoramica/ClientDistributionChart";
@@ -24,10 +22,10 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Report" };
 
 const MONTHS_BACK = 12;
-// Quante richieste da approvare mostrare in cima: il resto è in Richieste → Da approvare.
-const PENDING_PREVIEW = 5;
 
-export default async function PanoramicaPage() {
+// Report: solo analisi ed esportazioni. Le cose da fare (richieste da
+// approvare) stanno in Oggi e in Richieste.
+export default async function ReportPage() {
   await requireAdmin();
 
   const now = new Date();
@@ -35,25 +33,13 @@ export default async function PanoramicaPage() {
   const yearStart = new Date(now.getFullYear(), 0, 1);
   const yearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
 
-  const [timeEntries, leaveRequests, teamPending, teamPendingCount] = await Promise.all([
+  const [timeEntries, leaveRequests] = await Promise.all([
     loadClientHoursEntries(windowStart),
     prisma.leaveRequest.findMany({
       where: { startDate: { lte: yearEnd }, endDate: { gte: yearStart } },
       include: { user: { select: { employmentType: true } } },
     }),
-    // Stesso criterio di Richieste → Da approvare: tutte quelle in attesa.
-    prisma.leaveRequest.findMany({
-      where: { status: "pending" },
-      include: {
-        user: { select: { name: true, employmentType: true } },
-        recoveryCredit: { select: { reason: true, amount: true, unit: true } },
-      },
-      orderBy: { startDate: "asc" },
-      take: PENDING_PREVIEW,
-    }),
-    prisma.leaveRequest.count({ where: { status: "pending" } }),
   ]);
-  const overdrafts = await getPendingOverdrafts(teamPending);
 
   // Nei grafici le voci (es. "Organizzazione IT") contano nel loro cliente;
   // la tabella sotto mostra la ripartizione.
@@ -73,27 +59,9 @@ export default async function PanoramicaPage() {
       <div>
         <h1>Report</h1>
         <p className="text-sm text-muted-foreground">
-          Ore per cliente e assenze di tutto il team, con esportazione.
+          Ore per cliente e assenze di tutto il team, con le esportazioni.
         </p>
       </div>
-
-      {teamPendingCount > 0 && (
-        <NotificationCard
-          icon={Clock3}
-          title={`${teamPendingCount} richiest${teamPendingCount === 1 ? "a" : "e"} da approvare`}
-        >
-          {teamPending.map((request) => (
-            <TeamPendingItem key={request.id} request={request} overdraft={overdrafts.get(request.id)} />
-          ))}
-          <li className="pt-2.5">
-            <Link href="/richieste?vista=da-approvare" className="text-xs text-muted-foreground hover:underline">
-              {teamPendingCount > PENDING_PREVIEW
-                ? `Vedi tutte (${teamPendingCount})`
-                : "Vai a Da approvare"}
-            </Link>
-          </li>
-        </NotificationCard>
-      )}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
@@ -123,6 +91,45 @@ export default async function PanoramicaPage() {
           </CardHeader>
           <CardContent>
             <LeaveStatsChart totals={leaveTotals} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Esportazioni</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y text-sm">
+              <li>
+                <a href="/api/ore-clienti" className="group flex items-center gap-3 py-3">
+                  <Download className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium group-hover:underline">Ore per cliente (CSV)</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Ultimi {MONTHS_BACK} mesi, con la ripartizione delle voci
+                    </span>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a href={`/api/riepilogo-mensile?month=${monthQuery(now)}`} className="group flex items-center gap-3 py-3">
+                  <Download className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium group-hover:underline">Riepilogo assenze del mese (CSV)</span>
+                    <span className="block text-xs text-muted-foreground">Per il consulente del lavoro</span>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <Link href="/richieste?vista=team&view=mensile" className="group flex items-center gap-3 py-3">
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium group-hover:underline">Riepilogo mensile, altri mesi</span>
+                    <span className="block text-xs text-muted-foreground">In Richieste → Del team</span>
+                  </span>
+                </Link>
+              </li>
+            </ul>
           </CardContent>
         </Card>
 

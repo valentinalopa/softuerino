@@ -1,16 +1,19 @@
 import Link from "next/link";
-import { ChevronRight, Timer } from "lucide-react";
+import { ChevronRight, Clock3, Timer } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
-import { getLeaveBalance } from "@/lib/leave-balance";
+import { getLeaveBalance, getPendingOverdrafts } from "@/lib/leave-balance";
+import { peopleInScope } from "@/lib/permissions";
+import { maskLeaveForViewer } from "@/lib/leave-privacy";
+import { NotificationCard, TeamPendingItem } from "@/components/richieste/NotificationCard";
 import { addDays, formatDayMonth, formatTime, startOfDay } from "@/lib/calendar-utils";
 import { buildAttendanceMap, dateKey, lookupAttendance } from "@/lib/attendance-utils";
 import { isWorkingDay } from "@/lib/leave-days";
 import { cn } from "@/lib/utils";
 import { TONE_TEXT } from "@/lib/tones";
-import { formatAmount, formatWhen } from "@/lib/leave-format";
+import { formatAmount, formatHourlySlot, formatWhen } from "@/lib/leave-format";
 import { eventTypeStyle } from "@/components/calendar/types";
-import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS, annualAllowance } from "@/lib/constants";
+import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS, annualAllowance, isAdminRole } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -24,15 +27,27 @@ export const metadata: Metadata = { title: "Oggi" };
 
 // Quanti giorni indietro guardare per le ore non registrate.
 const HOURS_LOOKBACK_DAYS = 14;
+// Quante richieste da approvare mostrare: il resto è in Richieste.
+const PENDING_PREVIEW = 5;
 
 export default async function Home() {
   const user = await requireUser();
-  // Dashboard personale, identica per tutti (admin compresi): la
-  // gestione del team vive nelle pagine di Amministrazione.
+  // Home di tutti: prima le cose da fare (approvazioni, ore da registrare),
+  // poi saldi, chi manca oggi e i prossimi impegni. Grafici ed esportazioni
+  // stanno in Report.
   // Giorni lavorativi recenti (oggi escluso) da controllare nel log ore.
   const today = startOfDay(new Date());
+  // Da approvare: admin tutte (anche le proprie), gli altri quelle delle
+  // persone su cui hanno il permesso.
+  const isAdmin = isAdminRole(user.role);
+  const approveScope = isAdmin ? "all" : await peopleInScope(user, "approvare");
+  const canApprove = approveScope === "all" || approveScope.length > 0;
+  const pendingWhere = {
+    status: "pending",
+    ...(isAdmin ? {} : { user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope as string[] } } }),
+  };
   const hoursFrom = addDays(today, -HOURS_LOOKBACK_DAYS);
-  const [balance, pendingRequests, upcomingEvents, recentEntries, recentLeaves] = await Promise.all([
+  const [balance, pendingRequests, upcomingEvents, recentEntries, recentLeaves, toApprove, toApproveCount, absentToday] = await Promise.all([
     getLeaveBalance(user.id, user.employmentType as "dipendente" | "partita_iva"),
     prisma.leaveRequest.findMany({
       where: { status: "pending", userId: user.id },
@@ -71,7 +86,36 @@ export default async function Home() {
         endTime: true,
       },
     }),
+    canApprove
+      ? prisma.leaveRequest.findMany({
+          where: pendingWhere,
+          include: {
+            user: { select: { name: true, employmentType: true } },
+            recoveryCredit: { select: { reason: true, amount: true, unit: true } },
+          },
+          orderBy: { startDate: "asc" },
+          take: PENDING_PREVIEW,
+        })
+      : Promise.resolve([]),
+    canApprove ? prisma.leaveRequest.count({ where: pendingWhere }) : Promise.resolve(0),
+    // Assenze confermate che toccano oggi, di tutto il team.
+    prisma.leaveRequest.findMany({
+      where: {
+        status: { in: ["approved", "registrata"] },
+        startDate: { lte: today },
+        endDate: { gte: today },
+        user: { active: true },
+      },
+      include: { user: { select: { name: true } } },
+      orderBy: { user: { name: "asc" } },
+    }),
   ]);
+  const overdrafts = await getPendingOverdrafts(toApprove);
+  // La malattia resta riservata (a chi non è admin arriva come assenza);
+  // una chiusura aziendale è una riga per persona: basta dirla una volta.
+  const absentRows = absentToday.map((leave) => maskLeaveForViewer(leave, user));
+  const closureToday = absentRows.some((leave) => leave.type === "chiusura");
+  const absentPeople = absentRows.filter((leave) => leave.type !== "chiusura");
 
   // Stesso criterio del log ore: giorni lavorativi senza ore e senza
   // un'assenza a giornata intera.
@@ -91,6 +135,26 @@ export default async function Home() {
           Ciao {user.name}, ecco il tuo riepilogo.
         </p>
       </div>
+
+      {toApproveCount > 0 && (
+        <NotificationCard
+          icon={Clock3}
+          title={`${toApproveCount} richiest${toApproveCount === 1 ? "a" : "e"} da approvare`}
+        >
+          {toApprove.map((request) => (
+            <TeamPendingItem
+              key={request.id}
+              request={maskLeaveForViewer(request, user)}
+              overdraft={overdrafts.get(request.id)}
+            />
+          ))}
+          <li className="pt-2.5">
+            <Link href="/richieste?vista=da-approvare" className="text-xs text-muted-foreground hover:underline">
+              {toApproveCount > PENDING_PREVIEW ? `Vedi tutte (${toApproveCount})` : "Vai a Da approvare"}
+            </Link>
+          </li>
+        </NotificationCard>
+      )}
 
       <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", statCount === 4 ? "xl:grid-cols-4" : "")}>
         {balance.kind === "assenze" ? (
@@ -125,7 +189,33 @@ export default async function Home() {
         <HoursCard missingDays={missingDays} />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Assenti oggi</CardTitle>
+            <Link href="/calendario?vista=team" className="text-xs text-muted-foreground hover:underline">
+              Presenze del team
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 text-sm">
+              {closureToday && <li className="font-medium">Chiusura aziendale</li>}
+              {absentPeople.map((leave) => (
+                <li key={leave.id} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">
+                  <span className="truncate font-medium">{leave.user.name}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {LEAVE_TYPE_LABELS[leave.type as keyof typeof LEAVE_TYPE_LABELS] ?? leave.type}
+                    {leave.hours ? ` · ${formatHourlySlot({ ...leave, hours: leave.hours })}` : ""}
+                  </span>
+                </li>
+              ))}
+              {!closureToday && absentPeople.length === 0 && (
+                <li className="text-muted-foreground">Nessuna assenza: c&apos;è tutto il team.</li>
+              )}
+            </ul>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>

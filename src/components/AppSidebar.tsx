@@ -27,7 +27,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
-import { homePathFor, isAdminRole, type Role } from "@/lib/constants";
+import { HOME_PATH, isAdminRole, type Role } from "@/lib/constants";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -228,8 +228,8 @@ export function AppSidebar({
           <SidebarMenuItem className="min-w-0 flex-1">
             <SidebarMenuButton
               size="lg"
-              tooltip={isAdmin ? "Report" : "Oggi"}
-              render={<Link href={homePathFor(currentUser.role)} onClick={onNavigate} />}
+              tooltip="Oggi"
+              render={<Link href={HOME_PATH} onClick={onNavigate} />}
             >
               {/* Riquadro quadrato come nel "team switcher" di shadcn: resta
                   intero anche con la sidebar compressa a icone. */}

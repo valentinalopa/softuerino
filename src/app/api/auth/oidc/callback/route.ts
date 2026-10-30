@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSession } from "@/lib/auth/session";
-import { homePathFor } from "@/lib/constants";
+import { HOME_PATH } from "@/lib/constants";
 import {
   completeOidcLogin,
   isOidcConfigured,
@@ -48,5 +48,5 @@ export async function GET(request: NextRequest) {
   }
 
   await createSession(result.user.id, { authMethod: "oidc", tokens: result.tokens });
-  redirect(homePathFor(result.user.role));
+  redirect(HOME_PATH);
 }

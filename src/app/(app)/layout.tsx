@@ -11,7 +11,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/Toaster";
 import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
-import { homePathFor, isAdminRole, type Role } from "@/lib/constants";
+import { HOME_PATH, isAdminRole, type Role } from "@/lib/constants";
 
 export default async function AppLayout({
   children,
@@ -77,7 +77,7 @@ export default async function AppLayout({
         <SidebarInset className="min-w-0">
           {impersonating && <ImpersonationBanner userName={user.name} />}
           <MobileTopBar
-            homeHref={homePathFor(user.role as Role)}
+            homeHref={HOME_PATH}
             pendingCount={teamPendingCount + repartoPendingCount}
           />
           <div className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 sm:px-6 sm:py-8 md:px-10">
