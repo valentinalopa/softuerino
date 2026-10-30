@@ -27,7 +27,7 @@ export default async function AppLayout({
   const { user, impersonating } = context;
 
   // Contatore in sidebar delle richieste da approvare (stesso criterio della
-  // pagina /richieste-team: tutte quelle in attesa, anche le proprie).
+  // scheda Da approvare di /richieste: tutte quelle in attesa, anche le proprie).
   const teamPendingCount =
     isAdminRole(user.role)
       ? await prisma.leaveRequest.count({

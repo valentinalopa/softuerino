@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { byName } from "@/lib/utils";
@@ -5,12 +7,10 @@ import { requireUser } from "@/lib/auth/session";
 import { isAdminRole } from "@/lib/constants";
 import { managedDepartmentNames } from "@/lib/departments";
 import { can, peopleInScope } from "@/lib/permissions";
-import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { LevelAvatar, UserLevelBadges } from "@/components/team/UserLevel";
-import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { RequestAccountDialog } from "@/components/reparto/RequestAccountDialog";
 import { MobileList, MobileListItem } from "@/components/MobileList";
 import type { Metadata } from "next";
@@ -23,9 +23,10 @@ const STATUS: Record<string, { label: string; variant: "warning" | "success" | "
   rejected: { label: "Non accolta", variant: "danger" },
 };
 
-// Utilità → Il mio reparto: le persone su cui si hanno permessi (Ruoli e
-// permessi: presenze e ore, richieste e saldi, approvare), le richieste da
-// approvare e le richieste di nuovi utenti. Gli admin usano Team.
+// Azienda → Il mio reparto: le persone su cui si hanno permessi (Ruoli e
+// permessi: presenze e ore, richieste e saldi, approvare) e le richieste di
+// nuovi utenti. Le richieste da approvare stanno in Richieste. Gli admin
+// usano Persone.
 export default async function RepartoPage() {
   const user = await requireUser();
   if (isAdminRole(user.role)) redirect("/team");
@@ -50,11 +51,7 @@ export default async function RepartoPage() {
             status: "pending",
             user: approve === "all" ? { id: { not: user.id } } : { id: { in: approve } },
           },
-          include: {
-            user: { select: { name: true } },
-            recoveryCredit: { select: { reason: true, amount: true, unit: true } },
-          },
-          orderBy: { startDate: "asc" },
+          select: { id: true },
         })
       : Promise.resolve([]),
     anyPeople
@@ -103,21 +100,20 @@ export default async function RepartoPage() {
         {requestUsers && <RequestAccountDialog departments={allDepartments} />}
       </div>
 
-      {(approve === "all" || approve.length > 0) && (
-        <section className="space-y-3">
-          <h2>Richieste da approvare</h2>
-          <Card>
-            <CardContent>
-              <LeaveRequestsTable
-                requests={pending.map((r) => maskLeaveForViewer(r, user))}
-                showMember
-                showActions
-                pendingOnly
-                emptyMessage="Nessuna richiesta in attesa."
-              />
-            </CardContent>
-          </Card>
-        </section>
+      {/* Le richieste da approvare stanno in Richieste → Da approvare. */}
+      {pending.length > 0 && (
+        <Link
+          href="/richieste?vista=da-approvare"
+          className="flex items-center justify-between gap-3 rounded-xl border border-surface-border bg-card px-4 py-3 text-sm transition-colors hover:border-foreground/30"
+        >
+          <span>
+            <span className="font-medium text-foreground">
+              {pending.length} richiest{pending.length === 1 ? "a" : "e"} da approvare
+            </span>{" "}
+            <span className="text-muted-foreground">in Richieste</span>
+          </span>
+          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+        </Link>
       )}
 
       {groupNames.map((name) => (

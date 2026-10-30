@@ -450,7 +450,6 @@ export async function createLeaveRequest(formData: FormData) {
   });
 
   revalidatePath("/richieste");
-  revalidatePath("/richieste-team");
   revalidatePath("/panoramica");
   revalidatePath("/reparto");
   revalidatePath("/");
@@ -745,7 +744,6 @@ export async function deleteCompanyClosure(closureId: string): Promise<ActionRes
 function revalidateClosurePaths() {
   revalidatePath("/team", "layout");
   revalidatePath("/richieste");
-  revalidatePath("/richieste-team");
   revalidatePath("/panoramica");
   revalidatePath("/presenze");
   revalidatePath("/calendario");
@@ -756,7 +754,6 @@ function revalidateLeavePaths(userId: string) {
   revalidatePath("/team");
   revalidatePath("/richieste");
   revalidatePath("/panoramica");
-  revalidatePath("/richieste-team");
   revalidatePath(`/team/${userId}`);
   revalidatePath("/reparto");
   revalidatePath(`/reparto/${userId}`);

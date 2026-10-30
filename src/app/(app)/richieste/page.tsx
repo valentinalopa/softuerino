@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
 import { getLeaveBalance, remainingByLeaveType } from "@/lib/leave-balance";
-import { getRecoveryCreditsForUsers, toOpenRecoveryCredits } from "@/lib/recovery-credits";
+import { getRecoveryCreditsForUsers, toOpenRecoveryCredits, type RecoveryCreditView } from "@/lib/recovery-credits";
 import { formatAmount, formatToRecover } from "@/lib/leave-format";
 import { formatWhen } from "@/lib/leave-format";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
@@ -12,43 +12,53 @@ import { LeaveRequestsTable, StatusBadge } from "@/components/richieste/LeaveReq
 import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
 import { LEAVE_TYPE_LABELS, annualAllowance, type EmploymentType } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
+import { isAdminRole } from "@/lib/constants";
+import { peopleInScope } from "@/lib/permissions";
+import { maskLeaveForViewer } from "@/lib/leave-privacy";
+import { AllPendingView, TeamRequestsView, type TeamParams } from "@/components/richieste/TeamRequestsViews";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Richieste" };
 
 type Range = "upcoming" | "past";
+type Vista = "mie" | "da-approvare" | "team";
+type Viewer = Awaited<ReturnType<typeof requireUser>>;
 
+// Richieste: una sola pagina per tutte le richieste di assenza.
+// - Le mie: saldi e richieste personali, uguale per tutti.
+// - Da approvare: per chi può approvare (admin: tutte; responsabili: quelle
+//   del reparto, secondo Ruoli e permessi).
+// - Del team: admin e super admin, richieste decise, storico, riepilogo
+//   mensile e chiusure aziendali.
 export default async function RichiestePage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ vista?: string; range?: string } & TeamParams>;
 }) {
   const user = await requireUser();
-  // endDate è salvato a mezzanotte dell'ultimo giorno (incluso): confrontare con
-  // l'inizio di oggi, non con l'ora corrente, altrimenti una richiesta risulta
-  // "conclusa" già dalle 00:01 del suo ultimo giorno.
-  const today = startOfDay(new Date());
+  const params = await searchParams;
+  const isAdmin = isAdminRole(user.role);
+  // Admin: tutte (comprese le proprie); gli altri: le persone su cui hanno il
+  // permesso "Approvare", mai sé stessi.
+  const approveScope = isAdmin ? "all" : await peopleInScope(user, "approvare");
+  const canApprove = approveScope === "all" || approveScope.length > 0;
+  const pendingCount = canApprove
+    ? await prisma.leaveRequest.count({
+        where: {
+          status: "pending",
+          ...(isAdmin ? {} : { user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope } } }),
+        },
+      })
+    : 0;
 
-  const { range: rangeParam } = await searchParams;
-  const range: Range = rangeParam === "past" ? "past" : "upcoming";
+  const vista: Vista =
+    params.vista === "da-approvare" && canApprove ? "da-approvare" : params.vista === "team" && isAdmin ? "team" : "mie";
 
-  // Pagina personale, identica per tutti: le richieste del team (approvazioni,
-  // storico) vivono in /richieste-team, sotto Amministrazione.
-  const [balance, ownRequests, recoveryCredits] = await Promise.all([
+  const [balance, recoveryCredits] = await Promise.all([
     getLeaveBalance(user.id, user.employmentType as EmploymentType),
-    prisma.leaveRequest.findMany({
-      where: { userId: user.id },
-      include: { recoveryCredit: { select: { reason: true, amount: true, unit: true } } },
-      orderBy: { createdAt: "desc" },
-    }),
     getRecoveryCreditsForUsers([user.id]),
   ]);
   const ownCredits = recoveryCredits.get(user.id) ?? [];
-  const toRecover = formatToRecover(ownCredits);
-
-  const ownPending = ownRequests.filter((request) => request.status === "pending");
-  const ownUpcoming = ownRequests.filter((request) => request.endDate >= today);
-  const ownPast = ownRequests.filter((request) => request.endDate < today);
 
   return (
     <div className="space-y-8">
@@ -62,7 +72,7 @@ export default async function RichiestePage({
           </p>
         </div>
         {/* Richiesta per sé: quelle per conto di altri si registrano dalla
-            scheda membro in /team/[id]. */}
+            scheda della persona in Persone. */}
         <NewLeaveRequestDialog
           employmentType={user.employmentType as EmploymentType}
           remaining={remainingByLeaveType(balance)}
@@ -70,6 +80,102 @@ export default async function RichiestePage({
         />
       </div>
 
+      {(canApprove || isAdmin) && (
+        <SegmentedLinkTabs
+          items={[
+            { key: "mie", label: "Le mie", href: "/richieste", active: vista === "mie" },
+            ...(canApprove
+              ? [
+                  {
+                    key: "da-approvare",
+                    label: `Da approvare (${pendingCount})`,
+                    href: "/richieste?vista=da-approvare",
+                    active: vista === "da-approvare",
+                  },
+                ]
+              : []),
+            ...(isAdmin ? [{ key: "team", label: "Del team", href: "/richieste?vista=team", active: vista === "team" }] : []),
+          ]}
+        />
+      )}
+
+      {vista === "mie" && (
+        <MyRequestsView
+          user={user}
+          range={params.range === "past" ? "past" : "upcoming"}
+          balance={balance}
+          ownCredits={ownCredits}
+        />
+      )}
+      {vista === "da-approvare" &&
+        (isAdmin ? (
+          <AllPendingView canDelete={user.role === "super_admin"} />
+        ) : (
+          <ScopedPendingView user={user} scope={approveScope} />
+        ))}
+      {vista === "team" && <TeamRequestsView params={params} canDelete={user.role === "super_admin"} />}
+    </div>
+  );
+}
+
+// Da approvare per i responsabili: le richieste in attesa delle persone su
+// cui hanno il permesso (la malattia resta riservata, maskLeaveForViewer).
+async function ScopedPendingView({ user, scope }: { user: Viewer; scope: string[] | "all" }) {
+  const pending = await prisma.leaveRequest.findMany({
+    where: {
+      status: "pending",
+      user: scope === "all" ? { id: { not: user.id } } : { id: { in: scope } },
+    },
+    include: {
+      user: { select: { name: true } },
+      recoveryCredit: { select: { reason: true, amount: true, unit: true } },
+    },
+    orderBy: { startDate: "asc" },
+  });
+  return (
+    <Card>
+      <CardContent>
+        <LeaveRequestsTable
+          requests={pending.map((r) => maskLeaveForViewer(r, user))}
+          showMember
+          showActions
+          pendingOnly
+          emptyMessage="Nessuna richiesta in attesa."
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+// Le mie: saldi, richieste in attesa di risposta e richieste personali.
+async function MyRequestsView({
+  user,
+  range,
+  balance,
+  ownCredits,
+}: {
+  user: Viewer;
+  range: Range;
+  balance: Awaited<ReturnType<typeof getLeaveBalance>>;
+  ownCredits: RecoveryCreditView[];
+}) {
+  // endDate è salvato a mezzanotte dell'ultimo giorno (incluso): confrontare con
+  // l'inizio di oggi, non con l'ora corrente, altrimenti una richiesta risulta
+  // "conclusa" già dalle 00:01 del suo ultimo giorno.
+  const today = startOfDay(new Date());
+  const ownRequests = await prisma.leaveRequest.findMany({
+    where: { userId: user.id },
+    include: { recoveryCredit: { select: { reason: true, amount: true, unit: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const toRecover = formatToRecover(ownCredits);
+
+  const ownPending = ownRequests.filter((request) => request.status === "pending");
+  const ownUpcoming = ownRequests.filter((request) => request.endDate >= today);
+  const ownPast = ownRequests.filter((request) => request.endDate < today);
+
+  return (
+    <>
       {ownPending.length > 0 && (
         <NotificationCard
           icon={Clock3}
@@ -169,8 +275,7 @@ export default async function RichiestePage({
           </CardContent>
         </Card>
       </div>
-
-    </div>
+    </>
   );
 }
 

@@ -24,7 +24,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Report" };
 
 const MONTHS_BACK = 12;
-// Quante richieste da approvare mostrare in cima: il resto è in /richieste-team.
+// Quante richieste da approvare mostrare in cima: il resto è in Richieste → Da approvare.
 const PENDING_PREVIEW = 5;
 
 export default async function PanoramicaPage() {
@@ -41,7 +41,7 @@ export default async function PanoramicaPage() {
       where: { startDate: { lte: yearEnd }, endDate: { gte: yearStart } },
       include: { user: { select: { employmentType: true } } },
     }),
-    // Stesso criterio di /richieste-team: tutte quelle in attesa.
+    // Stesso criterio di Richieste → Da approvare: tutte quelle in attesa.
     prisma.leaveRequest.findMany({
       where: { status: "pending" },
       include: {
@@ -86,10 +86,10 @@ export default async function PanoramicaPage() {
             <TeamPendingItem key={request.id} request={request} overdraft={overdrafts.get(request.id)} />
           ))}
           <li className="pt-2.5">
-            <Link href="/richieste-team" className="text-xs text-muted-foreground hover:underline">
+            <Link href="/richieste?vista=da-approvare" className="text-xs text-muted-foreground hover:underline">
               {teamPendingCount > PENDING_PREVIEW
                 ? `Vedi tutte (${teamPendingCount})`
-                : "Vai a Richieste del team"}
+                : "Vai a Da approvare"}
             </Link>
           </li>
         </NotificationCard>

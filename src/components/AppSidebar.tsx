@@ -16,7 +16,6 @@ import {
   UserRound,
   Settings,
   ListTodo,
-  Inbox,
   Mail,
   RefreshCw,
   Cloud,
@@ -78,7 +77,6 @@ const DAILY_LINKS: NavLink[] = [
 
 // Azienda, admin e super admin: approvazioni, persone, clienti, report.
 const ADMIN_COMPANY_LINKS: NavLink[] = [
-  { href: "/richieste-team", label: "Richieste del team", icon: Inbox },
   { href: "/team", label: "Persone", icon: Users },
   { href: "/clienti", label: "Clienti", icon: Building2 },
   { href: "/panoramica", label: "Report", icon: ChartColumn },
@@ -209,8 +207,8 @@ export function AppSidebar({
   }
 
   function badgeFor(href: string) {
-    if (href === "/richieste-team") return teamPendingCount;
-    if (href === "/reparto") return repartoPendingCount;
+    // Richieste: quelle da approvare (admin: tutte; responsabili: reparto).
+    if (href === "/richieste") return teamPendingCount + repartoPendingCount;
     return 0;
   }
 

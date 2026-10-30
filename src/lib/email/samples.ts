@@ -49,7 +49,7 @@ export function buildSample(kind: SampleKind, recipient: Recipient, appUrl: stri
         startTime: null,
         endTime: null,
         note: "Vacanza già prenotata.",
-        path: "/richieste-team",
+        path: "/richieste?vista=da-approvare",
       });
     case "account":
       return accountRequestEmail(recipient, appUrl, {

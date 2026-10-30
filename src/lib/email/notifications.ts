@@ -93,13 +93,13 @@ export async function notifyNewLeaveRequest(requestId: string, actorId: string) 
   )
     // La malattia è un dato sanitario: l'avviso va solo ad admin e super admin.
     .filter((r) => request.type !== "malattia" || isAdminRole(r.role));
-  // Admin: pagina "Richieste del team"; responsabili: "Il mio reparto".
-  const roleByEmail = new Map(recipients.map((r) => [r.email, r.role]));
+  // Admin e responsabili: la scheda "Da approvare" di Richieste (ognuno vede
+  // quelle che può decidere).
   await deliver(recipients, (recipient, appUrl) =>
     newLeaveRequestEmail(recipient, appUrl, {
       ...request,
       requester: request.user.name,
-      path: isAdminRole(roleByEmail.get(recipient.email) ?? "") ? "/richieste-team" : "/reparto",
+      path: "/richieste?vista=da-approvare",
     })
   );
 }
