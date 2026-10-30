@@ -6,7 +6,6 @@ import { NewTaskDialog } from "@/components/task/NewTaskDialog";
 import { TaskFilters } from "@/components/task/TaskFilters";
 import { TasksTable } from "@/components/task/TasksTable";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
-import { Card, CardContent } from "@/components/ui/card";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Task" };
@@ -110,22 +109,19 @@ export default async function TaskPage({
         />
       </div>
 
-      <Card>
-        <CardContent>
-          <TasksTable
-            tasks={tasks}
-            users={users}
-            clients={clients}
-            emptyMessage={
-              userFilter || clientParam
-                ? "Nessun task corrisponde ai filtri selezionati."
-                : view === "attivi"
-                  ? "Nessun task attivo: creane uno con «Nuovo task»."
-                  : "Nessun task completato."
-            }
-          />
-        </CardContent>
-      </Card>
+      <TasksTable
+        tasks={tasks}
+        users={users}
+        clients={clients}
+        emptyMessage={
+          userFilter || clientParam
+            ? "Nessun task corrisponde ai filtri selezionati."
+            : view === "attivi"
+              ? "Nessun task attivo: creane uno con «Nuovo task»."
+              : "Nessun task completato."
+        }
+      />
+
     </div>
   );
 }

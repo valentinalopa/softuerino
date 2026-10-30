@@ -15,6 +15,7 @@ import { deleteTask } from "@/lib/actions";
 import { EditTaskSheet } from "@/components/task/EditTaskSheet";
 import { cn, normalizeSearch } from "@/lib/utils";
 import { MobileList, MobileListItem } from "@/components/MobileList";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DEFAULT_SORT_DIR,
   parseTaskSort,
@@ -140,9 +141,9 @@ export function TasksTable({
   }
 
   return (
-    <>
+    <div className="space-y-4">
       {tasks.length > 0 && (
-        <InputGroup className="mb-4 h-10 md:max-w-sm">
+        <InputGroup className="h-10 md:max-w-sm">
           <InputGroupAddon>
             <SearchIcon />
           </InputGroupAddon>
@@ -166,6 +167,10 @@ export function TasksTable({
           )}
         </InputGroup>
       )}
+      {/* La ricerca sta fuori dalla card: dentro, la card toglie i margini
+          laterali quando contiene la tabella e il campo finiva sul bordo. */}
+      <Card>
+        <CardContent>
       {/* Sette colonne non stanno su tablet né su laptop con la sidebar aperta: schede fino a xl. */}
       <MobileList className="md:block xl:hidden">
         {sortedTasks.map((task) => (
@@ -278,6 +283,8 @@ export function TasksTable({
           )}
         </TableBody>
       </Table>
+        </CardContent>
+      </Card>
       <EditTaskSheet
         task={
           selected && {
@@ -296,6 +303,6 @@ export function TasksTable({
         clients={clients}
         onClose={() => setSelectedId(null)}
       />
-    </>
+    </div>
   );
 }
