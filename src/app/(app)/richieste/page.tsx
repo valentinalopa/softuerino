@@ -12,6 +12,9 @@ import { LeaveRequestsTable, StatusBadge } from "@/components/richieste/LeaveReq
 import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
 import { LEAVE_TYPE_LABELS, annualAllowance, type EmploymentType } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Giorni off" };
 
 type Range = "upcoming" | "past";
 
@@ -49,8 +52,8 @@ export default async function RichiestePage({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>Giorni off</h1>
           <p className="text-sm text-muted-foreground">
             {user.employmentType === "partita_iva"
@@ -100,24 +103,27 @@ export default async function RichiestePage({
           <BalanceCard
             label="Assenze rimanenti"
             negative={balance.assenzeRemaining < 0}
-            value={`${formatAmount(balance.assenzeRemaining)} / ${formatAmount(annualAllowance("assenze"))} giorni`}
+            value={`${formatAmount(balance.assenzeRemaining)} giorni`}
+            detail={`su ${formatAmount(annualAllowance("assenze"))} l'anno`}
           />
         ) : (
           <>
             <BalanceCard
               label="Ferie rimanenti"
               negative={balance.ferieRemaining < 0}
-              value={`${formatAmount(balance.ferieRemaining)} / ${formatAmount(balance.ferieMatured)} giorni`}
-              detail="Maturate a oggi"
+              value={`${formatAmount(balance.ferieRemaining)} giorni`}
+              detail={`su ${formatAmount(balance.ferieMatured)} maturate (${formatAmount(annualAllowance("ferie"))} l'anno)`}
             />
             <BalanceCard
               label="Permesso rimanente"
               negative={balance.permessoRemaining < 0}
-              value={`${formatAmount(balance.permessoRemaining)} / ${formatAmount(annualAllowance("permesso"))} ore`}
+              value={`${formatAmount(balance.permessoRemaining)} ore`}
+              detail={`su ${formatAmount(annualAllowance("permesso"))} l'anno`}
             />
             <BalanceCard
-              label="Malattia registrata"
-              value={`${formatAmount(balance.malattiaDaysRegistered)} giorni (nessun tetto)`}
+              label="Malattia"
+              value={`${formatAmount(balance.malattiaDaysRegistered)} giorni`}
+              detail="quest'anno, nessun tetto"
             />
           </>
         )}
@@ -157,7 +163,7 @@ export default async function RichiestePage({
               requests={range === "upcoming" ? ownUpcoming : ownPast}
               canDelete={user.role === "super_admin"}
               emptyMessage={
-                range === "upcoming" ? "Nessuna richiesta in programma." : "Nessuna richiesta conclusa."
+                range === "upcoming" ? "Nessuna richiesta in programma. Per ferie, permessi o assenze usa «Nuova richiesta»." : "Nessuna richiesta conclusa."
               }
             />
           </CardContent>

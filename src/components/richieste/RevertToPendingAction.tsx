@@ -5,6 +5,7 @@ import { Undo2 } from "lucide-react";
 import { revertLeaveToPending } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 // Solo admin: riporta in attesa una richiesta già decisa, per ridecidere.
 // compact: solo icona (righe di tabella), con il testo come tooltip.
@@ -25,6 +26,8 @@ export function RevertToPendingAction({
         const result = await revertLeaveToPending(requestId);
         if (result?.error) {
           setError(result.error);
+        } else {
+          toast("Richiesta riportata in attesa");
         }
       } catch (error) {
         setError(unexpectedErrorMessage(error));
@@ -46,7 +49,7 @@ export function RevertToPendingAction({
         <Undo2 />
         {!compact && "Riporta in attesa"}
       </Button>
-      {error && <p className="max-w-64 text-right text-xs text-destructive">{error}</p>}
+      {error && <p role="alert" className="max-w-64 text-right text-xs text-destructive">{error}</p>}
     </div>
   );
 }

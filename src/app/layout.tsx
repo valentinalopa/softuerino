@@ -12,7 +12,9 @@ const clashGrotesk = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Softuerino | Gestionale team",
+  // Ogni pagina dà il suo titolo ("Task · Softuerino"): con più schede
+  // aperte si distinguono.
+  title: { default: "Softuerino | Gestionale team", template: "%s · Softuerino" },
   description:
     "Gestionale per team: ferie, permessi, malattia, presenze, calendario e ore",
   // Raggiungibile anche da internet: niente indicizzazione nei motori di ricerca.

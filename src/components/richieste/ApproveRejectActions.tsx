@@ -5,6 +5,7 @@ import { Check, X } from "lucide-react";
 import { updateLeaveStatus } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 export function ApproveRejectActions({ requestId }: { requestId: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +18,8 @@ export function ApproveRejectActions({ requestId }: { requestId: string }) {
         const result = await updateLeaveStatus(requestId, status);
         if (result?.error) {
           setError(result.error);
+        } else {
+          toast(status === "approved" ? "Richiesta approvata" : "Richiesta rifiutata");
         }
       } catch (error) {
         setError(unexpectedErrorMessage(error));
@@ -48,7 +51,7 @@ export function ApproveRejectActions({ requestId }: { requestId: string }) {
           Rifiuta
         </Button>
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

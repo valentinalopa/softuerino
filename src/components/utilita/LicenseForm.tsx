@@ -292,7 +292,7 @@ export function LicenseForm({
         <Textarea id="license-notes" name="notes" defaultValue={initial?.notes ?? ""} rows={3} />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {success && <p className={`text-sm ${TONE_TEXT.success}`}>Salvato.</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Salvataggio..." : submitLabel}

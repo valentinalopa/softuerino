@@ -25,6 +25,12 @@ export function appendQuery(
   return `${base}${base.includes("?") ? "&" : "?"}${parts.join("&")}`;
 }
 
+// Testo per le ricerche: senza maiuscole né accenti, "fede" trova "Federica
+// Donnò". Le ricerche delle liste (ore, task, team, clienti) lo usano.
+export function normalizeSearch(text: string) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
 // Ordine alfabetico per nome, all'italiana: maiuscole/minuscole e accenti non
 // contano, i numeri in ordine naturale ("Sede 2" prima di "Sede 10"). Tutte
 // le liste di oggetti (persone, licenze, abbonamenti, clienti...) lo usano.

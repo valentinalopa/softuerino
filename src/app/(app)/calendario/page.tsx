@@ -2,13 +2,24 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { Users } from "lucide-react";
 import { CalendarView } from "@/components/calendar/CalendarView";
 import { buttonVariants } from "@/components/ui/button";
 import { isAdminRole } from "@/lib/constants";
+import type { Metadata } from "next";
 
-export default async function CalendarioPage() {
+export const metadata: Metadata = { title: "Calendario" };
+
+export default async function CalendarioPage({
+  searchParams,
+}: {
+  // ?evento=<id>: apre il calendario sul giorno dell'evento con il dettaglio
+  // aperto (link dalla dashboard).
+  searchParams: Promise<{ evento?: string }>;
+}) {
   const user = await requireUser();
+  const { evento } = await searchParams;
 
   // Finestra: dall'inizio dell'anno scorso in poi. Senza un limite la pagina
   // caricherebbe per sempre tutti gli eventi mai creati.
@@ -62,8 +73,8 @@ export default async function CalendarioPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>Calendario</h1>
           <p className="text-sm text-muted-foreground">
             Riunioni di team, shooting e altri eventi.
@@ -71,7 +82,7 @@ export default async function CalendarioPage() {
         </div>
         <Link
           href="/presenze?view=generale"
-          className={buttonVariants({ variant: "ghost", size: "sm" })}
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 self-start sm:ml-0")}
         >
           <Users />
           Vedi presenze del team
@@ -87,6 +98,7 @@ export default async function CalendarioPage() {
         users={calendarUsers}
         currentUserId={user.id}
         isAdmin={isAdminRole(user.role)}
+        initialEventId={evento}
       />
     </div>
   );

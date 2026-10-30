@@ -24,6 +24,7 @@ import {
 import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MonthYearPicker } from "./MonthYearPicker";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type ViewMode = "month" | "week" | "day";
 
@@ -50,6 +51,7 @@ export function CalendarView({
   users,
   currentUserId,
   isAdmin,
+  initialEventId,
 }: {
   events: CalendarEventData[];
   // Assenze del team (non rifiutate), mostrate nel dettaglio del giorno.
@@ -57,12 +59,19 @@ export function CalendarView({
   users: { id: string; name: string }[];
   currentUserId: string;
   isAdmin: boolean;
+  // Evento da aprire subito (link dalla dashboard): si parte dal suo giorno.
+  initialEventId?: string;
 }) {
-  const [view, setView] = useState<ViewMode>("month");
-  const [current, setCurrent] = useState(() => startOfDay(new Date()));
+  const initialEvent = initialEventId ? events.find((event) => event.id === initialEventId) : undefined;
+  // Finché non si sceglie una vista: Mese su schermi larghi, Giorno sul
+  // telefono (sette colonne strette rendono gli eventi illeggibili).
+  const isMobile = useIsMobile();
+  const [chosenView, setView] = useState<ViewMode | null>(null);
+  const view = chosenView ?? (isMobile ? "day" : "month");
+  const [current, setCurrent] = useState(() => startOfDay(initialEvent?.startAt ?? new Date()));
   // Si tiene l'id, non l'evento: dopo una modifica il dettaglio mostra i dati
   // aggiornati, e se l'evento sparisce (eliminato) il dettaglio si chiude.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialEvent?.id ?? null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const selected = events.find((event) => event.id === selectedId) ?? null;
   const editing = events.find((event) => event.id === editingId) ?? null;

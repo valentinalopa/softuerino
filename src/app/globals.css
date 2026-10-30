@@ -422,6 +422,12 @@
   box-shadow: var(--ds-shadow-sm);
 }
 
+/* Griglia dei calendari a mese (eventi, presenze): sabato e domenica più
+   stretti, lo spazio va ai giorni lavorativi. */
+@utility grid-cols-month {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) repeat(2, minmax(0, 0.6fr));
+}
+
 /* Durate delle transizioni del DS: rapida (hover, stati) e lenta (layout). */
 @utility duration-ds {
   transition-duration: 120ms;

@@ -14,6 +14,9 @@ import { ResponsabileBadge, UserLevelBadges, levelSummary } from "@/components/t
 import { PermissionMatrix } from "@/components/ruoli/PermissionMatrix";
 import { PeopleChoiceForm } from "@/components/ruoli/PeopleChoiceForm";
 import { AccountRequestActions } from "@/components/ruoli/AccountRequestActions";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Ruoli e permessi" };
 
 // Amministrazione → Ruoli e permessi (solo super admin): permessi per ruolo
 // (impostazioni generali) o per reparto (personalizzazioni), richieste di

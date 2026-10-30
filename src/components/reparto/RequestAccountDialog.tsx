@@ -92,7 +92,7 @@ export function RequestAccountDialog({ departments }: { departments: { id: strin
               <Label htmlFor="acc-note">Note</Label>
               <Textarea id="acc-note" name="note" rows={3} maxLength={500} placeholder="Facoltative (es. da quando, a cosa deve accedere)" />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             {sent && <p className={`text-sm ${TONE_TEXT.success}`}>Richiesta inviata all&apos;amministrazione.</p>}
             <Button type="submit" disabled={pending}>
               {pending ? "Invio..." : "Invia richiesta"}

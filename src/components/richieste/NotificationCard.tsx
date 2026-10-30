@@ -106,7 +106,13 @@ export function TeamPendingItem({
       </div>
       <div className="flex items-start gap-1">
         <ApproveRejectActions requestId={request.id} />
-        {canDelete && <DeleteRequestButton request={request} />}
+        {/* Staccato da "Rifiuta": eliminare non è un modo di decidere. */}
+        {canDelete && (
+          <>
+            <span className="mx-1.5 h-8 w-px shrink-0 bg-border" aria-hidden />
+            <DeleteRequestButton request={request} />
+          </>
+        )}
       </div>
     </NotificationItem>
   );

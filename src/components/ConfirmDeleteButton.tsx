@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 // Cestino con conferma (task, richieste). I clic restano qui dentro: spesso
 // sta in una riga cliccabile, e anche i clic nel popup (portal) risalirebbero
@@ -25,6 +26,7 @@ export function ConfirmDeleteButton({
   description,
   onConfirm,
   withText = false,
+  successMessage,
 }: {
   // Per screen reader e tooltip (es. "Elimina task").
   label: string;
@@ -33,6 +35,8 @@ export function ConfirmDeleteButton({
   onConfirm: () => Promise<{ error: string } | undefined>;
   // Pulsante con testo ("Elimina") invece della sola icona.
   withText?: boolean;
+  // Conferma a eliminazione avvenuta (es. "Task eliminato").
+  successMessage: string;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +52,7 @@ export function ConfirmDeleteButton({
           return;
         }
         setOpen(false);
+        toast(successMessage);
       } catch (error) {
         setError(unexpectedErrorMessage(error));
       }
@@ -73,7 +78,9 @@ export function ConfirmDeleteButton({
               type="button"
               variant="ghost"
               size={withText ? "sm" : "icon-sm"}
-              className="text-destructive hover:text-destructive"
+              // Solo icona: grigia finché non ci si passa sopra, così nelle
+              // righe non è l'elemento più vistoso.
+              className={withText ? "text-destructive hover:text-destructive" : "text-muted-foreground hover:text-destructive"}
               aria-label={label}
               title={label}
             />
@@ -87,7 +94,7 @@ export function ConfirmDeleteButton({
             <AlertDialogTitle>{title}</AlertDialogTitle>
             <AlertDialogDescription>{description}</AlertDialogDescription>
           </AlertDialogHeader>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
             <AlertDialogAction

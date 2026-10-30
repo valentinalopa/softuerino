@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { shortDayLabel } from "@/lib/calendar-utils";
 import { dateKey } from "@/lib/attendance-utils";
 import { isWorkingDay } from "@/lib/leave-days";
+import { DayStripScroller } from "@/components/ore/DayStripScroller";
 
 export function DayStrip({
   days,
@@ -40,7 +41,7 @@ export function DayStrip({
       >
         <ChevronLeft className="size-4" />
       </Link>
-      <div className="flex flex-1 gap-2 overflow-x-auto">
+      <DayStripScroller selectedKey={selectedKey}>
         {days.map((day) => {
           const key = dateKey(day);
           const selected = key === selectedKey;
@@ -59,6 +60,7 @@ export function DayStrip({
             <Link
               key={key}
               href={appendQuery(basePath, { date: key, window: windowKey })}
+              aria-current={selected ? "date" : undefined}
               className={cn(
                 "flex min-w-16 flex-1 flex-col items-center gap-1.5 rounded-lg border border-surface-border bg-card px-2 py-2 text-center transition-colors duration-ds hover:bg-muted/40",
                 selected && "border-foreground"
@@ -72,7 +74,7 @@ export function DayStrip({
             </Link>
           );
         })}
-      </div>
+      </DayStripScroller>
       <Link
         href={nextHref}
         aria-label="Giorni successivi"

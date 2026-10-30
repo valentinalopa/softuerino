@@ -28,6 +28,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Richieste del team" };
 
 type View = "da_approvare" | "in_programma" | "storico" | "mensile" | "chiusure";
 

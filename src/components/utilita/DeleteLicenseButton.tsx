@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { toast } from "@/lib/toast";
 
 export function DeleteLicenseButton({ licenseId, name }: { licenseId: string; name: string }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +33,7 @@ export function DeleteLicenseButton({ licenseId, name }: { licenseId: string; na
         return;
       }
       setOpen(false);
+      toast("Eliminata");
       router.push("/utilita/licenze");
     });
   }
@@ -50,7 +52,7 @@ export function DeleteLicenseButton({ licenseId, name }: { licenseId: string; na
             non è reversibile.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel>Annulla</AlertDialogCancel>
           <AlertDialogAction type="button" variant="destructive" disabled={pending} onClick={handleDelete}>

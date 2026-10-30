@@ -64,7 +64,7 @@ export function TaskStatusSelect({
           </option>
         ))}
       </NativeSelect>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

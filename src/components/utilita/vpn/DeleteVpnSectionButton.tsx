@@ -16,6 +16,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 export function DeleteVpnSectionButton({ id, name }: { id: string; name: string }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +33,7 @@ export function DeleteVpnSectionButton({ id, name }: { id: string; name: string 
           return;
         }
         setOpen(false);
+        toast("VPN eliminata");
       } catch (error) {
         setError(unexpectedErrorMessage(error));
       }
@@ -53,7 +55,7 @@ export function DeleteVpnSectionButton({ id, name }: { id: string; name: string 
             Sparisce dalla pagina VPN per tutti. Il server VPN e i profili già importati non cambiano.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel>Annulla</AlertDialogCancel>
           <AlertDialogAction type="button" variant="destructive" disabled={pending} onClick={handleDelete}>

@@ -18,6 +18,9 @@ import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { MemberBalances } from "@/components/team/MemberBalances";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Scheda membro" };
 
 // Una persona vista da chi ha permessi su di lei (es. il responsabile del suo
 // reparto): solo le schede consentite, in sola lettura (tranne Approva/Rifiuta).

@@ -1,6 +1,9 @@
 import { requireSuperAdmin } from "@/lib/auth/session";
 import { getUpdateStatusResponse } from "@/lib/system/update";
 import { UpdatePanel } from "@/components/impostazioni/UpdatePanel";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Aggiornamenti" };
 
 // Aggiornamento di Softuerino dal frontend: operazione di sistema, solo super
 // admin. L'esecuzione vera la fa un servizio di root (vedi lib/system/update.ts).

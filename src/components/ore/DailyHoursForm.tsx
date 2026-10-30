@@ -13,20 +13,18 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { SearchIcon, XIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, normalizeSearch } from "@/lib/utils";
 import { formatHours } from "@/lib/ore-utils";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
-// Ricerca senza maiuscole né accenti: "fede" trova "Federica Donnò".
-function normalize(text: string) {
-  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-}
 
 export function DailyHoursForm({
   dateValue,
   userId,
   clients,
+  recentClientIds = [],
   existingHours,
   doneHref,
   cancelHref,
@@ -36,6 +34,8 @@ export function DailyHoursForm({
   // modifica il log altrui.
   userId: string;
   clients: { id: string; name: string }[];
+  // Clienti con ore negli ultimi giorni: in cima, così non vanno cercati.
+  recentClientIds?: string[];
   existingHours: Record<string, number>;
   // Dove tornare dopo un salvataggio in modalità modifica (rimuove ?edit=1).
   doneHref?: string;
@@ -49,9 +49,14 @@ export function DailyHoursForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const normalizedQuery = normalize(query);
-  const matches = (name: string) => !normalizedQuery || normalize(name).includes(normalizedQuery);
+  const normalizedQuery = normalizeSearch(query);
+  const matches = (name: string) => !normalizedQuery || normalizeSearch(name).includes(normalizedQuery);
   const visibleCount = clients.filter((c) => matches(c.name)).length;
+  const recent = new Set(recentClientIds);
+  const recentClients = clients.filter((c) => recent.has(c.id));
+  const otherClients = clients.filter((c) => !recent.has(c.id));
+  // Titoletti solo se ci sono entrambi i gruppi e non si sta cercando.
+  const showGroups = recentClients.length > 0 && otherClients.length > 0 && !normalizedQuery;
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -61,6 +66,7 @@ export function DailyHoursForm({
         setError(result.error);
         return;
       }
+      toast(total > 0 ? `Giornata registrata: ${formatHours(total)}h` : "Giornata svuotata");
       if (doneHref) {
         router.push(doneHref);
       }
@@ -107,35 +113,53 @@ export function DailyHoursForm({
         </InputGroup>
       )}
       <div className="divide-y overflow-hidden surface">
-        {clients.map((client) => (
-          // Le righe filtrate si nascondono ma restano nel form: il
-          // salvataggio sostituisce l'intera giornata e le loro ore non
-          // devono sparire.
-          <div
-            key={client.id}
-            className={cn(
-              "flex items-center justify-between gap-3 px-4 py-3",
-              !matches(client.name) && "hidden"
-            )}
-          >
-            <span className="font-medium">{client.name}</span>
-            <div className="flex items-center gap-2">
-              <input type="hidden" name="clientId" value={client.id} />
-              <Input
-                type="number"
-                name="hours"
-                min="0"
-                step="0.25"
-                placeholder="Es. 2,5"
-                className="w-24 text-right"
-                value={hours[client.id]}
-                onChange={(e) =>
-                  setHours((prev) => ({ ...prev, [client.id]: e.target.value }))
-                }
-              />
+        {[
+          { label: "Usati di recente", items: recentClients },
+          { label: "Altri clienti", items: otherClients },
+        ].map((group) => [
+          showGroups && group.items.length > 0 && (
+            <p
+              key={group.label}
+              className="bg-muted/40 px-4 py-1.5 text-2xs font-semibold tracking-label text-muted-foreground uppercase"
+            >
+              {group.label}
+            </p>
+          ),
+          ...group.items.map((client) => (
+            // Le righe filtrate si nascondono ma restano nel form: il
+            // salvataggio sostituisce l'intera giornata e le loro ore non
+            // devono sparire.
+            <div
+              key={client.id}
+              className={cn(
+                "flex items-center justify-between gap-3 px-4 py-3",
+                !matches(client.name) && "hidden"
+              )}
+            >
+              <label htmlFor={`hours-${client.id}`} className="font-medium">
+                {client.name}
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="hidden" name="clientId" value={client.id} />
+                <Input
+                  id={`hours-${client.id}`}
+                  type="number"
+                  // Su telefono il tastierino con la virgola.
+                  inputMode="decimal"
+                  name="hours"
+                  min="0"
+                  step="0.25"
+                  placeholder="0"
+                  className="w-24 text-right"
+                  value={hours[client.id]}
+                  onChange={(e) =>
+                    setHours((prev) => ({ ...prev, [client.id]: e.target.value }))
+                  }
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          )),
+        ])}
         {clients.length > 0 && visibleCount === 0 && (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
             Nessun cliente corrisponde a &ldquo;{query.trim()}&rdquo;.
@@ -148,7 +172,7 @@ export function DailyHoursForm({
         )}
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex items-center justify-between rounded-xl border border-surface-border bg-muted/40 px-4 py-3">
         <span className="text-sm text-muted-foreground">
           Totale ore: <span className="font-semibold text-foreground">{formatHours(total)}</span>

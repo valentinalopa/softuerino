@@ -2,7 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon, NotebookTextIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon, NotebookTextIcon, SearchIcon, XIcon } from "lucide-react";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/lib/constants";
 import { formatDate } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +13,7 @@ import { TaskStatusSelect } from "@/components/task/TaskStatusSelect";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { deleteTask } from "@/lib/actions";
 import { EditTaskSheet } from "@/components/task/EditTaskSheet";
-import { cn } from "@/lib/utils";
+import { cn, normalizeSearch } from "@/lib/utils";
 import { MobileList, MobileListItem } from "@/components/MobileList";
 import {
   DEFAULT_SORT_DIR,
@@ -29,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
 
 type TaskRow = {
   id: string;
@@ -119,7 +121,15 @@ export function TasksTable({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const sort = parseTaskSort(searchParams.get("sort"), searchParams.get("dir"));
-  const sortedTasks = sortTasks(tasks, sort);
+  // Ricerca nel titolo, nelle note e nel cliente: sta nel browser, la lista è
+  // già tutta qui.
+  const [query, setQuery] = useState("");
+  const normalizedQuery = normalizeSearch(query);
+  const sortedTasks = sortTasks(tasks, sort).filter(
+    (task) =>
+      !normalizedQuery ||
+      [task.title, task.notes, task.client?.name ?? ""].some((text) => normalizeSearch(text).includes(normalizedQuery))
+  );
 
   function handleSort(key: TaskSortKey) {
     const params = new URLSearchParams(searchParams.toString());
@@ -131,8 +141,33 @@ export function TasksTable({
 
   return (
     <>
-      {/* Sette colonne non stanno su tablet: schede fino a lg. */}
-      <MobileList className="md:block lg:hidden">
+      {tasks.length > 0 && (
+        <InputGroup className="mb-4 h-10 md:max-w-sm">
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            type="text"
+            role="searchbox"
+            aria-label="Cerca task"
+            placeholder="Cerca task…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setQuery("");
+            }}
+          />
+          {query && (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton size="icon-xs" aria-label="Cancella ricerca" onClick={() => setQuery("")}>
+                <XIcon />
+              </InputGroupButton>
+            </InputGroupAddon>
+          )}
+        </InputGroup>
+      )}
+      {/* Sette colonne non stanno su tablet né su laptop con la sidebar aperta: schede fino a xl. */}
+      <MobileList className="md:block xl:hidden">
         {sortedTasks.map((task) => (
           <MobileListItem key={task.id} onOpen={() => setSelectedId(task.id)} label={`Modifica ${task.title}`}>
             <div className="flex items-start justify-between gap-2">
@@ -140,6 +175,7 @@ export function TasksTable({
                 <TaskTitle task={task} />
               </p>
               <ConfirmDeleteButton
+                successMessage="Task eliminato"
                 label={`Elimina ${task.title}`}
                 title={`Eliminare "${task.title}"?`}
                 description="Il task viene eliminato per tutti. L'operazione non è reversibile."
@@ -157,11 +193,13 @@ export function TasksTable({
             <TaskStatusSelect taskId={task.id} status={task.status} />
           </MobileListItem>
         ))}
-        {tasks.length === 0 && (
-          <MobileListItem className="text-center text-muted-foreground">{emptyMessage}</MobileListItem>
+        {sortedTasks.length === 0 && (
+          <MobileListItem className="text-center text-muted-foreground">
+            {tasks.length > 0 ? `Nessun task corrisponde a “${query.trim()}”.` : emptyMessage}
+          </MobileListItem>
         )}
       </MobileList>
-      <Table containerClassName="hidden lg:block">
+      <Table containerClassName="hidden xl:block">
         <TableHeader>
           <TableRow>
             <SortableHead sortKey="title" sort={sort} onSort={handleSort}>Task</SortableHead>
@@ -222,6 +260,7 @@ export function TasksTable({
               </TableCell>
               <TableCell className="text-right">
                 <ConfirmDeleteButton
+                  successMessage="Task eliminato"
                   label={`Elimina ${task.title}`}
                   title={`Eliminare "${task.title}"?`}
                   description="Il task viene eliminato per tutti. L'operazione non è reversibile."
@@ -230,10 +269,10 @@ export function TasksTable({
               </TableCell>
             </TableRow>
           ))}
-          {tasks.length === 0 && (
+          {sortedTasks.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} className="text-center text-muted-foreground">
-                {emptyMessage}
+                {tasks.length > 0 ? `Nessun task corrisponde a “${query.trim()}”.` : emptyMessage}
               </TableCell>
             </TableRow>
           )}

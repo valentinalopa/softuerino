@@ -21,6 +21,9 @@ import { LicenseQuickKey } from "@/components/utilita/LicenseQuickKey";
 import { LicenseActivations } from "@/components/utilita/LicenseActivations";
 import { LicenseForm } from "@/components/utilita/LicenseForm";
 import { DeleteLicenseButton } from "@/components/utilita/DeleteLicenseButton";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Licenza" };
 
 function isoDate(date: Date | null) {
   if (!date) return null;
@@ -73,8 +76,8 @@ export default async function LicenzaPage({ params }: { params: Promise<{ id: st
           <ArrowLeft />
           Licenze e abbonamenti
         </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h1>{license.name}</h1>
             <p className="text-sm text-muted-foreground">
               {LICENSE_KIND_LABELS[license.kind as LicenseKind] ?? license.kind} ·{" "}

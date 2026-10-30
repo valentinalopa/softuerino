@@ -14,6 +14,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { LicenseForm } from "@/components/utilita/LicenseForm";
+import { toast } from "@/lib/toast";
 
 export function NewLicenseDialog({
   departments,
@@ -44,6 +45,7 @@ export function NewLicenseDialog({
               const result = await createLicense(formData);
               if (result && "id" in result) {
                 setOpen(false);
+                toast("Aggiunta");
                 router.push(`/utilita/licenze/${result.id}`);
               }
               return result;

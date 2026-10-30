@@ -3,6 +3,9 @@ import { loadOrgTree, type OrgNode } from "@/lib/org";
 import { LevelAvatar, ResponsabileBadge, UserLevelBadges, levelSummary } from "@/components/team/UserLevel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Organigramma" };
 
 // Organigramma in sola lettura: reparti, manager e a chi fanno capo arrivano
 // da Keycloak (gestito dall'IT).

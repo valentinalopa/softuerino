@@ -35,7 +35,7 @@ export function StartImpersonationButton({
         <Eye />
         Vedi come {userName.split(" ")[0]}
       </Button>
-      {error && <p className="max-w-64 text-right text-xs text-destructive">{error}</p>}
+      {error && <p role="alert" className="max-w-64 text-right text-xs text-destructive">{error}</p>}
     </div>
   );
 }

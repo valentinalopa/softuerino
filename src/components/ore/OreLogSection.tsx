@@ -19,6 +19,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
 const WINDOW_SIZE = 10;
+// Finestra dei "usati di recente" nel form delle ore.
+const RECENT_DAYS = 30;
 
 export type OreLogParams = {
   view?: string;
@@ -141,7 +143,7 @@ async function DailyView({
   const selectedEnd = addDays(selectedDate, 1);
   const leavesTo = selectedEnd > windowEnd ? selectedEnd : windowEnd;
 
-  const [activeClients, dayEntries, windowEntries, leaveRequests] = await Promise.all([
+  const [activeClients, dayEntries, windowEntries, leaveRequests, recentEntries] = await Promise.all([
     // Le voci riservate (es. "Organizzazione IT") solo a chi è indicato.
     prisma.client.findMany({
       where: loggableClientsWhere(userId),
@@ -177,6 +179,11 @@ async function DailyView({
         startTime: true,
         endTime: true,
       },
+    }),
+    // Clienti usati nelle ultime settimane: in cima al form.
+    prisma.timeEntry.groupBy({
+      by: ["clientId"],
+      where: { userId, date: { gte: addDays(startOfDay(new Date()), -RECENT_DAYS) } },
     }),
   ]);
 
@@ -296,6 +303,7 @@ async function DailyView({
             dateValue={selectedKey}
             userId={userId}
             clients={formClients}
+            recentClientIds={recentEntries.map((e) => e.clientId)}
             existingHours={hoursByClient}
             doneHref={editing ? dayHref : undefined}
             cancelHref={editing ? dayHref : undefined}

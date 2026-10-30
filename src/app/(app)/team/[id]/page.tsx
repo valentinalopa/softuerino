@@ -22,6 +22,7 @@ import { ResponsabileBadge, UserLevelBadges } from "@/components/team/UserLevel"
 import { managedDepartmentNames } from "@/lib/departments";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { EditTeamMemberForm } from "@/components/team/EditTeamMemberForm";
+import { DeleteMemberButton } from "@/components/team/DeleteMemberButton";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { getOpenRecoveryCredits, getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
@@ -32,6 +33,9 @@ import { OreLogSection, type OreLogParams } from "@/components/ore/OreLogSection
 import { AttendanceSection } from "@/components/presenze/AttendanceSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Scheda membro" };
 
 const TABS = ["profilo", "saldi", "richieste", "presenze", "ore"] as const;
 
@@ -76,8 +80,8 @@ export default async function TeamMemberPage({
           <ArrowLeft />
           Torna al Team
         </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1>{member.name}</h1>
               <UserLevelBadges role={member.role} departments={managed} />
@@ -222,6 +226,22 @@ async function ProfiloTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Mai il proprio account; un admin non elimina i super admin. */}
+      {!isSelf && roles.includes(member.role as Role) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Elimina account</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Cancella la persona con richieste, presenze, ore e partecipazioni agli eventi. Se ha
+              solo smesso di lavorare con voi, meglio disattivarla.
+            </p>
+            <DeleteMemberButton user={member} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

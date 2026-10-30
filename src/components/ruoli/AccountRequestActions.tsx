@@ -5,6 +5,7 @@ import { Check, X } from "lucide-react";
 import { handleAccountRequest } from "@/lib/accounts/actions";
 import { Button } from "@/components/ui/button";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 // "Creato" (account fatto in Keycloak) o "Rifiuta": chi l'ha chiesta riceve un'email.
 export function AccountRequestActions({ requestId }: { requestId: string }) {
@@ -17,6 +18,7 @@ export function AccountRequestActions({ requestId }: { requestId: string }) {
       try {
         const result = await handleAccountRequest(requestId, status);
         if (result?.error) setError(result.error);
+        else toast(status === "done" ? "Richiesta segnata come gestita" : "Richiesta rifiutata");
       } catch (error) {
         setError(unexpectedErrorMessage(error));
       }
@@ -35,7 +37,7 @@ export function AccountRequestActions({ requestId }: { requestId: string }) {
           Rifiuta
         </Button>
       </div>
-      {error && <span className="text-xs text-destructive">{error}</span>}
+      {error && <span role="alert" className="text-xs text-destructive">{error}</span>}
     </div>
   );
 }

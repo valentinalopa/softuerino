@@ -1,5 +1,8 @@
 import { requireUser } from "@/lib/auth/session";
 import { OreLogSection, type OreLogParams } from "@/components/ore/OreLogSection";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Log ore" };
 
 export default async function OrePage({
   searchParams,

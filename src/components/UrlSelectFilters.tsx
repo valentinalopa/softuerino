@@ -10,6 +10,9 @@ export type UrlSelectFilter = {
   param: string;
   allLabel: string;
   options: { value: string; label: string }[];
+  // Valore usato quando il parametro manca (es. "I miei task" per i membri):
+  // allora "tutti" va scritto nell'URL esplicitamente.
+  defaultValue?: string;
 };
 
 // Filtri a tendina che vivono nell'URL (Task, storico delle richieste): la
@@ -19,9 +22,10 @@ export function UrlSelectFilters({ filters }: { filters: UrlSelectFilter[] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  function updateParam(key: string, value: string) {
+  function updateParam(filter: UrlSelectFilter, value: string) {
+    const key = filter.param;
     const params = new URLSearchParams(searchParams.toString());
-    if (value === ALL) {
+    if (value === (filter.defaultValue ?? ALL)) {
       params.delete(key);
     } else {
       params.set(key, value);
@@ -35,8 +39,8 @@ export function UrlSelectFilters({ filters }: { filters: UrlSelectFilter[] }) {
         <NativeSelect
           key={filter.param}
           aria-label={filter.allLabel}
-          value={searchParams.get(filter.param) ?? ALL}
-          onChange={(event) => updateParam(filter.param, event.target.value)}
+          value={searchParams.get(filter.param) ?? filter.defaultValue ?? ALL}
+          onChange={(event) => updateParam(filter, event.target.value)}
         >
           <option value={ALL}>{filter.allLabel}</option>
           {filter.options.map((option) => (

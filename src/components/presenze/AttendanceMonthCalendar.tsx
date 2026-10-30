@@ -29,6 +29,7 @@ import {
 import { MonthNav } from "./MonthNav";
 import { AttendanceDayContent } from "./AttendanceDayContent";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
@@ -135,6 +136,7 @@ export function AttendanceMonthCalendar({
           return;
         }
         setSelected(new Set());
+        toast(dates.length === 1 ? "Presenza salvata" : `${dates.length} presenze salvate`);
       } catch (error) {
         setError(unexpectedErrorMessage(error));
       }
@@ -156,6 +158,7 @@ export function AttendanceMonthCalendar({
         }
         setSelected(new Set());
         setDeleteConfirmOpen(false);
+        toast(items.length === 1 ? "Presenza eliminata" : `${items.length} presenze eliminate`);
       } catch (error) {
         setError(unexpectedErrorMessage(error));
       }
@@ -251,18 +254,18 @@ export function AttendanceMonthCalendar({
         )}
       </div>
       {editable && error && (
-        <p className="text-right text-sm text-destructive">{error}</p>
+        <p role="alert" className="text-right text-sm text-destructive">{error}</p>
       )}
 
       <div className="overflow-hidden surface">
-        <div className="grid grid-cols-7 border-b bg-muted/40 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-month border-b bg-muted/40 text-xs font-medium text-muted-foreground">
           {WEEKDAY_LABELS.map((d) => (
             <div key={d} className="px-2 py-2 text-center">
               {d}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7">
+        <div className="grid grid-cols-month">
           {days.map((day) => {
             const inMonth = day.getMonth() === current.getMonth();
             const isToday = isSameDay(day, today);
@@ -293,6 +296,8 @@ export function AttendanceMonthCalendar({
                 className={cn(
                   "flex min-h-[110px] flex-col gap-1 border-b border-r p-1.5 [&:nth-child(7n)]:border-r-0",
                   !inMonth && "bg-muted/20",
+                  // Weekend: colonna più stretta e appena velata.
+                  inMonth && (day.getDay() === 0 || day.getDay() === 6) && "bg-muted/15",
                   cellSelectable &&
                     "cursor-pointer outline-none transition-colors hover:bg-accent/40 focus-visible:bg-accent/40",
                   cellSelectable &&

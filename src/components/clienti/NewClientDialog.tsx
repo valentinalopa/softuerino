@@ -20,6 +20,7 @@ import {
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { ClientStructureFields, type ClientStructureOptions } from "@/components/clienti/ClientStructureFields";
+import { toast } from "@/lib/toast";
 
 // `structure` solo per gli admin: chi ha il permesso "Aggiungere clienti"
 // crea clienti semplici, aperti a tutti.
@@ -38,6 +39,7 @@ export function NewClientDialog({ structure }: { structure?: ClientStructureOpti
         return;
       }
       setOpen(false);
+      toast("Cliente aggiunto");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -85,7 +87,7 @@ export function NewClientDialog({ structure }: { structure?: ClientStructureOpti
                 resetKey={open ? "open" : "closed"}
               />
             )}
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
             <Button type="submit" disabled={pending}>

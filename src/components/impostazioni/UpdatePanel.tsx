@@ -147,7 +147,7 @@ export function UpdatePanel({ initial }: { initial: UpdateStatusResponse }) {
 
   return (
     <div className="space-y-6">
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {offline && (
         <p className="text-sm text-muted-foreground">
           L&apos;app si sta riavviando: la pagina riprende da sola appena torna disponibile.

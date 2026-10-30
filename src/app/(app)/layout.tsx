@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { AppSidebar, MobileTopBar } from "@/components/AppSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/Toaster";
 import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
 import { homePathFor, isAdminRole, type Role } from "@/lib/constants";
 
@@ -90,6 +91,7 @@ export default async function AppLayout({
           </div>
         </SidebarInset>
       </SidebarProvider>
+      <Toaster />
     </TooltipProvider>
   );
 }

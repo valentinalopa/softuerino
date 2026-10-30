@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 // `roles`: i ruoli che l'utente corrente può assegnare (un admin non crea
 // super admin).
@@ -51,6 +52,7 @@ export function NewTeamMemberDialog({
         return;
       }
       setOpen(false);
+      toast("Membro aggiunto");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -119,7 +121,7 @@ export function NewTeamMemberDialog({
                 }))}
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
             <Button type="submit" disabled={pending}>

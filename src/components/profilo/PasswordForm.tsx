@@ -47,7 +47,7 @@ export function PasswordForm() {
         <Label htmlFor="confirm-password">Conferma nuova password</Label>
         <Input id="confirm-password" name="confirmPassword" type="password" required minLength={8} />
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {success && <p className={`text-sm ${TONE_TEXT.success}`}>Password aggiornata.</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Aggiornamento..." : "Aggiorna password"}

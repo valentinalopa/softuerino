@@ -14,6 +14,9 @@ import { TONE_SOFT } from "@/lib/tones";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { isPublicRequest } from "@/lib/network";
 import { buttonVariants } from "@/components/ui/button";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Accedi" };
 
 const ERROR_MESSAGES: Record<string, string> = {
   "1": "Email o password non corrette.",

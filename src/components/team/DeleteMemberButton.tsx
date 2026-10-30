@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { deleteUser } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
@@ -16,20 +17,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
-type TeamUser = {
-  id: string;
-  name: string;
-};
-
-export function UserRowActions({
-  user,
-  canDelete,
-}: {
-  user: TeamUser;
-  // Falso per il proprio account e, per un admin, per i super admin.
-  canDelete: boolean;
-}) {
+// Eliminazione definitiva di un account, dalla scheda del membro: è rara e
+// irreversibile, quindi non sta nella lista del Team accanto a ogni persona.
+export function DeleteMemberButton({ user }: { user: { id: string; name: string } }) {
+  const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -44,6 +37,8 @@ export function UserRowActions({
           return;
         }
         setDeleteOpen(false);
+        toast("Membro eliminato");
+        router.push("/team");
       } catch (error) {
         setError(unexpectedErrorMessage(error));
       }
@@ -51,21 +46,20 @@ export function UserRowActions({
   }
 
   return (
-    <div className="flex justify-end" onClick={(event) => event.stopPropagation()}>
+    <>
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogTrigger
           render={
             <Button
               type="button"
-              variant="ghost"
-              size="icon-sm"
+              variant="outline"
+              size="sm"
               className="text-destructive hover:text-destructive"
-              aria-label="Elimina"
-              disabled={!canDelete}
             />
           }
         >
           <Trash2 className="size-4" />
+          Elimina account
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -76,7 +70,7 @@ export function UserRowActions({
               L&apos;operazione non è reversibile.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
             <AlertDialogAction
@@ -90,6 +84,6 @@ export function UserRowActions({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

@@ -18,6 +18,7 @@ import { DiscardChangesDialog, useUnsavedChanges } from "@/components/form/unsav
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { EventFields } from "./EventFields";
 import type { CalendarEventData } from "./types";
+import { toast } from "@/lib/toast";
 
 // Pannello di modifica di un evento, aperto dal suo dettaglio.
 export function EditEventSheet({
@@ -91,6 +92,7 @@ function EditEventForm({
         return;
       }
       onSaved();
+      toast("Evento aggiornato");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -106,7 +108,7 @@ function EditEventForm({
       <form ref={formRef} onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
         <SheetBody className="space-y-3">
           <EventFields idPrefix="edit-event" users={users} absences={absences} values={event} />
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         </SheetBody>
         <SheetFooter>
           <SheetClose render={<Button type="button" variant="outline" />}>Annulla</SheetClose>

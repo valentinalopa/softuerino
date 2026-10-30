@@ -19,6 +19,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
 import { ClientDistributionChart } from "@/components/panoramica/ClientDistributionChart";
 import { LeaveStatsChart } from "@/components/panoramica/LeaveStatsChart";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Panoramica" };
 
 const MONTHS_BACK = 12;
 // Quante richieste da approvare mostrare in cima: il resto è in /richieste-team.

@@ -18,6 +18,7 @@ import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { DiscardChangesDialog, useUnsavedChanges } from "@/components/form/unsaved-changes";
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { EventFields } from "./EventFields";
+import { toast } from "@/lib/toast";
 
 export function NewEventDialog({
   users,
@@ -44,6 +45,7 @@ export function NewEventDialog({
         return;
       }
       setOpen(false);
+      toast("Evento creato");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -78,7 +80,7 @@ export function NewEventDialog({
             {open && (
               <EventFields idPrefix="new-event" users={users} absences={absences} defaultStart={defaultStart} />
             )}
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
             <Button type="submit" disabled={pending}>

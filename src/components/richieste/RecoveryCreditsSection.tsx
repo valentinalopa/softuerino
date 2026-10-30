@@ -14,6 +14,7 @@ import { DateField } from "@/components/form/date-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/lib/toast";
 
 const STATUS_TONE: Record<RecoveryStatus, Tone> = {
   da_fare: "warning",
@@ -188,7 +189,7 @@ function CreditItem({ credit, readOnly }: { credit: RecoveryCreditView; readOnly
           </div>
         </div>
       )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </li>
   );
 }
@@ -210,6 +211,7 @@ function NewCreditForm({ userId, onDone }: { userId: string; onDone: () => void 
           return;
         }
         onDone();
+        toast("Recupero aggiunto");
       } catch {
         setError("Salvataggio non riuscito, riprova.");
       }
@@ -257,7 +259,7 @@ function NewCreditForm({ userId, onDone }: { userId: string; onDone: () => void 
         <Label htmlFor={`credit-date-${userId}`}>Data (es. della trasferta)</Label>
         <DateField id={`credit-date-${userId}`} name="earnedOn" className="w-full" />
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onDone} disabled={pending}>
           Annulla

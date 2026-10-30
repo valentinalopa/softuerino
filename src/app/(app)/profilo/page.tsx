@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileForm } from "@/components/profilo/ProfileForm";
 import { PasswordForm } from "@/components/profilo/PasswordForm";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Profilo" };
 
 export default async function ProfiloPage() {
   const user = await requireUser();

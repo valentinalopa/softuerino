@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmailSettingsForm } from "@/components/impostazioni/EmailSettingsForm";
 import { EmailTemplatePreviews } from "@/components/impostazioni/EmailTemplatePreviews";
 import { buildSample, SAMPLE_KINDS, SAMPLE_LABELS } from "@/lib/email/samples";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Email" };
 
 // Configurazione SMTP e notifiche: operazione di sistema, solo super admin.
 export default async function EmailSettingsPage() {

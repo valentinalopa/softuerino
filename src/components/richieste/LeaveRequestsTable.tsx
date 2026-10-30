@@ -78,6 +78,7 @@ export function DeleteRequestButton({
   const who = request.user ? ` di ${request.user.name}` : "";
   return (
     <ConfirmDeleteButton
+      successMessage="Richiesta eliminata"
       withText={withText}
       label={`Elimina richiesta: ${typeLabel(request.type)}${who}, ${formatPeriod(request)}`}
       title={`Eliminare la richiesta${who}?`}

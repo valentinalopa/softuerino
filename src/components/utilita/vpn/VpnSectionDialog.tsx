@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 type VpnValues = { id: string; name: string; notes: string | null; configFileName: string | null };
 
@@ -29,6 +30,7 @@ export function VpnSectionDialog({ initial }: { initial?: VpnValues }) {
         return;
       }
       setOpen(false);
+      toast(initial ? "VPN aggiornata" : "VPN aggiunta");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -92,7 +94,7 @@ export function VpnSectionDialog({ initial }: { initial?: VpnValues }) {
                 placeholder="Facoltative (es. per chi è, cosa raggiunge)"
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={pending}>
               {pending ? "Salvataggio..." : initial ? "Salva" : "Aggiungi"}
             </Button>

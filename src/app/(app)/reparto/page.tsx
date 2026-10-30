@@ -13,6 +13,9 @@ import { LevelAvatar, UserLevelBadges } from "@/components/team/UserLevel";
 import { LeaveRequestsTable } from "@/components/richieste/LeaveRequestsTable";
 import { RequestAccountDialog } from "@/components/reparto/RequestAccountDialog";
 import { MobileList, MobileListItem } from "@/components/MobileList";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Il mio reparto" };
 
 const STATUS: Record<string, { label: string; variant: "warning" | "success" | "danger" }> = {
   pending: { label: "In attesa", variant: "warning" },
@@ -89,8 +92,8 @@ export default async function RepartoPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>Il mio reparto</h1>
           <p className="text-sm text-muted-foreground">
             {myDepartments.length > 0 ? `${myDepartments.map((d) => d.department.name).join(", ")}: ` : ""}

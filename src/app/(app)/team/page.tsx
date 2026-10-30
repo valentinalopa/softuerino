@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { byName } from "@/lib/utils";
+import { byName, normalizeSearch } from "@/lib/utils";
 import { requireAdmin } from "@/lib/auth/session";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { balanceFigures, getLeaveBalancesForUsers } from "@/lib/leave-balance";
@@ -9,17 +9,17 @@ import {
   EMPLOYMENT_TYPE_LABELS,
   assignableRoles,
   type EmploymentType,
-  type Role,
 } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { LevelAvatar, UserLevelBadges } from "@/components/team/UserLevel";
 import { managedDepartmentNames } from "@/lib/departments";
-import { UserRowActions } from "@/components/team/UserRowActions";
 import { LinkRow } from "@/components/LinkRow";
 import { MobileList, MobileListItem } from "@/components/MobileList";
 import { NewTeamMemberDialog } from "@/components/team/NewTeamMemberDialog";
 import { BalanceMeters } from "@/components/team/BalanceMeters";
+import { UrlSearchInput } from "@/components/UrlSearchInput";
+import { UrlSelectFilters } from "@/components/UrlSelectFilters";
 import {
   Table,
   TableBody,
@@ -28,13 +28,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { Metadata } from "next";
 
-export default async function TeamPage() {
+export const metadata: Metadata = { title: "Team" };
+
+export default async function TeamPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; stato?: string }>;
+}) {
   const currentUser = await requireAdmin();
   const roles = assignableRoles(currentUser.role);
+  const { q, stato } = await searchParams;
+  const query = normalizeSearch(q ?? "");
+  const filtered = Boolean(query || stato);
 
   const users = (await prisma.user.findMany({
-  })).sort(byName);
+    where: stato === "attivi" ? { active: true } : stato === "disattivati" ? { active: false } : {},
+  }))
+    .filter((user) => !query || [user.name, user.email].some((text) => normalizeSearch(text).includes(query)))
+    .sort(byName);
 
   const year = new Date().getFullYear();
   const [balances, recoveryCredits, managedBy] = await Promise.all([
@@ -51,8 +64,8 @@ export default async function TeamPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>Team</h1>
           <p className="text-sm text-muted-foreground">
             Membri del team e saldi dell&apos;anno. Apri un membro per profilo, saldi,
@@ -60,6 +73,22 @@ export default async function TeamPage() {
           </p>
         </div>
         <NewTeamMemberDialog roles={roles} ssoEnabled={isOidcConfigured()} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <UrlSearchInput placeholder="Cerca per nome o email…" />
+        <UrlSelectFilters
+          filters={[
+            {
+              param: "stato",
+              allLabel: "Tutti gli stati",
+              options: [
+                { value: "attivi", label: "Attivi" },
+                { value: "disattivati", label: "Disattivati" },
+              ],
+            },
+          ]}
+        />
       </div>
 
       <Card>
@@ -73,10 +102,6 @@ export default async function TeamPage() {
                     <span className="block truncate font-medium text-foreground">{user.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
                   </div>
-                  <UserRowActions
-                    user={user}
-                    canDelete={user.id !== currentUser.id && roles.includes(user.role as Role)}
-                  />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <UserLevelBadges role={user.role} departments={managedBy.get(user.id) ?? []} />
@@ -96,7 +121,7 @@ export default async function TeamPage() {
             ))}
             {users.length === 0 && (
               <MobileListItem className="text-center text-muted-foreground">
-                Nessun membro del team ancora.
+                {filtered ? "Nessun membro corrisponde alla ricerca." : "Nessun membro del team ancora."}
               </MobileListItem>
             )}
           </MobileList>
@@ -107,9 +132,6 @@ export default async function TeamPage() {
                 <TableHead>Ruolo e contratto</TableHead>
                 <TableHead>Saldo {year}</TableHead>
                 <TableHead>Stato</TableHead>
-                <TableHead>
-                  <span className="sr-only">Azioni</span>
-                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -151,20 +173,12 @@ export default async function TeamPage() {
                   <TableCell>
                     <ActiveBadge active={user.active} />
                   </TableCell>
-                  <TableCell className="text-right">
-                    <UserRowActions
-                      user={user}
-                      canDelete={
-                        user.id !== currentUser.id && roles.includes(user.role as Role)
-                      }
-                    />
-                  </TableCell>
                 </LinkRow>
               ))}
               {users.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    Nessun membro del team ancora.
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    {filtered ? "Nessun membro corrisponde alla ricerca." : "Nessun membro del team ancora."}
                   </TableCell>
                 </TableRow>
               )}

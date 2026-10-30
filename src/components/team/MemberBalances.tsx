@@ -182,7 +182,7 @@ function BalanceForm({
               </div>
             );
           })}
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           {saved && !dirty && <p className={`text-sm ${TONE_TEXT.success}`}>Saldi salvati.</p>}
           <div className="flex justify-end gap-2">
             {dirty && (

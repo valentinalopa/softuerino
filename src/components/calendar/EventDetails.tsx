@@ -101,6 +101,7 @@ export function EventDetails({
             </Button>
             {/* Stessa conferma dei task: l'eliminazione vale per tutti i partecipanti. */}
             <ConfirmDeleteButton
+              successMessage="Evento eliminato"
               withText
               label={`Elimina ${event.title}`}
               title={`Eliminare "${event.title}"?`}

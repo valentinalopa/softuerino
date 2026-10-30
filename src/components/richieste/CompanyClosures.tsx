@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 export type CompanyClosureRow = {
   id: string;
@@ -60,6 +61,7 @@ export function NewCompanyClosureDialog() {
         return;
       }
       setOpen(false);
+      toast("Chiusura aziendale salvata");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -120,7 +122,7 @@ export function NewCompanyClosureDialog() {
               <Label htmlFor="new-closure-note">Nota</Label>
               <Input id="new-closure-note" name="note" placeholder="Es. chiusura estiva" />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
             <Button type="submit" disabled={pending}>
@@ -159,6 +161,7 @@ export function CompanyClosuresTable({ closures }: { closures: CompanyClosureRow
               <TableCell className="text-muted-foreground">{closure.note ?? "—"}</TableCell>
               <TableCell className="text-right">
                 <ConfirmDeleteButton
+                  successMessage="Chiusura eliminata"
                   label={`Elimina chiusura ${formatRange(closure.startDate, closure.endDate)}`}
                   title="Eliminare la chiusura aziendale?"
                   description={`${formatRange(closure.startDate, closure.endDate)}. La chiusura sparisce dai calendari di tutto il team e i saldi ferie/assenze si ricalcolano.`}

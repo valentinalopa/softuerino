@@ -102,7 +102,8 @@ const SYSTEM_LINKS: NavLink[] = [
 ];
 
 // Sezioni aperte o chiuse a mano (titolo → aperta), stesso schema della
-// preferenza qui sopra. Senza una scelta salvata la sezione è chiusa.
+// preferenza qui sopra. Senza una scelta salvata la sezione è chiusa
+// (tranne "Personale", vedi isSectionOpen).
 const SECTIONS_KEY = "softuerino:sidebar-sections";
 const SECTIONS_EVENT = "softuerino:sidebar-sections-change";
 
@@ -219,13 +220,15 @@ export function AppSidebar({
     return 0;
   }
 
-  // Sezioni chiuse finché l'utente non le apre; quella della pagina corrente
+  // Sezioni chiuse finché l'utente non le apre ("Personale" aperta); quella della pagina corrente
   // si apre da sola.
   const activeSection = sections.find((section) => section.links.some(isActive))?.label;
 
   function isSectionOpen(label: string) {
     if (label === activeSection) return activeClosedOn !== pathname;
-    return sectionChoices[label] === true;
+    // "Personale" (log ore, giorni off) si usa ogni giorno: aperta finché
+    // l'utente non la chiude.
+    return sectionChoices[label] ?? label === "Personale";
   }
 
   function setSectionOpen(label: string, open: boolean) {

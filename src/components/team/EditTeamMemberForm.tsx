@@ -128,7 +128,7 @@ export function EditTeamMemberForm({
       {isSelf && (
         <p className="text-xs text-muted-foreground">Non puoi disattivare il tuo account.</p>
       )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {success && (
         <p className={`text-sm ${TONE_TEXT.success}`}>Modifiche salvate.</p>
       )}

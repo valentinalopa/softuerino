@@ -1,12 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { purgeExpiredDoneTasks } from "@/lib/actions";
-import { TASK_DONE_RETENTION_DAYS } from "@/lib/constants";
+import { isAdminRole, TASK_DONE_RETENTION_DAYS } from "@/lib/constants";
 import { NewTaskDialog } from "@/components/task/NewTaskDialog";
 import { TaskFilters } from "@/components/task/TaskFilters";
 import { TasksTable } from "@/components/task/TasksTable";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { Card, CardContent } from "@/components/ui/card";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Task" };
 
 type View = "attivi" | "completati";
 
@@ -15,11 +18,16 @@ export default async function TaskPage({
 }: {
   searchParams: Promise<{ user?: string; client?: string; view?: string; sort?: string; dir?: string }>;
 }) {
-  await requireUser();
+  const currentUser = await requireUser();
 
   const { user: userParam, client: clientParam, view: viewParam, sort: sortParam, dir: dirParam } =
     await searchParams;
   const view: View = viewParam === "completati" ? "completati" : "attivi";
+  // I membri partono dai propri task; "Tutte le persone" mette user=all
+  // nell'URL. Gli admin partono da tutti, come prima.
+  const mineByDefault = !isAdminRole(currentUser.role);
+  const userFilter =
+    userParam === "all" ? undefined : (userParam ?? (mineByDefault ? currentUser.id : undefined));
 
   // Il purge gira in parallelo alle letture (niente round-trip bloccante in
   // testa alla pagina); i task scaduti che non ha ancora eliminato vengono
@@ -30,7 +38,7 @@ export default async function TaskPage({
   const [tasks, users, clients] = await Promise.all([
     prisma.task.findMany({
       where: {
-        ...(userParam ? { assignees: { some: { userId: userParam } } } : {}),
+        ...(userFilter ? { assignees: { some: { userId: userFilter } } } : {}),
         ...(clientParam ? { clientId: clientParam } : {}),
         ...(view === "attivi"
           ? { status: { not: "done" } }
@@ -72,8 +80,8 @@ export default async function TaskPage({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>Task</h1>
           <p className="text-sm text-muted-foreground">
             Assegna e tieni traccia dei task del team.
@@ -94,7 +102,12 @@ export default async function TaskPage({
             },
           ]}
         />
-        <TaskFilters users={users} clients={clients} />
+        <TaskFilters
+          users={users}
+          clients={clients}
+          currentUserId={currentUser.id}
+          mineByDefault={mineByDefault}
+        />
       </div>
 
       <Card>
@@ -104,10 +117,10 @@ export default async function TaskPage({
             users={users}
             clients={clients}
             emptyMessage={
-              userParam || clientParam
+              userFilter || clientParam
                 ? "Nessun task corrisponde ai filtri selezionati."
                 : view === "attivi"
-                  ? "Nessun task attivo."
+                  ? "Nessun task attivo: creane uno con «Nuovo task»."
                   : "Nessun task completato."
             }
           />

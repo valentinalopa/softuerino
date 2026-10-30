@@ -52,7 +52,7 @@ export function ProfileForm({
   return (
     <form onSubmit={submitKeepingValues(handleSubmit)} className="space-y-3">
       <NameEmailFields idPrefix="profile" defaultName={user.name} defaultEmail={user.email} />
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {success && <p className={`text-sm ${TONE_TEXT.success}`}>Modifiche salvate.</p>}
       <Button type="submit" disabled={pending}>
         {pending ? "Salvataggio..." : "Salva modifiche"}

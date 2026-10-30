@@ -23,14 +23,14 @@ export function AttendanceTeamMonthCalendar({
 
   return (
     <div className="overflow-hidden surface">
-      <div className="grid grid-cols-7 border-b bg-muted/40 text-xs font-medium text-muted-foreground">
+      <div className="grid grid-cols-month border-b bg-muted/40 text-xs font-medium text-muted-foreground">
         {WEEKDAY_LABELS.map((d) => (
           <div key={d} className="px-2 py-2 text-center">
             {d}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-month">
         {days.map((day) => {
           const inMonth = day.getMonth() === current.getMonth();
           const isToday = isSameDay(day, today);
@@ -41,7 +41,9 @@ export function AttendanceTeamMonthCalendar({
               key={day.toISOString()}
               className={cn(
                 "flex min-h-[150px] flex-col gap-1 border-b border-r p-1.5 [&:nth-child(7n)]:border-r-0",
-                !inMonth && "bg-muted/20"
+                !inMonth && "bg-muted/20",
+                // Weekend: colonna più stretta e appena velata.
+                inMonth && (day.getDay() === 0 || day.getDay() === 6) && "bg-muted/15",
               )}
             >
               <span

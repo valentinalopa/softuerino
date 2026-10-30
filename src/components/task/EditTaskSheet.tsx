@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 export type EditableTask = TaskFieldValues & { id: string };
 
@@ -71,6 +72,7 @@ function EditTaskForm({
         return;
       }
       onSaved();
+      toast("Task aggiornato");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -86,7 +88,7 @@ function EditTaskForm({
       <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
         <SheetBody className="space-y-3">
           <TaskFields idPrefix="edit-task" users={users} clients={clients} values={task} />
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         </SheetBody>
         <SheetFooter>
           <SheetClose render={<Button type="button" variant="outline" />}>Annulla</SheetClose>

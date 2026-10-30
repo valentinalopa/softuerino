@@ -21,6 +21,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Licenze e abbonamenti" };
 
 const KIND_TAB_LABELS: Record<LicenseKind, string> = {
   licenza: "Licenze",
@@ -72,8 +75,8 @@ export default async function LicenzePage({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>Licenze e abbonamenti</h1>
           <p className="text-sm text-muted-foreground">
             {scope?.all
@@ -87,6 +90,15 @@ export default async function LicenzePage({
         </div>
         {departments.length > 0 && <NewLicenseDialog departments={departments} allDepartments={allDepartments} />}
       </div>
+
+      {/* Può gestirle ma non ci sono reparti: senza questa nota il pulsante
+          "Nuova" mancava e basta. */}
+      {manageScope && departments.length === 0 && (
+        <p className="rounded-xl border border-surface-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          Per aggiungere licenze e abbonamenti serve almeno un reparto. I reparti arrivano da
+          Keycloak quando le persone accedono con l&apos;account aziendale.
+        </p>
+      )}
 
       <div className="space-y-4">
         <SegmentedLinkTabs

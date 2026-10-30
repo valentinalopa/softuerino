@@ -36,6 +36,7 @@ import {
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { ClientStructureFields, type ClientStructureOptions } from "@/components/clienti/ClientStructureFields";
+import { toast } from "@/lib/toast";
 
 type ClientRow = {
   id: string;
@@ -71,6 +72,7 @@ export function ClientRowActions({
         return;
       }
       setEditOpen(false);
+      toast("Cliente aggiornato");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -88,6 +90,7 @@ export function ClientRowActions({
           return;
         }
         setDeleteOpen(false);
+        toast("Cliente eliminato");
       } catch (error) {
         setError(unexpectedErrorMessage(error));
       }
@@ -156,7 +159,7 @@ export function ClientRowActions({
                 parentLocked={client.hasChildren}
                 resetKey={editOpen ? "open" : "closed"}
               />
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             </SheetBody>
             <SheetFooter>
               <Button type="submit" disabled={editPending}>
@@ -189,7 +192,7 @@ export function ClientRowActions({
               cliente. L&apos;operazione non è reversibile.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Annulla</AlertDialogCancel>
             <AlertDialogAction

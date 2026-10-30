@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
+import { toast } from "@/lib/toast";
 
 export function NewTaskDialog({
   users,
@@ -38,6 +39,7 @@ export function NewTaskDialog({
         return;
       }
       setOpen(false);
+      toast("Task creato");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -65,7 +67,7 @@ export function NewTaskDialog({
           <SheetBody className="space-y-3">
             <TaskFields idPrefix="new-task" users={users} clients={clients} />
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           </SheetBody>
           <SheetFooter>
             <Button type="submit" disabled={pending}>

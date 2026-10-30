@@ -1,6 +1,9 @@
 import { requireUser } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Impostazioni" };
 
 export default async function ImpostazioniPage() {
   await requireUser();

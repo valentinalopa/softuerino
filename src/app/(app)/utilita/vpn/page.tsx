@@ -6,6 +6,9 @@ import { VpnSectionDialog } from "@/components/utilita/vpn/VpnSectionDialog";
 import { DeleteVpnSectionButton } from "@/components/utilita/vpn/DeleteVpnSectionButton";
 import { VpnDownloadActions } from "@/components/utilita/vpn/VpnDownloadActions";
 import { VpnGuide } from "@/components/utilita/vpn/VpnGuide";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "VPN" };
 
 // Utilità → VPN: per tutti. Le sezioni (una per VPN, es. una sede) le
 // gestiscono i super admin; sotto, la guida per collegarsi con OpenVPN Connect.
@@ -32,8 +35,8 @@ export default async function VpnPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>VPN</h1>
           <p className="text-sm text-muted-foreground">
             Per raggiungere i servizi aziendali da fuori ufficio: scarica la configurazione della VPN

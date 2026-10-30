@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth/session";
 import { isAdminRole } from "@/lib/constants";
 import { can } from "@/lib/permissions";
 import { sortClientsByParent } from "@/lib/clients";
-import { byName } from "@/lib/utils";
+import { byName, normalizeSearch } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveBadge } from "@/components/ActiveBadge";
 import { ClientCategoryBadges } from "@/components/clienti/ClientCategoryBadges";
@@ -13,6 +13,7 @@ import { ClientRowActions } from "@/components/clienti/ClientRowActions";
 import type { ClientStructureOptions } from "@/components/clienti/ClientStructureFields";
 import { MobileList, MobileListItem } from "@/components/MobileList";
 import { NewClientDialog } from "@/components/clienti/NewClientDialog";
+import { UrlSearchInput } from "@/components/UrlSearchInput";
 import {
   Table,
   TableBody,
@@ -21,8 +22,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { Metadata } from "next";
 
-export default async function ClientiPage() {
+export const metadata: Metadata = { title: "Clienti" };
+
+export default async function ClientiPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   // Admin e super admin gestiscono; chi ha il permesso "Aggiungere clienti"
   // vede l'elenco e ne aggiunge, senza modificare o eliminare.
   const user = await requireUser();
@@ -41,7 +45,11 @@ export default async function ClientiPage() {
       ? prisma.user.findMany({ where: { active: true }, select: { id: true, name: true } })
       : Promise.resolve([]),
   ]);
-  const clients = sortClientsByParent(rawClients).map((client) => ({
+  // Ricerca sul nome, anche del cliente padre: "colibri" trova le sue voci.
+  const query = normalizeSearch((await searchParams).q ?? "");
+  const clients = sortClientsByParent(rawClients)
+    .filter((client) => !query || [client.name, client.parent?.name ?? ""].some((t) => normalizeSearch(t).includes(query)))
+    .map((client) => ({
     ...client,
     loggerUsers: client.loggers.map((l) => l.user).sort(byName),
   }));
@@ -50,7 +58,7 @@ export default async function ClientiPage() {
   // principale (un livello).
   const structure: ClientStructureOptions | undefined = isAdmin
     ? {
-        parents: clients.filter((c) => !c.parentId).map((c) => ({ id: c.id, name: c.name })),
+        parents: rawClients.filter((c) => !c.parentId).sort(byName).map((c) => ({ id: c.id, name: c.name })),
         people: people.sort(byName),
       }
     : undefined;
@@ -87,8 +95,8 @@ export default async function ClientiPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1>Clienti</h1>
           <p className="text-sm text-muted-foreground">
             Clienti/progetti su cui il team può loggare ore.
@@ -96,6 +104,8 @@ export default async function ClientiPage() {
         </div>
         <NewClientDialog structure={structure} />
       </div>
+
+      <UrlSearchInput placeholder="Cerca cliente…" />
 
       <Card>
         <CardContent>
@@ -113,7 +123,7 @@ export default async function ClientiPage() {
               </MobileListItem>
             ))}
             {clients.length === 0 && (
-              <MobileListItem className="text-center text-muted-foreground">Nessun cliente ancora.</MobileListItem>
+              <MobileListItem className="text-center text-muted-foreground">{query ? "Nessun cliente corrisponde alla ricerca." : "Nessun cliente ancora."}</MobileListItem>
             )}
           </MobileList>
           <Table containerClassName="hidden md:block">
@@ -141,7 +151,7 @@ export default async function ClientiPage() {
               {clients.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    Nessun cliente ancora.
+                    {query ? "Nessun cliente corrisponde alla ricerca." : "Nessun cliente ancora."}
                   </TableCell>
                 </TableRow>
               )}
