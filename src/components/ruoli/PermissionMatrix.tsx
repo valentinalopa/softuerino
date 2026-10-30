@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { TONE_TEXT } from "@/lib/tones";
 import { cn } from "@/lib/utils";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   CAPABILITIES,
   CAPABILITY_KEYS,
@@ -99,18 +100,21 @@ export function PermissionMatrix({
                         {scopeLabel(cap, value)}
                       </span>
                     ) : (
-                      <select
+                      // Stessa select del resto dell'app: freccia staccata dal bordo.
+                      <NativeSelect
                         name={`rule:${cap}:${role}`}
                         defaultValue={value}
                         onChange={() => setMessage(null)}
-                        className="h-9 w-full rounded-lg border border-border bg-card px-2 text-sm text-foreground"
+                        containerClassName="w-full"
+                        className="h-9 w-full pr-8 pl-2.5 text-sm"
+                        iconClassName="right-2.5 size-4"
                       >
                         {options.map((o) => (
                           <option key={o} value={o}>
                             {scopeLabel(cap, o)}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     )}
                   </label>
                 );
