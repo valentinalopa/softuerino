@@ -745,7 +745,7 @@ function revalidateClosurePaths() {
   revalidatePath("/team", "layout");
   revalidatePath("/richieste");
   revalidatePath("/panoramica");
-  revalidatePath("/presenze");
+  revalidatePath("/calendario");
   revalidatePath("/calendario");
   revalidatePath("/");
 }
@@ -994,7 +994,7 @@ export async function createPresenceEntry(formData: FormData) {
     }),
   ]);
 
-  revalidatePath("/presenze");
+  revalidatePath("/calendario");
 }
 
 // Applica la stessa fascia oraria/modalità a più giorni in un colpo solo
@@ -1059,7 +1059,7 @@ export async function createPresenceEntries({
     ),
   ]);
 
-  revalidatePath("/presenze");
+  revalidatePath("/calendario");
 }
 
 export async function deletePresenceEntry(entryId: string) {
@@ -1068,7 +1068,7 @@ export async function deletePresenceEntry(entryId: string) {
   await prisma.presenceEntry.delete({
     where: { id: entryId, userId: user.id },
   });
-  revalidatePath("/presenze");
+  revalidatePath("/calendario");
 }
 
 // Elimina più presenze selezionate dal calendario (per data + fascia oraria,
@@ -1100,7 +1100,7 @@ export async function deletePresenceEntries({
     )
   );
 
-  revalidatePath("/presenze");
+  revalidatePath("/calendario");
 }
 
 // --- Clienti (admin e super admin) ---

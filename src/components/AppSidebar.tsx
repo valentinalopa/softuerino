@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   CalendarDays,
   ClipboardCheck,
-  Clock3,
   Timer,
   Users,
   Building2,
@@ -68,7 +67,6 @@ const DAILY_LINKS: NavLink[] = [
   { href: "/", label: "Oggi", icon: LayoutDashboard },
   { href: "/ore", label: "Ore", icon: Timer },
   { href: "/calendario", label: "Calendario", icon: CalendarDays },
-  { href: "/presenze", label: "Presenze", icon: Clock3 },
   { href: "/richieste", label: "Richieste", icon: ClipboardCheck },
   { href: "/task", label: "Task", icon: ListTodo },
 ];

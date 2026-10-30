@@ -1,25 +1,72 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import { Users } from "lucide-react";
 import { CalendarView } from "@/components/calendar/CalendarView";
-import { buttonVariants } from "@/components/ui/button";
 import { isAdminRole } from "@/lib/constants";
+import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
+import { AttendanceSection } from "@/components/presenze/AttendanceSection";
+import { TeamAttendanceView } from "@/components/presenze/TeamAttendanceView";
+import { NewPresenceDialog } from "@/components/presenze/NewPresenceDialog";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Calendario" };
 
+type Vista = "eventi" | "presenze" | "team";
+
+const VISTA_HREF: Record<Vista, string> = {
+  eventi: "/calendario",
+  presenze: "/calendario?vista=presenze",
+  team: "/calendario?vista=team",
+};
+
+// Calendario: un'unica pagina per eventi e presenze (prima c'era anche la
+// pagina Presenze). Viste: Eventi, Le mie presenze (da segnare), Presenze del
+// team (chi è in ufficio, in smartworking o assente).
 export default async function CalendarioPage({
   searchParams,
 }: {
   // ?evento=<id>: apre il calendario sul giorno dell'evento con il dettaglio
-  // aperto (link dalla dashboard).
-  searchParams: Promise<{ evento?: string }>;
+  // aperto (link dalla dashboard). ?month=AAAA-MM: mese delle presenze.
+  searchParams: Promise<{ evento?: string; vista?: string; month?: string }>;
 }) {
   const user = await requireUser();
-  const { evento } = await searchParams;
+  const { evento, vista: vistaParam, month } = await searchParams;
+  const vista: Vista = vistaParam === "presenze" || vistaParam === "team" ? vistaParam : "eventi";
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1>Calendario</h1>
+          <p className="text-sm text-muted-foreground">
+            {vista === "eventi"
+              ? "Riunioni, shooting e altri eventi."
+              : vista === "presenze"
+                ? "Segna i giorni in cui sei in ufficio o in smartworking."
+                : "Chi è in ufficio, in smartworking o assente, giorno per giorno."}
+          </p>
+        </div>
+        {vista === "presenze" && <NewPresenceDialog />}
+      </div>
+
+      <SegmentedLinkTabs
+        items={[
+          { key: "eventi", label: "Eventi", href: VISTA_HREF.eventi, active: vista === "eventi" },
+          { key: "presenze", label: "Le mie presenze", href: VISTA_HREF.presenze, active: vista === "presenze" },
+          { key: "team", label: "Presenze del team", href: VISTA_HREF.team, active: vista === "team" },
+        ]}
+      />
+
+      {vista === "eventi" && <EventsView user={user} evento={evento} />}
+      {vista === "presenze" && (
+        <AttendanceSection userId={user.id} editable basePath={VISTA_HREF.presenze} monthParam={month} />
+      )}
+      {vista === "team" && <TeamAttendanceView monthParam={month} viewer={user} basePath={VISTA_HREF.team} />}
+    </div>
+  );
+}
+
+async function EventsView({ user, evento }: { user: { id: string; role: string }; evento?: string }) {
 
   // Finestra: dall'inizio dell'anno scorso in poi. Senza un limite la pagina
   // caricherebbe per sempre tutti gli eventi mai creati.
@@ -48,7 +95,7 @@ export default async function CalendarioPage({
       },
       orderBy: { startAt: "asc" },
     }),
-    // Stesse assenze che si vedono in Presenze → Tutto il team.
+    // Stesse assenze che si vedono in Presenze del team.
     prisma.leaveRequest.findMany({
       where: {
         status: { not: "rejected" },
@@ -72,34 +119,16 @@ export default async function CalendarioPage({
   ]);
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1>Calendario</h1>
-          <p className="text-sm text-muted-foreground">
-            Riunioni di team, shooting e altri eventi.
-          </p>
-        </div>
-        <Link
-          href="/presenze?view=generale"
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 self-start sm:ml-0")}
-        >
-          <Users />
-          Vedi presenze del team
-        </Link>
-      </div>
-
-      <CalendarView
-        events={calendarEvents}
-        absences={leaveRequests.map(({ user: absentUser, ...absence }) => ({
-          ...maskLeaveForViewer(absence, user),
-          userName: absentUser.name,
-        }))}
-        users={calendarUsers}
-        currentUserId={user.id}
-        isAdmin={isAdminRole(user.role)}
-        initialEventId={evento}
-      />
-    </div>
+    <CalendarView
+      events={calendarEvents}
+      absences={leaveRequests.map(({ user: absentUser, ...absence }) => ({
+        ...maskLeaveForViewer(absence, user),
+        userName: absentUser.name,
+      }))}
+      users={calendarUsers}
+      currentUserId={user.id}
+      isAdmin={isAdminRole(user.role)}
+      initialEventId={evento}
+    />
   );
 }

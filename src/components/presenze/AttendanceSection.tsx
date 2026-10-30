@@ -24,7 +24,7 @@ export async function AttendanceSection({
   // Chi guarda, se non è né la persona né un admin (es. il responsabile di
   // reparto): la malattia gli arriva come "assenza".
   viewer?: { id: string; role: string };
-  // Pagina che ospita la sezione (es. "/presenze" o "/team/abc?tab=presenze"):
+  // Pagina che ospita la sezione (es. "/calendario?vista=presenze" o "/team/abc?tab=presenze"):
   // la navigazione mese aggiunge solo ?month=... a questo href.
   basePath: string;
   monthParam?: string;
