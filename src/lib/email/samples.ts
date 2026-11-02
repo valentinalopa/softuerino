@@ -7,6 +7,7 @@ import {
   licenseExpiryEmail,
   newLeaveRequestEmail,
   accountRequestEmail,
+  hoursReminderEmail,
   type Mail,
   type Recipient,
 } from "@/lib/email/templates";
@@ -14,7 +15,7 @@ import {
 // Email di esempio per l'anteprima e le prove di Sistema → Email: stessi
 // template delle notifiche vere, con dati inventati.
 
-export const SAMPLE_KINDS = ["smtp", "newleave", "leave", "account", "event", "task", "license"] as const;
+export const SAMPLE_KINDS = ["smtp", "newleave", "leave", "account", "event", "task", "hours", "license"] as const;
 export type SampleKind = (typeof SAMPLE_KINDS)[number];
 
 export const SAMPLE_LABELS: Record<SampleKind, string> = {
@@ -24,6 +25,7 @@ export const SAMPLE_LABELS: Record<SampleKind, string> = {
   leave: "Esito di una richiesta",
   event: "Invito a un evento",
   task: "Task assegnato",
+  hours: "Promemoria ore (19:00)",
   license: "Licenza in scadenza",
 };
 
@@ -83,6 +85,8 @@ export function buildSample(kind: SampleKind, recipient: Recipient, appUrl: stri
         dueDate: inDays(10),
         priority: "high",
       });
+    case "hours":
+      return hoursReminderEmail(recipient, appUrl, { date: inDays(0) });
     case "license":
       return licenseExpiryEmail(recipient, appUrl, {
         licenseId: "esempio",

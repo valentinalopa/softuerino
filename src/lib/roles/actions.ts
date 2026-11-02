@@ -86,3 +86,15 @@ export async function updateLeaveNotify(formData: FormData): Promise<ActionResul
   revalidatePath("/ruoli");
   return undefined;
 }
+
+// Promemoria ore delle 19: chi lo riceve (di partenza tutti).
+export async function updateHoursReminder(formData: FormData): Promise<ActionResult> {
+  await requireSuperAdmin();
+  const ids = formData.getAll("userId").map(String);
+  await prisma.$transaction([
+    prisma.user.updateMany({ where: { id: { notIn: ids } }, data: { hoursReminder: false } }),
+    prisma.user.updateMany({ where: { id: { in: ids } }, data: { hoursReminder: true } }),
+  ]);
+  revalidatePath("/ruoli");
+  return undefined;
+}
