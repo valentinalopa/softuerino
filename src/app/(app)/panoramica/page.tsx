@@ -7,6 +7,7 @@ import {
   buildClientTotals,
   buildHoursByClientByMonth,
   buildLeaveTotals,
+  groupSmallClients,
   rollUpToParent,
 } from "@/lib/panoramica-utils";
 import { loadClientHoursEntries } from "@/lib/client-hours";
@@ -43,7 +44,9 @@ export default async function ReportPage() {
 
   // Nei grafici le voci (es. "Organizzazione IT") contano nel loro cliente;
   // la tabella sotto mostra la ripartizione.
-  const hoursEntries = rollUpToParent(timeEntries);
+  // Nei grafici solo i clienti principali hanno un colore; il resto va in
+  // "Altri clienti" (la tabella ha il dettaglio di tutti).
+  const hoursEntries = groupSmallClients(rollUpToParent(timeEntries));
   const clientBreakdown = buildClientBreakdown(timeEntries, MONTHS_BACK);
 
   const hoursByClientByMonth = buildHoursByClientByMonth(hoursEntries, MONTHS_BACK);

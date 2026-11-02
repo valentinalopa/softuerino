@@ -35,11 +35,19 @@ export function buildHoursByClientByMonth(
     return { key: `${d.getFullYear()}-${d.getMonth() + 1}`, year: d.getFullYear(), month: d.getMonth() + 1 };
   });
 
-  const clientsById = new Map<string, string>();
-  for (const entry of entries) clientsById.set(entry.clientId, entry.clientName);
+  // Dal cliente con più ore (in basso nella pila) a quello con meno; "Altri
+  // clienti" sempre per ultimo.
+  const clientsById = new Map<string, { name: string; hours: number }>();
+  for (const entry of entries) {
+    const current = clientsById.get(entry.clientId);
+    clientsById.set(entry.clientId, { name: entry.clientName, hours: (current?.hours ?? 0) + entry.hours });
+  }
   const clients = Array.from(clientsById.entries())
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        Number(a[0] === OTHER_CLIENTS_ID) - Number(b[0] === OTHER_CLIENTS_ID) || b[1].hours - a[1].hours
+    )
+    .map(([id, { name }]) => ({ id, name }));
 
   const rows: HoursByClientMonthRow[] = months.map(({ key, year, month }) => {
     const row: HoursByClientMonthRow = { key, label: shortMonthLabel(year, month) };
@@ -71,7 +79,31 @@ export function buildClientTotals(entries: ClientHoursEntry[]): ClientTotal[] {
       totals.set(entry.clientId, { id: entry.clientId, name: entry.clientName, hours: entry.hours });
     }
   }
-  return Array.from(totals.values()).sort((a, b) => b.hours - a.hours);
+  return Array.from(totals.values()).sort(
+    (a, b) => Number(a.id === OTHER_CLIENTS_ID) - Number(b.id === OTHER_CLIENTS_ID) || b.hours - a.hours
+  );
+}
+
+// Grafici: i colori della palette sono 5 e ripeterli confonde (due clienti
+// diversi dello stesso colore). I 5 clienti con più ore hanno il loro colore,
+// gli altri si sommano in "Altri clienti" (grigio, sempre ultimo). Il
+// dettaglio di ognuno resta nella tabella sotto i grafici.
+export const OTHER_CLIENTS_ID = "altri";
+export const CHART_TOP_CLIENTS = 5;
+
+export function groupSmallClients(entries: ClientHoursEntry[], keep = CHART_TOP_CLIENTS): ClientHoursEntry[] {
+  const totals = new Map<string, number>();
+  for (const entry of entries) totals.set(entry.clientId, (totals.get(entry.clientId) ?? 0) + entry.hours);
+  if (totals.size <= keep + 1) return entries;
+  const top = new Set(
+    [...totals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, keep)
+      .map(([id]) => id)
+  );
+  return entries.map((entry) =>
+    top.has(entry.clientId) ? entry : { ...entry, clientId: OTHER_CLIENTS_ID, clientName: "Altri clienti" }
+  );
 }
 
 // Ore con il cliente padre: le voci (es. "Organizzazione IT") contano nel

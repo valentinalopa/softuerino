@@ -10,7 +10,8 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import type { ClientRef, HoursByClientMonthRow } from "@/lib/panoramica-utils";
-import { CHART_COLORS } from "./chart-colors";
+import { clientColor } from "./chart-colors";
+import { formatHours } from "@/lib/ore-utils";
 
 export function HoursByClientChart({
   rows,
@@ -32,7 +33,7 @@ export function HoursByClientChart({
   const config: ChartConfig = Object.fromEntries(
     clients.map((client, i) => [
       client.id,
-      { label: client.name, color: CHART_COLORS[i % CHART_COLORS.length] },
+      { label: client.name, color: clientColor(client.id, i) },
     ])
   );
 
@@ -48,9 +49,20 @@ export function HoursByClientChart({
         <ChartTooltip
           // Sopra la legenda, che altrimenti si sovrappone al tooltip.
           wrapperStyle={{ zIndex: 10 }}
-          content={<ChartTooltipContent hideZero />}
+          // Dal cliente con più ore del mese al meno, come si legge la pila.
+          itemSorter={(item) => -Number(item.value ?? 0)}
+          content={
+            <ChartTooltipContent
+              hideZero
+              labelFormatter={(label, payload) =>
+                `${label} · ${formatHours(payload.reduce((sum, item) => sum + Number(item.value ?? 0), 0))} h`
+              }
+            />
+          }
         />
-        {!compact && <ChartLegend content={<ChartLegendContent />} />}
+        {/* itemSorter null: stesso ordine della pila (recharts ordinerebbe per
+            nome e "Altri clienti" finirebbe primo). */}
+        {!compact && <ChartLegend itemSorter={null} content={<ChartLegendContent />} />}
         {clients.map((client) => (
           <Bar
             key={client.id}

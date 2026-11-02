@@ -260,11 +260,15 @@
   --border-strong: #cbd5e0; /* neutral-300 */
   --input: #e2e8f0;
   --ring: #c5c3f9; /* accent-200 — focus-ring */
+  /* Colori dei grafici (serie in ordine fisso): indaco del brand, arancio,
+     teal, ambra, magenta. Validati con lo script della skill dataviz su
+     #ffffff: luminosità, saturazione, distanza tra vicini anche per i
+     daltonici, contrasto ≥ 3:1. I vecchi viola/celeste erano troppo simili. */
   --chart-1: #6d6aef;
-  --chart-2: #80dae9;
-  --chart-3: #a7a6f5;
-  --chart-4: #5196a2;
-  --chart-5: #c5c3f9;
+  --chart-2: #eb6834;
+  --chart-3: #1f9aab;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
   --sidebar: #ffffff;
   --sidebar-foreground: #334154;
   --sidebar-primary: #6d6aef;
@@ -342,11 +346,12 @@
   --border-strong: #475568;
   --input: #334154;
   --ring: #2f2d7a;
-  --chart-1: #8a88f2;
-  --chart-2: #80dae9;
-  --chart-3: #c5c3f9;
-  --chart-4: #68b8c6;
-  --chart-5: #4442a1;
+  /* Stesse tinte, validate sul fondo scuro (#111826). */
+  --chart-1: #7b78ee;
+  --chart-2: #d95926;
+  --chart-3: #1f9aab;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
   --sidebar: #111826;
   --sidebar-foreground: #cbd5e0;
   --sidebar-primary: #6d6aef;

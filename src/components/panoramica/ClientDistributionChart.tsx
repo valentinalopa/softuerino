@@ -10,7 +10,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import type { ClientTotal } from "@/lib/panoramica-utils";
-import { CHART_COLORS } from "./chart-colors";
+import { clientColor } from "./chart-colors";
 
 export function ClientDistributionChart({ totals }: { totals: ClientTotal[] }) {
   if (totals.length === 0) {
@@ -24,7 +24,7 @@ export function ClientDistributionChart({ totals }: { totals: ClientTotal[] }) {
   const config: ChartConfig = Object.fromEntries(
     totals.map((total, i) => [
       total.id,
-      { label: total.name, color: CHART_COLORS[i % CHART_COLORS.length] },
+      { label: total.name, color: clientColor(total.id, i) },
     ])
   );
 
@@ -44,7 +44,7 @@ export function ClientDistributionChart({ totals }: { totals: ClientTotal[] }) {
             <Cell key={total.id} fill={`var(--color-${total.id})`} />
           ))}
         </Pie>
-        <ChartLegend content={<ChartLegendContent nameKey="id" />} />
+        <ChartLegend itemSorter={null} content={<ChartLegendContent nameKey="id" />} />
       </PieChart>
     </ChartContainer>
   );
