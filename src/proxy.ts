@@ -32,6 +32,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Icone del sito (favicon, icon.svg, apple-icon.png) pubbliche: servono
   // anche nella pagina di login. robots.txt pubblico: chiede ai motori di
-  // ricerca di non indicizzare nulla.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|robots.txt).*)"],
+  // ricerca di non indicizzare nulla. manifest.webmanifest e le icone della web
+  // app (icon-192/512, icon-maskable-512) si leggono senza sessione: il browser
+  // le richiede senza cookie e un redirect a /login le romperebbe.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|robots.txt|manifest.webmanifest|icon-192.png|icon-512.png|icon-maskable-512.png).*)"],
 };

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme";
@@ -19,6 +19,15 @@ export const metadata: Metadata = {
     "Gestionale per team: ferie, permessi, malattia, presenze, calendario e ore",
   // Raggiungibile anche da internet: niente indicizzazione nei motori di ricerca.
   robots: { index: false, follow: false },
+  // Aggiungi alla schermata Home su iPhone: apertura a schermo intero.
+  appleWebApp: { capable: true, title: "Softuerino", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d131e" },
+  ],
 };
 
 export default function RootLayout({
