@@ -86,6 +86,7 @@ const CLIENTS_LINK: NavLink = { href: "/clienti", label: "Clienti", icon: Buildi
 // permesso, admin e super admin; il resto per tutti.
 const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
 const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
+const PRIVACY_LINK: NavLink = { href: "/privacy", label: "Privacy", icon: ShieldCheck };
 const CLOUD_LINK: NavLink = { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true };
 
 // Menu utente, solo super admin: permessi e operazioni di sistema.
@@ -181,6 +182,7 @@ export function AppSidebar({
     ...(showLicenses ? [LICENSES_LINK] : []),
     VPN_LINK,
     CLOUD_LINK,
+    PRIVACY_LINK,
     ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),
   ];
   const sections = [

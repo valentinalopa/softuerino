@@ -33,6 +33,7 @@ import {
 import { submitKeepingValues } from "@/components/form/submit-keeping-values";
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { toast } from "@/lib/toast";
+import { TONE_SOFT } from "@/lib/tones";
 
 export function NewLeaveRequestDialog({
   employmentType,
@@ -261,6 +262,17 @@ export function NewLeaveRequestDialog({
                 required={noteRequired}
                 placeholder={noteRequired ? "Es. trasferta Milano 12/10" : undefined}
               />
+              {/* Privacy: la malattia è un dato sanitario, in nota non ci vanno diagnosi. */}
+              <p
+                data-testid="leave-note-health-warning"
+                className={
+                  type === "malattia"
+                    ? `rounded-lg px-3 py-2 text-sm font-medium ${TONE_SOFT.warning}`
+                    : "text-xs text-muted-foreground"
+                }
+              >
+                Non indicare diagnosi né altre informazioni sanitarie.
+              </p>
             </div>
 
             {after !== null && after < 0 && (

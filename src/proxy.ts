@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 
-const PUBLIC_PATHS = ["/login"];
+// /privacy: informativa privacy, si legge anche senza accedere.
+const PUBLIC_PATHS = ["/login", "/privacy"];
 
 // Controllo ottimistico: verifica solo la presenza del cookie di sessione,
 // non la sua validita/scadenza (richiede una query al DB, fatta invece

@@ -1,0 +1,13 @@
+[Unit]
+Description=Conservazione dati Softuerino (anonimizza i rapporti cessati da oltre 10 anni)
+
+[Service]
+Type=oneshot
+User=softuerino
+# DRY-RUN finché RETENTION_APPLY non è 1. Per attivare la cancellazione:
+#   sudo systemctl edit softuerino-retention.service  ->  [Service]  Environment=RETENTION_APPLY=1
+ExecStart=/usr/local/sbin/softuerino-retention
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

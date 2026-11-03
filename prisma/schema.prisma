@@ -35,6 +35,10 @@ model User {
   // (scelto in Ruoli e permessi); hoursReminderSentFor = ultimo giorno avvisato.
   hoursReminder        Boolean   @default(true)
   hoursReminderSentFor DateTime?
+  // Cessazione del rapporto: valorizzata quando l'utente viene disattivato,
+  // azzerata se viene riattivato. Da qui partono i 10 anni di conservazione
+  // (src/lib/retention.ts).
+  deactivatedAt        DateTime?
 
   sessions               Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")

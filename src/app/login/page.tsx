@@ -95,6 +95,11 @@ export default async function LoginPage({
               Accesso disponibile solo dalla rete aziendale o dalla VPN.
             </p>
           )}
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            <a href="/privacy" className="underline underline-offset-4">
+              Informativa privacy
+            </a>
+          </p>
         </CardContent>
       </Card>
     </div>

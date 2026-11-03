@@ -14,6 +14,7 @@ import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
 import { addUpcomingClosuresFor } from "@/lib/closures";
 import { hoursBetween } from "@/lib/leave-format";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
+import { nextDeactivatedAt } from "@/lib/retention";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
@@ -163,7 +164,7 @@ export async function updateUser(userId: string, formData: FormData) {
 
   const target = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, name: true, email: true, oidcSubject: true },
+    select: { role: true, name: true, email: true, oidcSubject: true, active: true, deactivatedAt: true },
   });
   if (!target) {
     return { error: "Utente non trovato" };
@@ -193,6 +194,8 @@ export async function updateUser(userId: string, formData: FormData) {
         role,
         employmentType,
         active,
+        // Cessazione del rapporto: da qui partono i 10 anni di conservazione.
+        deactivatedAt: nextDeactivatedAt(active, target, new Date()),
         ...(password ? { passwordHash: await hashPassword(password) } : {}),
       },
     });
