@@ -12,5 +12,5 @@ export function DayView({
   events: CalendarEventData[];
   onSelectEvent: (event: CalendarEventData) => void;
 }) {
-  return <TimeGrid days={[current]} events={events} onSelectEvent={onSelectEvent} />;
+  return <TimeGrid days={[current]} events={events} onSelectEvent={onSelectEvent} pageScroll />;
 }
