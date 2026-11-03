@@ -20,17 +20,26 @@ export function TimeGrid({
   days,
   events,
   onSelectEvent,
+  pageScroll = false,
 }: {
   days: Date[];
   events: CalendarEventData[];
   onSelectEvent: (event: CalendarEventData) => void;
+  // Vista giorno: la griglia non ha altezza massima né scroll interno, scorre
+  // solo la pagina (niente doppia barra, soprattutto su iPhone).
+  pageScroll?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const startRef = useRef<HTMLDivElement>(null);
   const today = new Date();
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 7 * HOUR_HEIGHT - 24 });
-  }, []);
+    if (pageScroll) {
+      startRef.current?.scrollIntoView({ block: "start" });
+    } else {
+      scrollRef.current?.scrollTo({ top: 7 * HOUR_HEIGHT - 24 });
+    }
+  }, [pageScroll]);
 
   const columns = `56px repeat(${days.length}, minmax(0, 1fr))`;
 
@@ -59,8 +68,22 @@ export function TimeGrid({
         ))}
       </div>
 
-      <div ref={scrollRef} className="max-h-[600px] overflow-y-auto">
-        <div className="grid" style={{ gridTemplateColumns: columns }}>
+      <div
+        ref={scrollRef}
+        className={pageScroll ? undefined : "max-h-[600px] overflow-y-auto"}
+      >
+        <div
+          className="relative grid"
+          style={{ gridTemplateColumns: columns }}
+        >
+          {pageScroll && (
+            <div
+              ref={startRef}
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0"
+              style={{ top: 7 * HOUR_HEIGHT - 24 }}
+            />
+          )}
           <div className="relative" style={{ height: HOUR_HEIGHT * 24 }}>
             {HOURS.map((h) => (
               <div
