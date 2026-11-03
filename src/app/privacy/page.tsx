@@ -26,7 +26,7 @@ const RETENTION: [string, string][] = [
   ],
   ["Sessioni di accesso", "Al massimo 30 giorni (3 giorni di inattività)"],
   ["Richieste di nuovo account non approvate", "12 mesi"],
-  ["Log tecnici dei server", "12 mesi"],
+  ["Log tecnici dei server", "Al massimo 12 mesi"],
   ["Copie di backup", "30 giorni a rotazione"],
 ];
 

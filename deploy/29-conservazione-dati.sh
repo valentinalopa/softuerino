@@ -29,5 +29,16 @@ install -m 644 "$HERE/systemd/softuerino-retention.service" /etc/systemd/system/
 install -m 644 "$HERE/systemd/softuerino-retention.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now softuerino-retention.timer
+
+# Log tecnici: il journal tiene al massimo 12 mesi (informativa, sezione 8).
+# Idempotente: il riavvio di journald avviene solo se il file cambia.
+JCONF=/etc/systemd/journald.conf.d/10-conservazione.conf
+JNEW=$(printf '[Journal]\nMaxRetentionSec=12month\n')
+if [ "$(cat "$JCONF" 2>/dev/null || true)" != "$JNEW" ]; then
+  mkdir -p /etc/systemd/journald.conf.d
+  printf '%s\n' "$JNEW" > "$JCONF"
+  chmod 644 "$JCONF"
+  systemctl restart systemd-journald
+fi
 echo "---"
 systemctl list-timers --no-pager softuerino-retention.timer | sed -n 2p
