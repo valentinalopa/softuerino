@@ -40,7 +40,7 @@ export function AttendanceTeamMonthCalendar({
             <div
               key={day.toISOString()}
               className={cn(
-                "flex min-h-[150px] flex-col gap-1 border-b border-r p-1.5 [&:nth-child(7n)]:border-r-0",
+                "flex min-h-[150px] min-w-0 flex-col gap-1 overflow-hidden border-b border-r p-1.5 [&:nth-child(7n)]:border-r-0",
                 !inMonth && "bg-muted/20",
                 // Weekend: colonna più stretta e appena velata.
                 inMonth && (day.getDay() === 0 || day.getDay() === 6) && "bg-muted/15",
@@ -86,12 +86,20 @@ function CategoryRow({
   return (
     <div
       title={`${category.label}: ${category.people.map((p) => p.name).join(", ")}`}
-      className={cn("flex flex-col gap-1 rounded-sm border px-1.5 py-1", category.chip)}
+      className={cn(
+        "flex min-w-0 flex-col gap-1 overflow-hidden rounded-sm border px-1.5 py-1",
+        category.chip
+      )}
     >
-      <div className="flex items-start gap-1 text-3xs font-medium leading-tight">
-        <Icon className="size-3 shrink-0" />
-        {/* Va a capo invece di troncare: "Smartworking · Pomeriggio" deve leggersi tutto. */}
-        <span className="min-w-0">{category.label}</span>
+      <div className="flex min-w-0 items-start gap-1 text-3xs font-medium leading-tight">
+        <Icon className="size-3 shrink-0" aria-hidden />
+        {/* Su schermo stretto (colonne di 30-70 px) l'etichetta non ci sta:
+            restano icona e iniziali, il testo intero è nel title del riquadro
+            e per gli screen reader. Da md in su va a capo (anche a metà parola
+            se la colonna è stretta, come il sabato e la domenica). */}
+        <span className="sr-only md:not-sr-only md:min-w-0 md:break-words">
+          {category.label}
+        </span>
       </div>
       <div className="flex flex-wrap gap-1">
         {visible.map((person) => (

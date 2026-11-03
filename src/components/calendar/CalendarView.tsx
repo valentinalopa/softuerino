@@ -169,7 +169,8 @@ export function CalendarView({
       </div>
 
       <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1">
+        {/* space-y-4: nella vista giorno separa il riquadro Assenti dalla griglia. */}
+        <div className="min-w-0 flex-1 space-y-4">
           {view === "month" && (
             <MonthView
               current={current}

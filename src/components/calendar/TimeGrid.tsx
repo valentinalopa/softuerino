@@ -129,14 +129,12 @@ export function TimeGrid({
                   const style = eventTypeStyle(event.type);
 
                   return (
-                    <button
+                    // Contenitore opaco (bg-card) sopra le linee delle ore: la
+                    // tinta semitrasparente del chip sta sopra e le linee non
+                    // si vedono attraverso l'evento.
+                    <div
                       key={event.id}
-                      type="button"
-                      onClick={() => onSelectEvent(event)}
-                      className={cn(
-                        "absolute overflow-hidden rounded-sm border px-1.5 py-0.5 text-left text-2xs leading-tight",
-                        style.chip
-                      )}
+                      className="absolute z-10 rounded-sm bg-card"
                       style={{
                         top,
                         height,
@@ -144,11 +142,20 @@ export function TimeGrid({
                         width: `calc(${width}% - 4px)`,
                       }}
                     >
-                      <span className="font-medium">{event.title}</span>
-                      <span className="block text-3xs opacity-80">
-                        {formatTime(event.startAt)}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => onSelectEvent(event)}
+                        className={cn(
+                          "block size-full overflow-hidden rounded-sm border px-1.5 py-0.5 text-left text-2xs leading-tight",
+                          style.chip
+                        )}
+                      >
+                        <span className="font-medium">{event.title}</span>
+                        <span className="block text-3xs opacity-80">
+                          {formatTime(event.startAt)}
+                        </span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
