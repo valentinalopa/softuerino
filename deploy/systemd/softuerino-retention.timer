@@ -1,0 +1,10 @@
+[Unit]
+Description=Conservazione dati Softuerino, ogni giorno alle 04:10 (dopo il backup delle 03:16)
+
+[Timer]
+OnCalendar=*-*-* 04:10:00
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target
