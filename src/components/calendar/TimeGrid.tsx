@@ -33,13 +33,26 @@ export function TimeGrid({
   const startRef = useRef<HTMLDivElement>(null);
   const today = new Date();
 
+  // Punto di partenza della vista: le 07:00, oppure il primo evento che inizia
+  // prima (anche quello iniziato il giorno prima e ancora in corso: nella
+  // colonna parte da mezzanotte), così non resta nascosto sopra.
+  let startMinutes = 7 * 60;
+  for (const day of days) {
+    for (const event of events) {
+      if (!eventTouchesDay(event, day)) continue;
+      const from = isSameDay(event.startAt, day) ? minutesFromMidnight(event.startAt) : 0;
+      if (from < startMinutes) startMinutes = from;
+    }
+  }
+  const startTop = Math.max(0, (startMinutes / 60) * HOUR_HEIGHT - 24);
+
   useEffect(() => {
     if (pageScroll) {
       startRef.current?.scrollIntoView({ block: "start" });
     } else {
-      scrollRef.current?.scrollTo({ top: 7 * HOUR_HEIGHT - 24 });
+      scrollRef.current?.scrollTo({ top: startTop });
     }
-  }, [pageScroll]);
+  }, [pageScroll, startTop]);
 
   const columns = `56px repeat(${days.length}, minmax(0, 1fr))`;
 
@@ -81,7 +94,7 @@ export function TimeGrid({
               ref={startRef}
               aria-hidden
               className="pointer-events-none absolute inset-x-0"
-              style={{ top: 7 * HOUR_HEIGHT - 24 }}
+              style={{ top: startTop }}
             />
           )}
           <div className="relative" style={{ height: HOUR_HEIGHT * 24 }}>

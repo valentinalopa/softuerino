@@ -3,6 +3,7 @@ import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { addMonths, endOfMonth, formatMonthYear, startOfMonth } from "@/lib/calendar-utils";
 import { buildAttendanceMap, dateKey, monthQuery, parseMonthParam } from "@/lib/attendance-utils";
 import { isAdminRole } from "@/lib/constants";
+import { peopleInScope } from "@/lib/permissions";
 import { appendQuery } from "@/lib/utils";
 import { AttendanceTeamMonthCalendar } from "@/components/presenze/AttendanceTeamMonthCalendar";
 import { MonthNav } from "@/components/presenze/MonthNav";
@@ -51,12 +52,26 @@ export async function TeamAttendanceView({
   });
 
   // Note delle richieste per il popup: solo quelle che chi guarda può già
-  // leggere altrove (le proprie in Richieste, tutte per gli admin). Per gli
-  // altri la nota non parte nemmeno verso il browser. Chiave: utente__giorno__tipo.
+  // leggere nella scheda della persona (ScopedMemberView): le proprie, tutte
+  // per gli admin, quelle delle persone su cui ha i permessi "richieste" o
+  // "approvare" (es. il responsabile del reparto, da Keycloak). La malattia
+  // altrui resta esclusa: lì il mascheramento vale per ruolo, non per reparto.
+  // Per gli altri la nota non parte nemmeno verso il browser. Chiave: utente__giorno__tipo.
+  const [richiesteScope, approvareScope] = await Promise.all([
+    peopleInScope(viewer, "richieste"),
+    peopleInScope(viewer, "approvare"),
+  ]);
+  const inScope = (userId: string) =>
+    richiesteScope === "all" ||
+    approvareScope === "all" ||
+    richiesteScope.includes(userId) ||
+    approvareScope.includes(userId);
   const notes: Record<string, string> = {};
   for (const leave of leaveRequests) {
     if (!leave.note || leave.status === "rejected") continue;
-    if (leave.userId !== viewer.id && !isAdminRole(viewer.role)) continue;
+    const own = leave.userId === viewer.id;
+    const admin = isAdminRole(viewer.role);
+    if (!own && !admin && (leave.type === "malattia" || !inScope(leave.userId))) continue;
     const hourly =
       leave.type === "permesso" || (leave.type === "recupero" && leave.hours !== null);
     if (hourly) {

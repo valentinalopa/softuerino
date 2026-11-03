@@ -294,7 +294,7 @@ export function AttendanceMonthCalendar({
                     : undefined
                 }
                 className={cn(
-                  "flex min-h-[110px] flex-col gap-1 border-b border-r p-1.5 [&:nth-child(7n)]:border-r-0",
+                  "flex min-h-[110px] min-w-0 flex-col gap-1 overflow-hidden border-b border-r p-1 md:p-1.5 [&:nth-child(7n)]:border-r-0",
                   !inMonth && "bg-muted/20",
                   // Weekend: colonna più stretta e appena velata.
                   inMonth && (day.getDay() === 0 || day.getDay() === 6) && "bg-muted/15",
