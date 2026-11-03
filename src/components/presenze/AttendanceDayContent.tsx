@@ -40,14 +40,20 @@ export function AttendanceDayContent({
     const pending = entry.leave.status === "pending";
     return (
       <div
+        title={pending ? `${style.title} (in attesa)` : style.title}
         className={cn(
-          "flex h-full flex-col items-center justify-center gap-1 rounded-lg border",
+          "flex h-full min-w-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border",
           pending ? NEUTRAL_CHIP : style.chip
         )}
       >
-        <Icon className="size-4" />
-        <span className="text-xs font-medium">{style.title}</span>
-        {pending && <span className="text-3xs">In attesa</span>}
+        <Icon className="size-4 shrink-0" aria-hidden />
+        {/* Colonne strette su mobile: solo icona (il testo è nel title). */}
+        <span className="sr-only text-center text-xs font-medium md:not-sr-only md:max-w-full md:break-words">
+          {style.title}
+        </span>
+        {pending && (
+          <span className="sr-only text-3xs md:not-sr-only">In attesa</span>
+        )}
       </div>
     );
   }
@@ -109,8 +115,9 @@ function PresenceBlock({
   const Icon = style.icon;
   const content = (
     <>
-      <Icon className="size-3.5 shrink-0" />
-      <span className="leading-tight">
+      <Icon className="size-3.5 shrink-0" aria-hidden />
+      {/* Colonne strette su mobile: solo icona (il testo è nel title). */}
+      <span className="sr-only leading-tight md:not-sr-only md:min-w-0 md:break-words">
         {style.title} · {PRESENCE_SLOT_LABELS[slot]}
       </span>
     </>
@@ -121,12 +128,13 @@ function PresenceBlock({
       <button
         type="button"
         aria-pressed={selected}
+        title={`${style.title} · ${PRESENCE_SLOT_LABELS[slot]}`}
         onClick={(e) => {
           e.stopPropagation();
           onToggle?.();
         }}
         className={cn(
-          "flex flex-1 cursor-pointer flex-col items-start gap-1 rounded-sm border px-2 py-1.5 text-left text-xs font-medium outline-none transition-colors hover:brightness-95",
+          "flex min-w-0 flex-1 cursor-pointer flex-col items-start gap-1 overflow-hidden rounded-sm border px-1 py-1.5 text-left text-xs font-medium outline-none transition-colors hover:brightness-95 md:px-2",
           style.chip,
           selected && "ring-2 ring-inset ring-primary"
         )}
@@ -138,8 +146,9 @@ function PresenceBlock({
 
   return (
     <div
+      title={`${style.title} · ${PRESENCE_SLOT_LABELS[slot]}`}
       className={cn(
-        "flex flex-1 flex-col items-start gap-1 rounded-sm border px-2 py-1.5 text-xs font-medium",
+        "flex min-w-0 flex-1 flex-col items-start gap-1 overflow-hidden rounded-sm border px-1 py-1.5 text-xs font-medium md:px-2",
         style.chip
       )}
     >
@@ -161,13 +170,17 @@ function HourlyLeaveChip({ hourly }: { hourly: HourlyLeaveInfo }) {
       <PopoverTrigger
         onClick={stop}
         onKeyDown={stop}
+        aria-label={`${style.title} ${formatHourlySlot(hourly)}. Apri i dettagli`}
         className={cn(
-          "flex w-full cursor-pointer items-center justify-center gap-1 rounded-sm border px-1.5 py-1 text-2xs font-medium outline-none transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
+          "flex w-full min-w-0 cursor-pointer items-center justify-center gap-1 overflow-hidden rounded-sm border px-1 py-1 text-2xs font-medium outline-none transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring md:px-1.5",
           hourly.status === "pending" ? NEUTRAL_CHIP : style.chip
         )}
       >
-        <Icon className="size-3" />
-        {style.title} {formatHourlySlot(hourly)}
+        <Icon className="size-3 shrink-0" aria-hidden />
+        {/* Su mobile solo icona: fascia e stato sono nel popover al tocco. */}
+        <span className="sr-only md:not-sr-only md:min-w-0 md:break-words">
+          {style.title} {formatHourlySlot(hourly)}
+        </span>
       </PopoverTrigger>
       <PopoverContent className="w-60" onClick={stop} onKeyDown={stop}>
         <PopoverHeader>

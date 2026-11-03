@@ -23,7 +23,7 @@ export function WeekView({
   return (
     <>
       <div className="hidden md:block">
-        <TimeGrid days={days} events={events} onSelectEvent={onSelectEvent} />
+        <TimeGrid days={days} events={events} onSelectEvent={onSelectEvent} pageScroll />
       </div>
       <ol className="divide-y divide-border overflow-hidden rounded-2xl border border-surface-border bg-card md:hidden">
         {days.map((day) => {

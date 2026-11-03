@@ -61,7 +61,7 @@ export function MonthView({
                 if (e.key === "Enter" || e.key === " ") onSelectDay(day);
               }}
               className={cn(
-                "flex min-h-[110px] cursor-pointer flex-col gap-1 border-b border-r p-1.5 text-left [&:nth-child(7n)]:border-r-0 hover:bg-muted/30",
+                "flex min-h-[110px] min-w-0 cursor-pointer flex-col gap-1 overflow-hidden border-b border-r p-1 text-left md:p-1.5 [&:nth-child(7n)]:border-r-0 hover:bg-muted/30",
                 !inMonth && "bg-muted/20 text-muted-foreground",
                 // Weekend: colonna più stretta e appena velata.
                 inMonth && (day.getDay() === 0 || day.getDay() === 6) && "bg-muted/15",
@@ -81,6 +81,7 @@ export function MonthView({
                   return (
                     <span
                       key={event.id}
+                      title={event.title}
                       role="button"
                       tabIndex={0}
                       onClick={(e) => {
