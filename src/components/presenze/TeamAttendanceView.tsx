@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { addMonths, endOfMonth, formatMonthYear, startOfMonth } from "@/lib/calendar-utils";
-import { buildAttendanceMap, monthQuery, parseMonthParam } from "@/lib/attendance-utils";
+import { buildAttendanceMap, dateKey, monthQuery, parseMonthParam } from "@/lib/attendance-utils";
+import { isAdminRole } from "@/lib/constants";
 import { appendQuery } from "@/lib/utils";
 import { AttendanceTeamMonthCalendar } from "@/components/presenze/AttendanceTeamMonthCalendar";
 import { MonthNav } from "@/components/presenze/MonthNav";
@@ -49,6 +50,28 @@ export async function TeamAttendanceView({
     presenceEntries,
   });
 
+  // Note delle richieste per il popup: solo quelle che chi guarda può già
+  // leggere altrove (le proprie in Richieste, tutte per gli admin). Per gli
+  // altri la nota non parte nemmeno verso il browser. Chiave: utente__giorno__tipo.
+  const notes: Record<string, string> = {};
+  for (const leave of leaveRequests) {
+    if (!leave.note || leave.status === "rejected") continue;
+    if (leave.userId !== viewer.id && !isAdminRole(viewer.role)) continue;
+    const hourly =
+      leave.type === "permesso" || (leave.type === "recupero" && leave.hours !== null);
+    if (hourly) {
+      notes[`${leave.userId}__${dateKey(leave.startDate)}__hourly`] = leave.note;
+      continue;
+    }
+    for (
+      let cursor = leave.startDate;
+      cursor <= leave.endDate;
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1)
+    ) {
+      notes[`${leave.userId}__${dateKey(cursor)}__leave`] = leave.note;
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -60,7 +83,12 @@ export async function TeamAttendanceView({
           current={monthQuery(current)}
         />
       </div>
-      <AttendanceTeamMonthCalendar current={current} users={activeUsers} map={attendanceMap} />
+      <AttendanceTeamMonthCalendar
+        current={current}
+        users={activeUsers}
+        entries={[...attendanceMap]}
+        notes={notes}
+      />
     </div>
   );
 }
