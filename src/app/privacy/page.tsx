@@ -194,8 +194,8 @@ export default function PrivacyPage() {
         </li>
       </ul>
       <p>
-        I server di Softuerino sono gestiti internamente dal Titolare e si trovano a Lecce, in Italia. I dati non
-        vengono diffusi.
+        I server di Softuerino, compreso il server di posta che invia le email di servizio, sono gestiti
+        internamente dal Titolare e si trovano a Lecce, in Italia. I dati non vengono diffusi.
       </p>
 
       <h2>8. Tempi di conservazione</h2>
