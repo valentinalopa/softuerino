@@ -27,6 +27,6 @@ export async function POST(request: Request) {
   }
   const result = await applyRetention(new Date(), apply);
   // Solo conteggi: niente nomi né email nel journal.
-  console.log(`[retention] utenti=${result.users} richieste=${result.accountRequests} applicato=${result.applied}`);
+  console.log(`[retention] utenti=${result.users} richieste=${result.accountRequests} task=${result.tasks} applicato=${result.applied}`);
   return Response.json(result, { headers: { "Cache-Control": "no-store" } });
 }

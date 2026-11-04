@@ -27,6 +27,7 @@ export function ConfirmDeleteButton({
   onConfirm,
   withText = false,
   successMessage,
+  actionText = "Elimina",
 }: {
   // Per screen reader e tooltip (es. "Elimina task").
   label: string;
@@ -37,6 +38,8 @@ export function ConfirmDeleteButton({
   withText?: boolean;
   // Conferma a eliminazione avvenuta (es. "Task eliminato").
   successMessage: string;
+  // Testo del pulsante e della conferma (default "Elimina").
+  actionText?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +90,7 @@ export function ConfirmDeleteButton({
           }
         >
           <Trash2 className="size-4" />
-          {withText && "Elimina"}
+          {withText && actionText}
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -103,7 +106,7 @@ export function ConfirmDeleteButton({
               disabled={pending}
               onClick={handleConfirm}
             >
-              Elimina
+              {actionText}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

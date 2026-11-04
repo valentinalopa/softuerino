@@ -211,8 +211,17 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   high: "Alta",
 };
 
-// I task "done" vengono eliminati questi giorni dopo il completamento
-export const TASK_DONE_RETENTION_DAYS = 30;
+// Task "done": dopo TASK_ARCHIVE_AFTER_DAYS dal completamento finiscono in
+// archivio (visibile a responsabili, project manager, admin); dopo
+// TASK_DELETE_AFTER_DAYS li elimina il timer di conservazione (retention.ts).
+export const TASK_ARCHIVE_AFTER_DAYS = 30;
+export const TASK_DELETE_AFTER_DAYS = 365;
+
+// Ruolo del client Keycloak "softuerino" per i project manager: vedono
+// l'archivio dei task di tutti. Arriva nel claim multivalore SOFTUERINO_ROLES_CLAIM
+// (ID token); il flag finisce in User.projectManager.
+export const PROJECT_MANAGER_ROLE = "project-manager";
+export const SOFTUERINO_ROLES_CLAIM = "softuerino_roles";
 
 // --- Clienti ---
 

@@ -39,6 +39,10 @@ model User {
   // azzerata se viene riattivato. Da qui partono i 10 anni di conservazione
   // (src/lib/retention.ts).
   deactivatedAt        DateTime?
+  // Project manager: vede l'archivio dei task di tutti. Arriva dal ruolo del
+  // client Keycloak softuerino "project-manager" (claim "softuerino_roles",
+  // src/lib/project-manager.ts) a ogni accesso SSO.
+  projectManager       Boolean   @default(false)
 
   sessions               Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")

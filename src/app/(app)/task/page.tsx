@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
-import { purgeExpiredDoneTasks } from "@/lib/actions";
-import { isAdminRole, TASK_DONE_RETENTION_DAYS } from "@/lib/constants";
+import { managedDepartmentIds } from "@/lib/departments";
+import { isAdminRole } from "@/lib/constants";
+import { archiveScope, canViewTaskArchive, listArchivedTasks, recentDoneTaskWhere } from "@/lib/task-archive";
+import { EmptyArchiveButton } from "@/components/task/EmptyArchiveButton";
 import { NewTaskDialog } from "@/components/task/NewTaskDialog";
 import { TaskFilters } from "@/components/task/TaskFilters";
 import { TasksTable } from "@/components/task/TasksTable";
@@ -10,7 +12,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Task" };
 
-type View = "attivi" | "completati";
+type View = "attivi" | "completati" | "archivio";
 
 export default async function TaskPage({
   searchParams,
@@ -21,36 +23,36 @@ export default async function TaskPage({
 
   const { user: userParam, client: clientParam, view: viewParam, sort: sortParam, dir: dirParam } =
     await searchParams;
-  const view: View = viewParam === "completati" ? "completati" : "attivi";
+  // Archivio (task completati da più di 30 giorni): solo responsabili,
+  // project manager e admin. Per gli altri la scheda non esiste.
+  const managedIds = await managedDepartmentIds(currentUser.id);
+  const canArchive = canViewTaskArchive(archiveScope(currentUser, managedIds));
+  const view: View =
+    viewParam === "completati" ? "completati" : viewParam === "archivio" && canArchive ? "archivio" : "attivi";
   // I membri partono dai propri task; "Tutte le persone" mette user=all
-  // nell'URL. Gli admin partono da tutti, come prima.
-  const mineByDefault = !isAdminRole(currentUser.role);
+  // nell'URL. Gli admin partono da tutti, come prima. Nell'archivio nessun
+  // filtro di partenza: chi lo vede cerca i task del suo ambito.
+  const mineByDefault = !isAdminRole(currentUser.role) && view !== "archivio";
   const userFilter =
     userParam === "all" ? undefined : (userParam ?? (mineByDefault ? currentUser.id : undefined));
 
-  // Il purge gira in parallelo alle letture (niente round-trip bloccante in
-  // testa alla pagina); i task scaduti che non ha ancora eliminato vengono
-  // comunque esclusi dalla query con il filtro su completedAt.
-  const purgeCutoff = new Date();
-  purgeCutoff.setDate(purgeCutoff.getDate() - TASK_DONE_RETENTION_DAYS);
-
   const [tasks, users, clients] = await Promise.all([
-    prisma.task.findMany({
-      where: {
-        ...(userFilter ? { assignees: { some: { userId: userFilter } } } : {}),
-        ...(clientParam ? { clientId: clientParam } : {}),
-        ...(view === "attivi"
-          ? { status: { not: "done" } }
-          : { status: "done", completedAt: { gte: purgeCutoff } }),
-      },
-      include: {
-        client: { select: { id: true, name: true } },
-        assignees: {
-          include: { user: { select: { id: true, name: true } } },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
+    view === "archivio"
+      ? listArchivedTasks(currentUser, managedIds, { userId: userFilter, clientId: clientParam })
+      : prisma.task.findMany({
+          where: {
+            ...(userFilter ? { assignees: { some: { userId: userFilter } } } : {}),
+            ...(clientParam ? { clientId: clientParam } : {}),
+            ...(view === "attivi" ? { status: { not: "done" } } : recentDoneTaskWhere(new Date())),
+          },
+          include: {
+            client: { select: { id: true, name: true } },
+            assignees: {
+              include: { user: { select: { id: true, name: true } } },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        }),
     prisma.user.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -61,7 +63,6 @@ export default async function TaskPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
-    purgeExpiredDoneTasks(),
   ]);
 
   const carriedParams = new URLSearchParams();
@@ -99,6 +100,9 @@ export default async function TaskPage({
               href: viewHref("completati"),
               active: view === "completati",
             },
+            ...(canArchive
+              ? [{ key: "archivio", label: "Archivio", href: viewHref("archivio"), active: view === "archivio" }]
+              : []),
           ]}
         />
         <TaskFilters
@@ -109,6 +113,15 @@ export default async function TaskPage({
         />
       </div>
 
+      {view === "archivio" && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Task completati da più di 30 giorni. Vengono eliminati un anno dopo il completamento.
+          </p>
+          {currentUser.role === "super_admin" && <EmptyArchiveButton />}
+        </div>
+      )}
+
       <TasksTable
         tasks={tasks}
         users={users}
@@ -118,7 +131,9 @@ export default async function TaskPage({
             ? "Nessun task corrisponde ai filtri selezionati."
             : view === "attivi"
               ? "Nessun task attivo: creane uno con «Nuovo task»."
-              : "Nessun task completato."
+              : view === "archivio"
+                ? "Nessun task in archivio."
+                : "Nessun task completato."
         }
       />
 

@@ -19,7 +19,10 @@ const RETENTION: [string, string][] = [
     "Eventi di calendario e richieste",
     "Fino a 10 anni dalla cessazione del rapporto, se legati al rapporto",
   ],
-  ["Task completati", "30 giorni dal completamento (cancellazione automatica)"],
+  [
+    "Task completati",
+    "1 anno dal completamento (cancellazione automatica). Dopo 30 giorni passano in un archivio visibile solo ai responsabili di reparto, ai project manager e agli amministratori",
+  ],
   [
     "Registri di sicurezza (visualizzazioni \"come utente\", accesso a chiavi di licenza e profili VPN)",
     "Fino a 10 anni dalla cessazione del rapporto",

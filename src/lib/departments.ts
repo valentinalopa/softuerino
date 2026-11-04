@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { hasProjectManagerRole, normalizeGroupName } from "@/lib/project-manager";
 
 // Organigramma = Keycloak. A ogni login SSO e a ogni refresh del token si
 // riallineano, dai claim dell'ID token:
@@ -24,7 +25,7 @@ function departmentNames(claim: unknown) {
     ...new Set(
       claim
         .filter((g): g is string => typeof g === "string")
-        .map((g) => g.replace(/^\/+/, "").trim())
+        .map(normalizeGroupName)
         .filter((g) => g && (allowed.length === 0 || allowed.includes(g)))
     ),
   ];
@@ -56,7 +57,10 @@ export async function syncUserOrg(userId: string, claims: Record<string, unknown
       update: { isManager },
     });
   }
-  await prisma.user.update({ where: { id: userId }, data: { reportsTo: reportsTo.join(",") } });
+  await prisma.user.update({
+    where: { id: userId },
+    data: { reportsTo: reportsTo.join(","), projectManager: hasProjectManagerRole(claims) },
+  });
 }
 
 // I reparti elencati in OIDC_DEPARTMENT_GROUPS esistono da subito, anche
