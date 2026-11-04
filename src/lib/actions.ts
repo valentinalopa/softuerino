@@ -15,6 +15,7 @@ import { addUpcomingClosuresFor } from "@/lib/closures";
 import { hoursBetween } from "@/lib/leave-format";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { nextDeactivatedAt } from "@/lib/retention";
+import { purgeTaskArchive } from "@/lib/task-archive";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
@@ -40,7 +41,6 @@ import {
   EMPLOYMENT_TYPES,
   TASK_STATUSES,
   TASK_PRIORITIES,
-  TASK_DONE_RETENTION_DAYS,
   CLIENT_CATEGORIES,
   LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE,
   balanceKindsFor,
@@ -1466,14 +1466,11 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
   revalidatePath("/task");
 }
 
-// Elimina i task "done" completati da più di TASK_DONE_RETENTION_DAYS giorni.
-// Chiamata in modo lazy dalla pagina /task ad ogni caricamento: nessun cron necessario.
-export async function purgeExpiredDoneTasks() {
-  await requireUser();
-  const cutoff = new Date(
-    Date.now() - TASK_DONE_RETENTION_DAYS * 24 * 60 * 60 * 1000
-  );
-  await prisma.task.deleteMany({
-    where: { status: "done", completedAt: { lt: cutoff } },
-  });
+// Svuota l'archivio dei task (completati da più di 30 giorni): solo super admin.
+// I task archiviati sono comunque eliminati dal timer di conservazione dopo un anno.
+export async function emptyTaskArchive(): Promise<ActionResult> {
+  const user = await requireSuperAdmin();
+  await purgeTaskArchive(user);
+  revalidatePath("/task");
+  return undefined;
 }

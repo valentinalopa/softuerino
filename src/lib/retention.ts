@@ -2,10 +2,12 @@ import { randomBytes } from "crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
+import { expiredTaskWhere } from "@/lib/task-archive";
 
 // Conservazione dei dati personali (informativa privacy, sezione 8):
 // - rapporto cessato: 10 anni da deactivatedAt, poi l'utente è anonimizzato;
-// - richieste di nuovo account non approvate: 12 mesi.
+// - richieste di nuovo account non approvate: 12 mesi;
+// - task completati: 365 giorni dal completamento (prima sono in archivio).
 // Conta la cessazione, non l'età del dato: chi è attivo non si tocca mai.
 export const USER_RETENTION_YEARS = 10;
 export const ACCOUNT_REQUEST_RETENTION_MONTHS = 12;
@@ -39,7 +41,7 @@ export function nextDeactivatedAt(
 export async function computeRetention(
   now: Date,
   db: PrismaClient = prisma
-): Promise<{ expiredUserIds: string[]; expiredAccountRequestIds: string[] }> {
+): Promise<{ expiredUserIds: string[]; expiredAccountRequestIds: string[]; expiredTaskCount: number }> {
   const users = await db.user.findMany({
     where: {
       active: false,
@@ -56,9 +58,11 @@ export async function computeRetention(
     },
     select: { id: true },
   });
+  const expiredTaskCount = await db.task.count({ where: expiredTaskWhere(now) });
   return {
     expiredUserIds: users.map((u) => u.id),
     expiredAccountRequestIds: requests.map((r) => r.id),
+    expiredTaskCount,
   };
 }
 
@@ -66,14 +70,19 @@ export async function applyRetention(
   now: Date,
   apply: boolean,
   db: PrismaClient = prisma
-): Promise<{ users: number; accountRequests: number; applied: boolean }> {
-  const { expiredUserIds, expiredAccountRequestIds } = await computeRetention(now, db);
+): Promise<{ users: number; accountRequests: number; tasks: number; applied: boolean }> {
+  const { expiredUserIds, expiredAccountRequestIds, expiredTaskCount } = await computeRetention(now, db);
   const result = {
     users: expiredUserIds.length,
     accountRequests: expiredAccountRequestIds.length,
+    tasks: expiredTaskCount,
     applied: false,
   };
   if (!apply) return result;
+
+  // Task completati da più di un anno (prima dell'anonimizzazione: gli
+  // assegnatari dei task scadono con il task, non con l'utente).
+  if (expiredTaskCount > 0) await db.task.deleteMany({ where: expiredTaskWhere(now) });
 
   for (const userId of expiredUserIds) {
     // Hash casuale mai comunicato: l'account anonimizzato non può più entrare.

@@ -93,7 +93,7 @@ describe("conservazione", () => {
   it("dry-run: conteggi > 0 ma nessuna riga cambia (Review Focus 5)", async () => {
     const before = await Promise.all([prisma.user.count(), prisma.leaveRequest.count(), prisma.accountRequest.count()]);
     const r = await applyRetention(NOW, false);
-    assert.deepEqual(r, { users: 1, accountRequests: 2, applied: false });
+    assert.deepEqual(r, { users: 1, accountRequests: 2, tasks: 0, applied: false });
     const after = await Promise.all([prisma.user.count(), prisma.leaveRequest.count(), prisma.accountRequest.count()]);
     assert.deepEqual(after, before);
     const u = await prisma.user.findUniqueOrThrow({ where: { id: "scaduto" } });
@@ -102,7 +102,7 @@ describe("conservazione", () => {
 
   it("apply: anonimizza solo l'utente scaduto e cancella le richieste vecchie", async () => {
     const r = await applyRetention(NOW, true);
-    assert.deepEqual(r, { users: 1, accountRequests: 2, applied: true });
+    assert.deepEqual(r, { users: 1, accountRequests: 2, tasks: 0, applied: true });
 
     const u = await prisma.user.findUniqueOrThrow({ where: { id: "scaduto" }, omit: { passwordHash: false } });
     assert.equal(u.name, "Utente rimosso");
@@ -127,6 +127,6 @@ describe("conservazione", () => {
   });
 
   it("seconda esecuzione: niente da fare (idempotente)", async () => {
-    assert.deepEqual(await applyRetention(NOW, true), { users: 0, accountRequests: 0, applied: true });
+    assert.deepEqual(await applyRetention(NOW, true), { users: 0, accountRequests: 0, tasks: 0, applied: true });
   });
 });
