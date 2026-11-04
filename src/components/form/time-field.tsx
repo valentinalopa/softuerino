@@ -17,10 +17,12 @@ const SLOTS = Array.from({ length: 24 * 4 }, (_, i) => {
 });
 
 export function TimeField({
+  id,
   value,
   onChange,
   className,
 }: {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   className?: string;
@@ -28,14 +30,15 @@ export function TimeField({
   return (
     <Select
       items={SLOTS.map((slot) => ({ value: slot, label: slot }))}
-      value={value}
+      value={value || null}
       onValueChange={(next) => next && onChange(next)}
     >
       <SelectTrigger
+        id={id}
         className={cn("gap-1.5 font-normal", className)}
       >
         <ClockIcon className="size-4 shrink-0 text-muted-foreground" />
-        <SelectValue />
+        <SelectValue placeholder="--:--" className="tabular-nums data-placeholder:text-muted-foreground" />
       </SelectTrigger>
       <SelectContent align="start" alignItemWithTrigger={false}>
         {SLOTS.map((slot) => (

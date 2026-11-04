@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NativeSelectField } from "@/components/form/native-select-field";
 import { DateField } from "@/components/form/date-field";
+import { TimeField } from "@/components/form/time-field";
 import {
   Sheet,
   SheetBody,
@@ -207,26 +208,22 @@ export function NewLeaveRequestDialog({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="new-request-startTime">Dalle</Label>
-                    <Input
+                    <input type="hidden" name="startTime" value={startTime} />
+                    <TimeField
                       id="new-request-startTime"
-                      name="startTime"
-                      type="time"
-                      step={900}
-                      required
                       value={startTime}
-                      onChange={(event) => setStartTime(event.target.value)}
+                      onChange={setStartTime}
+                      className="w-full"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="new-request-endTime">Alle</Label>
-                    <Input
+                    <input type="hidden" name="endTime" value={endTime} />
+                    <TimeField
                       id="new-request-endTime"
-                      name="endTime"
-                      type="time"
-                      step={900}
-                      required
                       value={endTime}
-                      onChange={(event) => setEndTime(event.target.value)}
+                      onChange={setEndTime}
+                      className="w-full"
                     />
                   </div>
                 </div>
