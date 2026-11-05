@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { MOBILE_REQUEST_HEADER, SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 
 // /privacy: informativa privacy, si legge anche senza accedere.
 const PUBLIC_PATHS = ["/login", "/privacy"];
@@ -17,20 +17,26 @@ export function proxy(request: NextRequest) {
     request.cookies.get(SESSION_COOKIE_NAME)?.value
   );
   // Le route del login con Keycloak servono proprio a chi non ha una sessione.
+  // API dell'app iPhone: autenticata dal token Bearer dentro ogni route
+  // (withMobileAuth), risponde 401 JSON invece di reindirizzare a /login.
+  const isMobileApi = request.nextUrl.pathname.startsWith("/api/mobile/");
   const isPublicPath =
     PUBLIC_PATHS.includes(request.nextUrl.pathname) ||
     request.nextUrl.pathname.startsWith("/api/auth/oidc/") ||
     // Avvisi giornalieri: autenticati con CRON_SECRET, non con la sessione.
     request.nextUrl.pathname.startsWith("/api/cron/") ||
-    // API dell'app iPhone: autenticata dal token Bearer dentro ogni route
-    // (withMobileAuth), risponde 401 JSON invece di reindirizzare a /login.
-    request.nextUrl.pathname.startsWith("/api/mobile/");
+    isMobileApi;
 
   if (!hasSession && !isPublicPath) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  return NextResponse.next();
+  // L'header interno che abilita il Bearer lo decide solo il proxy: quello in
+  // arrivo dal client si toglie sempre, poi si imposta solo sotto /api/mobile/.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(MOBILE_REQUEST_HEADER);
+  if (isMobileApi) requestHeaders.set(MOBILE_REQUEST_HEADER, "1");
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

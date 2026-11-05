@@ -32,6 +32,8 @@ function env() {
       .map((uri) => uri.trim())
       .filter(Boolean),
     allowedGroup: (process.env.OIDC_ALLOWED_GROUP ?? "").replace(/^\/+/, ""),
+    // Client pubblico dell'app iPhone: solo da ambiente, mai scritto su file.
+    mobileClientId: process.env.MOBILE_OIDC_CLIENT_ID || "softuerino-ios",
   };
 }
 
@@ -63,23 +65,37 @@ export function isSsoManaged(user: { oidcSubject: string | null }) {
 
 // Discovery una sola volta per processo; se fallisce (Keycloak giù) si
 // riprova alla richiesta successiva.
-let configPromise: Promise<client.Configuration> | null = null;
+// Due client Keycloak: "web" (confidenziale, con secret) e "ios" (app iPhone,
+// pubblico: nessun secret, solo PKCE; id da MOBILE_OIDC_CLIENT_ID).
+export type OidcClientKind = "web" | "ios";
 
-function getConfig() {
-  if (!configPromise) {
-    const { issuer, clientId, clientSecret } = env();
-    configPromise = client
+// Redirect URI dell'app iPhone (schema personalizzato registrato sul client).
+export const MOBILE_REDIRECT_URI = "it.colibrivision.softuerino://oauth";
+
+const configPromises: Record<OidcClientKind, Promise<client.Configuration> | null> = {
+  web: null,
+  ios: null,
+};
+
+function getConfig(kind: OidcClientKind = "web") {
+  if (!configPromises[kind]) {
+    const { issuer, clientId, clientSecret, mobileClientId } = env();
+    configPromises[kind] = client
       // timeout (secondi) anche per le richieste successive: se Keycloak è lento
       // una pagina non resta appesa (vedi refreshOidcSession).
-      .discovery(new URL(issuer), clientId, undefined, client.ClientSecretBasic(clientSecret), {
-        timeout: 5,
-      })
+      .discovery(
+        new URL(issuer),
+        kind === "ios" ? mobileClientId : clientId,
+        undefined,
+        kind === "ios" ? client.None() : client.ClientSecretBasic(clientSecret),
+        { timeout: 5 }
+      )
       .catch((err) => {
-        configPromise = null;
+        configPromises[kind] = null;
         throw err;
       });
   }
-  return configPromise;
+  return configPromises[kind];
 }
 
 // Dati del flusso salvati nel cookie temporaneo tra login e callback, compreso
@@ -113,6 +129,7 @@ export type OidcLoginError =
   | "email_unverified" // email assente o non verificata da Keycloak
   | "account_conflict" // l'email è già legata a un altro account Keycloak
   | "inactive" // utente disattivato in Softuerino
+  | "first_login_required" // solo app iPhone: primo accesso da fare prima dal web
   | "failed"; // errore di protocollo, token non valido, Keycloak irraggiungibile
 
 export class OidcError extends Error {
@@ -154,6 +171,56 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
   } catch (err) {
     throw new OidcError("failed", err instanceof Error ? err.message : String(err));
   }
+  return resolveOidcUser(claims, tokens);
+}
+
+// Scambio del codice del client mobile (app iPhone, Authorization Code + PKCE,
+// client pubblico): stessa verifica di firma, issuer, audience e scadenza di
+// openid-client. Il redirect_uri è già stato controllato da chi chiama. Non
+// c'è uno state da confrontare (lo gestisce l'app); un eventuale nonce usato
+// nella richiesta di autorizzazione va passato, altrimenti l'ID token con nonce
+// viene rifiutato.
+export async function exchangeCode(
+  code: string,
+  verifier: string,
+  redirectUri: string,
+  nonce?: string
+): Promise<{ claims: client.IDToken; tokens: OidcTokens }> {
+  try {
+    const config = await getConfig("ios");
+    const currentUrl = new URL(redirectUri);
+    currentUrl.searchParams.set("code", code);
+    // Keycloak lo allega alla risposta di autorizzazione (RFC 9207): l'app ci
+    // passa solo il codice, quindi lo ricostruiamo.
+    currentUrl.searchParams.set("iss", config.serverMetadata().issuer);
+    const response = await client.authorizationCodeGrant(config, currentUrl, {
+      pkceCodeVerifier: verifier,
+      idTokenExpected: true,
+      ...(nonce ? { expectedNonce: nonce } : {}),
+    });
+    const claims = response.claims();
+    if (!claims) throw new Error("ID token assente");
+    return {
+      claims,
+      tokens: {
+        idToken: response.id_token ?? null,
+        refreshToken: response.refresh_token ?? null,
+        sid: typeof claims.sid === "string" ? claims.sid : null,
+      },
+    };
+  } catch (err) {
+    throw new OidcError("failed", err instanceof Error ? err.message : String(err));
+  }
+}
+
+// Dai claim verificati all'utente Softuerino da far entrare. Con
+// provision=false (app iPhone) entra solo chi ha già fatto il primo accesso dal
+// web: niente collegamento per email né creazione di nuovi utenti.
+export async function resolveOidcUser(
+  claims: client.IDToken | undefined,
+  tokens: OidcTokens,
+  { provision = true }: { provision?: boolean } = {}
+) {
   if (!claims?.sub) {
     throw new OidcError("failed", "ID token senza sub");
   }
@@ -196,6 +263,9 @@ export async function completeOidcLogin(callbackParams: URLSearchParams, flow: O
     await syncUserOrg(user.id, claims);
     return { user, tokens };
   }
+
+  // Dall'app iPhone il primo accesso (collegamento/creazione) non si fa.
+  if (!provision) throw new OidcError("first_login_required");
 
   // 2. Primo login: collegamento per email, solo se Keycloak la garantisce.
   if (!email || claims.email_verified !== true) {
@@ -261,14 +331,15 @@ export async function buildOidcLogoutUrl(idToken: string | null, host: string | 
 // scaduta o revocata). "unavailable": Keycloak irraggiungibile o in errore,
 // si riproverà: non è un motivo per buttare fuori l'utente.
 export async function refreshOidcSession(
-  refreshToken: string
+  refreshToken: string,
+  kind: OidcClientKind = "web"
 ): Promise<
   | { status: "ok"; tokens: OidcTokens; claims: Record<string, unknown> | null }
   | { status: "ended" }
   | { status: "unavailable" }
 > {
   try {
-    const config = await getConfig();
+    const config = await getConfig(kind);
     const response = await client.refreshTokenGrant(config, refreshToken);
     return {
       status: "ok",
@@ -318,7 +389,8 @@ export async function verifyBackchannelLogoutToken(logoutToken: string) {
 
   const { payload } = await jwtVerify(logoutToken, jwks.set, {
     issuer: metadata.issuer,
-    audience: env().clientId,
+    // Logout token destinato al client web o a quello dell'app iPhone.
+    audience: [env().clientId, env().mobileClientId],
     algorithms: ASYMMETRIC_ALGS,
     maxTokenAge: "2 minutes", // iat recente
     clockTolerance: 30,

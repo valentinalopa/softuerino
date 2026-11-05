@@ -41,7 +41,16 @@ function isNextRedirect(err: unknown) {
   );
 }
 
-export function withMobileAuth<T>(handler: (ctx: AuthContext, req: Request) => Promise<T>) {
+export const SUPER_ADMIN_PUBLIC_MESSAGE =
+  "I super admin non possono accedere dal percorso pubblico: usa la VPN o l'ufficio.";
+
+// allowPublicSuperAdmin: solo per il logout, che revoca e non concede nulla: un
+// super admin con un token emesso da rete interna deve poterlo revocare anche
+// da fuori.
+export function withMobileAuth<T>(
+  handler: (ctx: AuthContext, req: Request) => Promise<T>,
+  { allowPublicSuperAdmin = false }: { allowPublicSuperAdmin?: boolean } = {}
+) {
   return async (req: Request): Promise<Response> => {
     try {
       // Solo Bearer: senza header (anche con cookie web valido) → 401.
@@ -53,12 +62,8 @@ export function withMobileAuth<T>(handler: (ctx: AuthContext, req: Request) => P
       const ctx = await getAuthContext();
       if (!ctx) return unauthorized();
 
-      if (ctx.realUser.role === "super_admin" && (await isPublicRequest())) {
-        return apiError(
-          403,
-          "forbidden",
-          "I super admin non possono accedere dal percorso pubblico: usa la VPN o l'ufficio."
-        );
+      if (!allowPublicSuperAdmin && ctx.realUser.role === "super_admin" && (await isPublicRequest())) {
+        return apiError(403, "forbidden", SUPER_ADMIN_PUBLIC_MESSAGE);
       }
 
       const result = await handler(ctx, req);

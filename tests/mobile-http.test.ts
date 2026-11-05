@@ -7,7 +7,14 @@ import { beforeEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
 import { prisma } from "../src/lib/prisma";
 import { SESSION_COOKIE_NAME } from "../src/lib/auth/constants";
-import { createSession, issueSessionToken } from "../src/lib/auth/session";
+import {
+  createSession,
+  getAuthContext,
+  getSession,
+  issueSessionToken,
+  revokeBearerSession,
+} from "../src/lib/auth/session";
+import { POST as postLogout } from "../src/app/api/mobile/v1/auth/logout/route";
 import { ForbiddenError } from "../src/lib/task-archive";
 import { NotFoundError, withMobileAuth } from "../src/lib/mobile/http";
 import { GET as getMe } from "../src/app/api/mobile/v1/me/route";
@@ -153,5 +160,77 @@ describe("proxy: /api/mobile/ esente dal redirect a /login", () => {
   it("un percorso che somiglia soltanto (/api/mobilex) non è esente", () => {
     const res = proxy(new NextRequest("https://time.test/api/mobilex"));
     assert.equal(res.status, 307);
+  });
+});
+
+describe("header interno del Bearer: lo decide solo il proxy", () => {
+  const HEADER = "x-softuerino-mobile";
+  const passed = (res: Response) => (res.headers.get("x-middleware-override-headers") ?? "").split(",");
+  const sent = (res: Response) => res.headers.get(`x-middleware-request-${HEADER}`);
+
+  beforeEach(async () => {
+    await prisma.impersonationLog.deleteMany();
+    await prisma.session.deleteMany();
+    await prisma.user.deleteMany({ where: { email: { endsWith: "@example.test" } } });
+    setRequest();
+  });
+
+  it("sotto /api/mobile/ il proxy imposta l'header a 1, anche se il client ne manda uno diverso", () => {
+    const res = proxy(new NextRequest("https://time.test/api/mobile/v1/me", { headers: { [HEADER]: "0" } }));
+    assert.equal(sent(res), "1");
+  });
+
+  it("header interno falsificato dal client su una pagina web → tolto dal proxy", () => {
+    const res = proxy(
+      new NextRequest("https://time.test/impostazioni", {
+        headers: { [HEADER]: "1", cookie: `${SESSION_COOKIE_NAME}=qualsiasi` },
+      })
+    );
+    assert.ok(!passed(res).includes(HEADER));
+    assert.equal(sent(res), null);
+  });
+
+  it("header interno falsificato su /api/vpn → tolto dal proxy", () => {
+    const res = proxy(
+      new NextRequest("https://time.test/api/vpn/x/config", {
+        headers: { [HEADER]: "1", cookie: `${SESSION_COOKIE_NAME}=qualsiasi` },
+      })
+    );
+    assert.ok(!passed(res).includes(HEADER));
+  });
+
+  it("Bearer valido su una pagina web o in /api/vpn (senza header del proxy) → nessuna sessione", async () => {
+    const user = await makeUser("w1");
+    const token = await iosToken(user.id);
+    setRequest({ bearer: token, mobile: false });
+    assert.equal(await getSession(), null);
+    assert.equal(await getAuthContext(), null);
+    // Stessa richiesta con l'header del proxy: la sessione c'è (prova che il rifiuto è per l'header).
+    setRequest({ bearer: token });
+    assert.equal((await getSession())?.userId, user.id);
+  });
+
+  it("Bearer + cookie web: fuori da /api/mobile/ vale solo il cookie, il Bearer non fa entrare nessuno", async () => {
+    const user = await makeUser("w2");
+    const token = await iosToken(user.id);
+    setRequest({ bearer: token, mobile: false, cookie: [SESSION_COOKIE_NAME, "cookie-inesistente"] });
+    assert.equal(await getSession(), null);
+  });
+
+  it("revokeBearerSession senza header del proxy non revoca nulla", async () => {
+    const user = await makeUser("w3");
+    const token = await iosToken(user.id);
+    setRequest({ bearer: token, mobile: false });
+    assert.equal(await revokeBearerSession(), false);
+    assert.equal(await prisma.session.count(), 1);
+  });
+
+  it("logout del super admin dal percorso pubblico: consentito (revoca soltanto)", async () => {
+    const user = await makeUser("w4", "super_admin");
+    const token = await iosToken(user.id);
+    setRequest({ bearer: token, headers: { "x-softuerino-network": "public" } });
+    const res = await postLogout(new Request("https://time.test/api/mobile/v1/auth/logout", { method: "POST" }));
+    assert.equal(res.status, 204);
+    assert.equal(await prisma.session.count(), 0);
   });
 });

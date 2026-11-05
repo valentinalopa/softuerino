@@ -10,9 +10,15 @@ export const requestState = {
   cookies: new Map<string, string>(),
 };
 
-export function setRequest(opts: { bearer?: string; cookie?: [string, string]; headers?: Record<string, string> } = {}) {
+// Con `bearer` simula una richiesta sotto /api/mobile/: l'header interno lo mette
+// il proxy (src/proxy.ts), qui lo aggiunge il test. `mobile: false` lo toglie per
+// simulare un Bearer su una pagina web; con `headers` si può anche falsificarlo.
+export function setRequest(
+  opts: { bearer?: string; mobile?: boolean; cookie?: [string, string]; headers?: Record<string, string> } = {}
+) {
   requestState.headers = new Headers(opts.headers ?? {});
   if (opts.bearer) requestState.headers.set("authorization", `Bearer ${opts.bearer}`);
+  if (opts.bearer && opts.mobile !== false) requestState.headers.set("x-softuerino-mobile", "1");
   requestState.cookies = new Map();
   if (opts.cookie) requestState.cookies.set(opts.cookie[0], opts.cookie[1]);
 }
@@ -40,6 +46,45 @@ const stubs: Record<string, unknown> = {
     redirect: (destination: string) => {
       throw new RedirectSignal(destination);
     },
+  },
+};
+
+// Finto openid-client: l'unico confine con Keycloak. I test decidono cosa
+// rispondono lo scambio del codice e il refresh, e leggono con quale client
+// (id e autenticazione) è stata fatta la chiamata.
+export class FakeResponseBodyError extends Error {
+  constructor(readonly error: string) {
+    super(error);
+  }
+}
+type FakeConfig = { clientId: string; auth: string };
+export const openidMock = {
+  refreshImpl: async (_config: FakeConfig, _refreshToken: string): Promise<unknown> => ({
+    id_token: null,
+    refresh_token: "nuovo-rt",
+    claims: () => undefined,
+  }),
+  codeImpl: async (_config: FakeConfig, _url: URL, _checks: Record<string, unknown>): Promise<unknown> => {
+    throw new Error("codeImpl non impostato");
+  },
+  calls: [] as { fn: string; clientId: string; auth: string; extra?: unknown }[],
+};
+stubs["openid-client"] = {
+  discovery: async (_issuer: URL, clientId: string, _meta: unknown, auth: { kind: string }) => ({
+    clientId,
+    auth: auth.kind,
+    serverMetadata: () => ({ issuer: "https://sso.test/realms/x", jwks_uri: "https://sso.test/jwks" }),
+  }),
+  ClientSecretBasic: () => ({ kind: "secret" }),
+  None: () => ({ kind: "none" }),
+  ResponseBodyError: FakeResponseBodyError,
+  refreshTokenGrant: async (config: FakeConfig, rt: string) => {
+    openidMock.calls.push({ fn: "refresh", clientId: config.clientId, auth: config.auth });
+    return openidMock.refreshImpl(config, rt);
+  },
+  authorizationCodeGrant: async (config: FakeConfig, url: URL, checks: Record<string, unknown>) => {
+    openidMock.calls.push({ fn: "code", clientId: config.clientId, auth: config.auth, extra: { url: url.href, checks } });
+    return openidMock.codeImpl(config, url, checks);
   },
 };
 

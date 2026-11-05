@@ -4,7 +4,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { MOBILE_REQUEST_HEADER, SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 import { refreshOidcSession, type OidcTokens } from "@/lib/auth/oidc";
 import { syncUserOrg } from "@/lib/departments";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
@@ -155,6 +155,7 @@ const SSO_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 async function verifySsoSession(session: {
   id: string;
   userId: string;
+  client: string;
   authMethod: string | null;
   refreshToken: string | null;
   ssoCheckedAt: Date | null;
@@ -174,7 +175,9 @@ async function verifySsoSession(session: {
   const refreshToken = openToken(session.refreshToken);
   if (!refreshToken) return true;
 
-  const result = await refreshOidcSession(refreshToken);
+  // Il refresh_token appartiene al client che ha fatto il login: web
+  // (confidenziale) o ios (pubblico).
+  const result = await refreshOidcSession(refreshToken, session.client === "ios" ? "ios" : "web");
   if (result.status === "ended") {
     await prisma.$transaction([
       closeImpersonationLogs(session.id),
@@ -204,14 +207,18 @@ function bearerFrom(header: string | null) {
   return match ? match[1] : null;
 }
 
-// Se la richiesta porta un header Authorization vale solo quello (Bearer valido
-// = sessione "ios", altrimenti nessuna sessione): il cookie web viene ignorato.
-// Senza header si usa il cookie, che vale solo per le sessioni "web".
+// Il Bearer vale SOLO sulle richieste sotto /api/mobile/, riconosciute
+// dall'header interno impostato da src/proxy.ts (mai dal client). Lì, se c'è un
+// header Authorization, vale solo quello (Bearer valido = sessione "ios",
+// altrimenti nessuna sessione) e il cookie web viene ignorato. Ovunque altrove
+// il Bearer è ignorato e si usa il cookie, che vale solo per le sessioni "web".
 export const getSession = cache(async () => {
-  const authorization = (await headers()).get("authorization");
+  const requestHeaders = await headers();
+  const authorization = requestHeaders.get("authorization");
+  const isMobileRequest = requestHeaders.get(MOBILE_REQUEST_HEADER) === "1";
   let token: string | null | undefined;
   let expectedClient: SessionClient;
-  if (authorization !== null) {
+  if (isMobileRequest && authorization !== null) {
     token = bearerFrom(authorization);
     expectedClient = "ios";
   } else {
@@ -235,9 +242,9 @@ export const getSession = cache(async () => {
   ) {
     return null;
   }
-  // Le sessioni dell'app iPhone non si verificano con il refresh_token: la
-  // revoca arriva dal back-channel logout, dal logout e dalla disattivazione.
-  if (session.client === "web" && !(await verifySsoSession(session))) {
+  // Anche le sessioni dell'app iPhone si verificano con Keycloak (ogni 5 minuti
+  // al massimo), con il client mobile: vedi verifySsoSession.
+  if (!(await verifySsoSession(session))) {
     return null;
   }
   if (session.lastSeenAt.getTime() < now - LAST_SEEN_REFRESH_MS) {
@@ -433,6 +440,25 @@ export async function destroySession(): Promise<{ sso: boolean; idToken: string 
 
   cookieStore.delete(SESSION_COOKIE_NAME);
   return { sso, idToken };
+}
+
+// Logout dell'app iPhone: revoca la sessione del token Bearer della richiesta.
+// Restituisce false se non c'era (già scaduta o revocata).
+export async function revokeBearerSession() {
+  const requestHeaders = await headers();
+  if (requestHeaders.get(MOBILE_REQUEST_HEADER) !== "1") return false;
+  const token = bearerFrom(requestHeaders.get("authorization"));
+  if (!token) return false;
+  const session = await prisma.session.findUnique({
+    where: { token: hashToken(token) },
+    select: { id: true, client: true },
+  });
+  if (!session || session.client !== "ios") return false;
+  await prisma.$transaction([
+    closeImpersonationLogs(session.id),
+    prisma.session.delete({ where: { id: session.id } }),
+  ]);
+  return true;
 }
 
 // Back-channel logout: chiude tutte le sessioni Softuerino della sessione

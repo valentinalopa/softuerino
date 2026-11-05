@@ -1,13 +1,21 @@
 // Eseguire con un DB di prova (mai quello di produzione):
 //   DATABASE_URL=file:/tmp/softuerino-test/t.db npx prisma migrate deploy
 //   DATABASE_URL=file:/tmp/softuerino-test/t.db npx tsx --test tests/mobile-session.test.ts
-import { setRequest } from "./helpers/next-stubs";
+import { FakeResponseBodyError, openidMock, setRequest } from "./helpers/next-stubs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { beforeEach, describe, it } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { SESSION_COOKIE_NAME } from "../src/lib/auth/constants";
 import { createSession, getSession, issueSessionToken, revokeOidcSessions } from "../src/lib/auth/session";
+
+// Configurazione SSO di prova (valori finti): il refresh token si salva solo cifrato.
+process.env.OIDC_ISSUER = "https://sso.test/realms/x";
+process.env.OIDC_CLIENT_ID = "softuerino";
+process.env.OIDC_CLIENT_SECRET = "segreto-di-prova";
+process.env.OIDC_REDIRECT_URI = "https://time.test/api/auth/oidc/callback";
+process.env.SETTINGS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+delete process.env.MOBILE_OIDC_CLIENT_ID; // default softuerino-ios
 
 const DAY = 24 * 60 * 60 * 1000;
 const hash = (t: string) => createHash("sha256").update(t).digest("hex");
@@ -110,12 +118,71 @@ describe("sessione con token Bearer (client ios)", () => {
     assert.ok(await getSession());
   });
 
-  it("le sessioni ios non vengono verificate con il refresh token del client web", async () => {
-    const user = await makeUser("m9");
-    const { token } = await issueSessionToken(user.id, { authMethod: "oidc", client: "ios", refreshToken: "rt" });
-    await prisma.session.update({ where: { token: hash(token) }, data: { ssoCheckedAt: new Date(Date.now() - DAY) } });
+});
+
+describe("verifica SSO delle sessioni (refresh con il client giusto)", () => {
+  beforeEach(async () => {
+    await prisma.impersonationLog.deleteMany();
+    await prisma.session.deleteMany();
+    await prisma.user.deleteMany({ where: { email: { endsWith: "@example.test" } } });
+    openidMock.calls.length = 0;
+    openidMock.refreshImpl = async () => ({ id_token: null, refresh_token: "nuovo-rt", claims: () => undefined });
+    setRequest();
+  });
+
+  async function staleSession(userId: string, client: "web" | "ios") {
+    const { token } = await issueSessionToken(userId, { authMethod: "oidc", client, refreshToken: "rt-vecchio" });
+    const old = new Date(Date.now() - 10 * 60 * 1000); // oltre i 5 minuti
+    await prisma.session.update({ where: { token: hash(token) }, data: { ssoCheckedAt: old } });
+    return { token, old };
+  }
+
+  it("ios: refresh con il client mobile pubblico (senza secret) e sessione valida", async () => {
+    const user = await makeUser("s1");
+    const { token } = await staleSession(user.id, "ios");
     setRequest({ bearer: token });
-    assert.ok(await getSession()); // nessuna chiamata a Keycloak: sarebbe fallita
+    assert.ok(await getSession());
+    assert.deepEqual(openidMock.calls.map((c) => [c.fn, c.clientId, c.auth]), [["refresh", "softuerino-ios", "none"]]);
+  });
+
+  it("web: refresh con il client web confidenziale (invariato)", async () => {
+    const user = await makeUser("s2");
+    const { token } = await staleSession(user.id, "web");
+    setRequest({ cookie: [SESSION_COOKIE_NAME, token] });
+    assert.ok(await getSession());
+    assert.deepEqual(openidMock.calls.map((c) => [c.fn, c.clientId, c.auth]), [["refresh", "softuerino", "secret"]]);
+  });
+
+  it("ios con sessione Keycloak terminata (invalid_grant) → sessione cancellata", async () => {
+    const user = await makeUser("s3");
+    const { token } = await staleSession(user.id, "ios");
+    openidMock.refreshImpl = async () => {
+      throw new FakeResponseBodyError("invalid_grant");
+    };
+    setRequest({ bearer: token });
+    assert.equal(await getSession(), null);
+    assert.equal(await prisma.session.count({ where: { token: hash(token) } }), 0);
+  });
+
+  it("ios con Keycloak irraggiungibile → la sessione resta e si riprova", async () => {
+    const user = await makeUser("s4");
+    const { token, old } = await staleSession(user.id, "ios");
+    openidMock.refreshImpl = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+    setRequest({ bearer: token });
+    assert.ok(await getSession());
+    const row = await prisma.session.findUnique({ where: { token: hash(token) } });
+    assert.ok(row);
+    assert.equal(row.ssoCheckedAt?.getTime(), old.getTime());
+  });
+
+  it("ios con verifica recente (<5 minuti) → nessuna chiamata a Keycloak", async () => {
+    const user = await makeUser("s5");
+    const { token } = await issueSessionToken(user.id, { authMethod: "oidc", client: "ios", refreshToken: "rt" });
+    setRequest({ bearer: token });
+    assert.ok(await getSession());
+    assert.equal(openidMock.calls.length, 0);
   });
 });
 
