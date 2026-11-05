@@ -6,8 +6,7 @@ import {
   resolveOidcUser,
 } from "@/lib/auth/oidc";
 import { issueSessionToken } from "@/lib/auth/session";
-import { apiError, SUPER_ADMIN_PUBLIC_MESSAGE } from "@/lib/mobile/http";
-import { isPublicRequest } from "@/lib/network";
+import { apiError } from "@/lib/mobile/http";
 
 type Deps = { exchangeCode: typeof realExchangeCode };
 
@@ -41,11 +40,9 @@ export async function mobileTokenLogin(
     // provision=false: dall'app non si collegano né si creano utenti.
     const { user } = await resolveOidcUser(claims, tokens, { provision: false });
 
-    // Stessa regola del web (decisione #88): il super admin non entra dal
-    // percorso pubblico, quindi non riceve nemmeno il token.
-    if (user.role === "super_admin" && (await isPublicRequest())) {
-      return apiError(403, "forbidden", SUPER_ADMIN_PUBLIC_MESSAGE);
-    }
+    // Il super admin riceve il token anche da fuori rete: la sessione mobile
+    // segue la stessa regola del web (getAuthContext lo tratta da membro se la
+    // richiesta non arriva da una rete fidata, elemento #310).
 
     // Si conserva solo il refresh_token (cifrato) per la verifica periodica con
     // Keycloak; l'id_token all'app non serve (minimizzazione).

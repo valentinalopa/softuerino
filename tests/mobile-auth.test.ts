@@ -125,20 +125,20 @@ describe("login mobile (code + PKCE)", () => {
     assert.equal(await prisma.session.count(), 0);
   });
 
-  it("super admin dal percorso pubblico → 403 e nessun token; da rete interna → token emesso", async () => {
+  it("super admin: il token si emette anche dal pubblico (nessun 403), ma da lì la sessione vale da membro", async () => {
     const admin = await prisma.user.create({
       data: { id: "sa1", name: "SA1", email: "sa1@example.test", passwordHash: "x", role: "super_admin", oidcSubject: "sub-sa1" },
     });
     setRequest({ headers: { "x-softuerino-network": "public" } });
-    const denied = await mobileTokenLogin(goodBody, { exchangeCode: okExchange("sub-sa1", admin.email) });
-    assert.equal(denied.status, 403);
-    assert.equal((await denied.json()).error, "forbidden");
-    assert.equal(await prisma.session.count(), 0);
-
-    setRequest();
-    const ok = await mobileTokenLogin(goodBody, { exchangeCode: okExchange("sub-sa1", admin.email) });
-    assert.equal(ok.status, 200);
+    const fromPublic = await mobileTokenLogin(goodBody, { exchangeCode: okExchange("sub-sa1", admin.email) });
+    assert.equal(fromPublic.status, 200);
+    const { token } = await fromPublic.json();
     assert.equal(await prisma.session.count(), 1);
+    // con quel token, dal pubblico: membro; da una rete fidata: super admin
+    setRequest({ bearer: token, headers: { "x-real-ip": "192.168.40.142", "x-softuerino-network": "public" } });
+    assert.equal((await (await getMe(new Request("https://time.test/api/mobile/v1/me"))).json()).superAdminActive, false);
+    setRequest({ bearer: token, headers: { "x-real-ip": "192.168.11.5" } });
+    assert.equal((await (await getMe(new Request("https://time.test/api/mobile/v1/me"))).json()).superAdminActive, true);
   });
 
   it("un admin (non super) dal percorso pubblico ottiene il token", async () => {

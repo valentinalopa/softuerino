@@ -79,6 +79,8 @@ describe("withMobileAuth e GET /me", () => {
       name: user.name,
       email: user.email,
       role: "membro",
+      hasSuperAdminRole: false,
+      superAdminActive: false,
       managedDepartments: [{ id: dep.id, name: "T-Reparto" }],
     });
   });
@@ -98,15 +100,47 @@ describe("withMobileAuth e GET /me", () => {
     assert.equal((await getMe(req())).status, 401);
   });
 
-  it("super admin dal percorso pubblico → 403; da rete interna → 200", async () => {
+  it("super admin con Bearer: dal pubblico è membro (superAdminActive=false), da 11.0/1.0/5.0 è super admin (true)", async () => {
     const user = await makeUser("a6", "super_admin");
     const token = await iosToken(user.id);
-    setRequest({ bearer: token, headers: { "x-softuerino-network": "public" } });
-    const denied = await getMe(req());
-    assert.equal(denied.status, 403);
-    assert.equal((await denied.json()).error, "forbidden");
-    setRequest({ bearer: token });
-    assert.equal((await getMe(req())).status, 200);
+    const publicHeaders = { "x-real-ip": "192.168.40.142", "x-softuerino-network": "public" };
+    // dal percorso pubblico: nessun 403, ma ruolo effettivo membro
+    setRequest({ bearer: token, headers: publicHeaders });
+    const outside = await getMe(req());
+    assert.equal(outside.status, 200);
+    const outsideBody = await outside.json();
+    assert.equal(outsideBody.role, "membro");
+    assert.equal(outsideBody.hasSuperAdminRole, true);
+    assert.equal(outsideBody.superAdminActive, false);
+    // senza X-Real-IP (fail-closed) e con X-Forwarded-For falsificato: ancora membro
+    setRequest({ bearer: token, headers: { "x-forwarded-for": "192.168.1.5" } });
+    assert.equal((await (await getMe(req())).json()).superAdminActive, false);
+    // dalle reti fidate: super admin attivo
+    for (const ip of ["192.168.11.5", "192.168.1.9", "192.168.5.7"]) {
+      setRequest({ bearer: token, headers: { "x-real-ip": ip } });
+      const inside = await getMe(req());
+      assert.equal(inside.status, 200);
+      const body = await inside.json();
+      assert.equal(body.role, "super_admin", ip);
+      assert.equal(body.hasSuperAdminRole, true, ip);
+      assert.equal(body.superAdminActive, true, ip);
+    }
+  });
+
+  it("admin: superAdminActive e hasSuperAdminRole restano falsi, da qualsiasi rete", async () => {
+    const user = await makeUser("a7", "admin");
+    const token = await iosToken(user.id);
+    const networks: Record<string, string>[] = [
+      { "x-real-ip": "192.168.11.5" },
+      { "x-real-ip": "192.168.40.142", "x-softuerino-network": "public" },
+    ];
+    for (const headers of networks) {
+      setRequest({ bearer: token, headers });
+      const body = await (await getMe(req())).json();
+      assert.equal(body.role, "admin");
+      assert.equal(body.hasSuperAdminRole, false);
+      assert.equal(body.superAdminActive, false);
+    }
   });
 
   it("admin dal percorso pubblico → 200 (il divieto vale solo per i super admin)", async () => {

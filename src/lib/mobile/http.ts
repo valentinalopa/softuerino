@@ -1,14 +1,13 @@
 import "server-only";
 import { headers } from "next/headers";
 import { getAuthContext } from "@/lib/auth/session";
-import { isPublicRequest } from "@/lib/network";
 import { ForbiddenError } from "@/lib/task-archive";
 
 // API dell'app iPhone (/api/mobile/v1). Autenticazione solo con
 // "Authorization: Bearer <token>": il cookie web non vale. I permessi restano
 // nelle funzioni lib/service chiamate dai gestori: qui non se ne aggiungono né
-// se ne tolgono, a parte il divieto per i super admin dal percorso pubblico
-// (decisione #88, come per il login con password).
+// se ne tolgono. Il ruolo effettivo lo decide getAuthContext come sul web: il
+// super admin fuori dalla rete interna fidata è un membro (elemento #310).
 
 export type AuthContext = NonNullable<Awaited<ReturnType<typeof getAuthContext>>>;
 
@@ -41,16 +40,7 @@ function isNextRedirect(err: unknown) {
   );
 }
 
-export const SUPER_ADMIN_PUBLIC_MESSAGE =
-  "I super admin non possono accedere dal percorso pubblico: usa la VPN o l'ufficio.";
-
-// allowPublicSuperAdmin: solo per il logout, che revoca e non concede nulla: un
-// super admin con un token emesso da rete interna deve poterlo revocare anche
-// da fuori.
-export function withMobileAuth<T>(
-  handler: (ctx: AuthContext, req: Request) => Promise<T>,
-  { allowPublicSuperAdmin = false }: { allowPublicSuperAdmin?: boolean } = {}
-) {
+export function withMobileAuth<T>(handler: (ctx: AuthContext, req: Request) => Promise<T>) {
   return async (req: Request): Promise<Response> => {
     try {
       // Solo Bearer: senza header (anche con cookie web valido) → 401.
@@ -62,9 +52,8 @@ export function withMobileAuth<T>(
       const ctx = await getAuthContext();
       if (!ctx) return unauthorized();
 
-      if (!allowPublicSuperAdmin && ctx.realUser.role === "super_admin" && (await isPublicRequest())) {
-        return apiError(403, "forbidden", SUPER_ADMIN_PUBLIC_MESSAGE);
-      }
+      // Il super admin fuori dalla rete interna è già un membro: lo decide
+      // getAuthContext, come sul web (elemento #310). Nessun 403 dedicato.
 
       const result = await handler(ctx, req);
       if (result instanceof Response) return result;
