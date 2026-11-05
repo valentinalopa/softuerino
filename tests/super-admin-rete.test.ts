@@ -11,6 +11,14 @@ import { SESSION_COOKIE_NAME } from "../src/lib/auth/constants";
 import { getAuthContext, requireAdmin, requireSuperAdmin } from "../src/lib/auth/session";
 import { isTrustedIp, isTrustedNetwork } from "../src/lib/network";
 import { loginAction } from "../src/lib/auth/actions";
+import { createUser, deleteLeaveRequest, deleteUser, emptyTaskArchive } from "../src/lib/actions";
+import { handleAccountRequest } from "../src/lib/accounts/actions";
+import { saveEmailSettings } from "../src/lib/email/actions";
+import { updateGeneralRules } from "../src/lib/roles/actions";
+import { requestUpdate, requestUpdateCheck } from "../src/lib/system/actions";
+import { createVpnSection } from "../src/lib/vpn/actions";
+import { accountForViewer } from "../src/lib/licenses/access";
+import { encryptSecret } from "../src/lib/crypto/secret-box";
 
 const hash = (t: string) => createHash("sha256").update(t).digest("hex");
 const DAY = 24 * 60 * 60 * 1000;
@@ -131,7 +139,7 @@ describe("isTrustedNetwork: solo X-Real-IP e blocco non pubblico", () => {
   });
 });
 
-describe("getAuthContext: il super admin da fuori rete è un membro", () => {
+describe("getAuthContext: il super admin da fuori rete è un admin", () => {
   beforeEach(async () => {
     await prisma.impersonationLog.deleteMany();
     await prisma.session.deleteMany();
@@ -139,30 +147,78 @@ describe("getAuthContext: il super admin da fuori rete è un membro", () => {
     setRequest();
   });
 
-  it("dal percorso pubblico: ruolo effettivo membro, nessun potere, ruolo nel DB intatto", async () => {
+  it("dal percorso pubblico: ruolo effettivo admin, poteri da super admin spenti, ruolo nel DB intatto", async () => {
     const { token, user } = await userWithSession("s1", "super_admin");
     asRequest(token, publicPath());
     const ctx = await getAuthContext();
     assert.ok(ctx);
-    assert.equal(ctx.realUser.role, "membro");
-    assert.equal(ctx.user.role, "membro");
+    assert.equal(ctx.realUser.role, "admin");
+    assert.equal(ctx.user.role, "admin");
     assert.equal(ctx.hasSuperAdminRole, true);
     assert.equal(ctx.superAdminActive, false);
     assert.equal((await prisma.user.findUnique({ where: { id: user.id } }))?.role, "super_admin");
   });
 
-  it("dal percorso pubblico: nessuna pagina o action da super admin né da admin (redirect a /)", async () => {
+  it("dal percorso pubblico: i Report (requireAdmin) restano accessibili, requireSuperAdmin no (redirect a /)", async () => {
     const { token } = await userWithSession("s2", "super_admin");
     asRequest(token, publicPath());
     assert.equal(await redirectTarget(() => requireSuperAdmin()), "/");
-    assert.equal(await redirectTarget(() => requireAdmin()), "/");
+    assert.equal(await redirectTarget(() => requireAdmin()), null);
+    assert.equal((await requireAdmin()).role, "admin");
   });
 
-  it("senza X-Real-IP → declassato (fail-closed)", async () => {
+  it("dal percorso pubblico restano negate le funzioni solo super admin: aggiornamenti, email, ruoli, VPN, svuota archivio, richieste di account, cancellazioni", async () => {
+    const { token } = await userWithSession("s2b", "super_admin");
+    asRequest(token, publicPath());
+    const denied: [string, () => Promise<unknown>][] = [
+      ["aggiornamenti", () => requestUpdate()],
+      ["controllo aggiornamenti", () => requestUpdateCheck()],
+      ["email/SMTP", () => saveEmailSettings(new FormData())],
+      ["ruoli e permessi", () => updateGeneralRules(new FormData())],
+      ["VPN", () => createVpnSection(new FormData())],
+      ["svuota archivio", () => emptyTaskArchive()],
+      ["richieste di account", () => handleAccountRequest("x", "done")],
+      ["cancella richiesta", () => deleteLeaveRequest("x")],
+    ];
+    for (const [name, fn] of denied) {
+      assert.equal(await redirectTarget(fn), "/", name);
+    }
+  });
+
+  it("dal percorso pubblico l'admin declassato non gestisce i super admin (come un admin vero)", async () => {
+    const { token } = await userWithSession("s2c", "super_admin");
+    const target = await prisma.user.create({
+      data: { id: "sa-target", name: "SA", email: "sa-target@example.test", passwordHash: "x", role: "super_admin" },
+    });
+    asRequest(token, publicPath());
+    const create = new FormData();
+    create.set("name", "Nuovo");
+    create.set("email", "nuovo-sa@example.test");
+    create.set("role", "super_admin");
+    create.set("password", "una-password-lunga-12345");
+    assert.match(String((await createUser(create) as { error?: string })?.error), /super admin/i);
+    assert.match(String((await deleteUser(target.id) as { error?: string })?.error), /super admin/i);
+    assert.ok(await prisma.user.findUnique({ where: { id: target.id } }));
+    assert.equal(await prisma.user.count({ where: { email: "nuovo-sa@example.test" } }), 0);
+  });
+
+  it("credenziali delle licenze: in chiaro solo con i poteri da super admin attivi", async () => {
+    process.env.SETTINGS_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+    const secret = encryptSecret("account-di-prova");
+    const { token } = await userWithSession("s2d", "super_admin");
+    asRequest(token, publicPath());
+    const outside = await getAuthContext();
+    assert.equal(accountForViewer(outside!.user, secret), null);
+    asRequest(token, local("192.168.11.5"));
+    const inside = await getAuthContext();
+    assert.equal(accountForViewer(inside!.user, secret), "account-di-prova");
+  });
+
+  it("senza X-Real-IP → declassato ad admin (fail-closed)", async () => {
     const { token } = await userWithSession("s3", "super_admin");
     asRequest(token, {});
     const ctx = await getAuthContext();
-    assert.equal(ctx?.user.role, "membro");
+    assert.equal(ctx?.user.role, "admin");
     assert.equal(ctx?.superAdminActive, false);
   });
 
@@ -184,10 +240,10 @@ describe("getAuthContext: il super admin da fuori rete è un membro", () => {
     }
   });
 
-  it("da una rete non ammessa (192.168.7.0/24) → declassato", async () => {
+  it("da una rete non ammessa (192.168.7.0/24) → declassato ad admin", async () => {
     const { token } = await userWithSession("s6", "super_admin");
     asRequest(token, local("192.168.7.9"));
-    assert.equal((await getAuthContext())?.user.role, "membro");
+    assert.equal((await getAuthContext())?.user.role, "admin");
   });
 
   it("admin e membro non cambiano con la rete; superAdminActive e hasSuperAdminRole restano falsi", async () => {
@@ -204,15 +260,16 @@ describe("getAuthContext: il super admin da fuori rete è un membro", () => {
     }
   });
 
-  it("impersonificazione: dal pubblico il super admin non impersona (user = se stesso come membro)", async () => {
+  it("impersonificazione: dal pubblico vale come per un admin (può impersonare un membro, in sola lettura)", async () => {
     const target = await prisma.user.create({
       data: { id: "t1", name: "T1", email: "t1@example.test", passwordHash: "x", role: "membro" },
     });
     const { token } = await userWithSession("s7", "super_admin", target.id);
     asRequest(token, publicPath());
     const ctx = await getAuthContext();
-    assert.equal(ctx?.impersonating, false);
-    assert.equal(ctx?.user.id, "s7");
+    assert.equal(ctx?.impersonating, true);
+    assert.equal(ctx?.user.id, "t1");
+    assert.equal(ctx?.realUser.role, "admin");
     asRequest(token, local("192.168.11.9"));
     const inside = await getAuthContext();
     assert.equal(inside?.impersonating, true);

@@ -341,7 +341,7 @@ export function AppSidebar({
           >
             {superAdminStatus === "active"
               ? "Super admin capabilities ok"
-              : "Super admin non attivo: accesso fuori dalla rete interna"}
+              : "Super admin non attivo: accesso fuori dalla rete interna (ruolo admin)"}
           </p>
         )}
         <SidebarMenu>

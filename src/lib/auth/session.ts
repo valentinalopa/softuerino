@@ -194,14 +194,16 @@ export const getAuthContext = cache(async () => {
   if (!session || !session.user.active) return null;
 
   // Poteri da super admin solo da rete interna fidata (decisione elemento
-  // #310): da fuori il super admin è trattato come un membro. È l'unico punto in
-  // cui il ruolo si declassa: tutti i controlli (requireSuperAdmin, requireAdmin,
-  // permessi, menu, impersonificazione) leggono il ruolo da qui. Il ruolo nel
-  // database non cambia.
+  // #310): da fuori il super admin è trattato come un admin (decisione elemento
+  // #314), quindi Report, Persone, Clienti e richieste restano accessibili, mentre
+  // Email, Aggiornamenti, Ruoli, VPN, gestione dei super admin e credenziali
+  // delle licenze no. È l'unico punto in cui il ruolo si declassa: tutti i
+  // controlli (requireSuperAdmin, requireAdmin, permessi, menu, impersonificazione)
+  // leggono il ruolo da qui. Il ruolo nel database non cambia.
   const hasSuperAdminRole = session.user.role === "super_admin";
   const superAdminActive = hasSuperAdminRole && (await isTrustedNetwork());
   const realUser =
-    hasSuperAdminRole && !superAdminActive ? { ...session.user, role: "membro" } : session.user;
+    hasSuperAdminRole && !superAdminActive ? { ...session.user, role: "admin" } : session.user;
   const target = session.impersonatedUser;
   const impersonating =
     isAdminRole(realUser.role) &&
