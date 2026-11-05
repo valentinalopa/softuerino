@@ -16,6 +16,7 @@ const EVENT_TYPE_TONES: Record<string, Tone> = {
   riunione: "aqua",
   riunione_cliente: "teal",
   shooting: "accent",
+  trasferta: "warning",
   altro: "neutral",
 };
 

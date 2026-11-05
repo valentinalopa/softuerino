@@ -156,13 +156,14 @@ export const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
   registrata: "Registrata",
 };
 
-export const EVENT_TYPES = ["riunione", "riunione_cliente", "shooting", "altro"] as const;
+export const EVENT_TYPES = ["riunione", "riunione_cliente", "shooting", "trasferta", "altro"] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   riunione: "Riunione di team",
   riunione_cliente: "Riunione cliente",
   shooting: "Shooting",
+  trasferta: "Evento con trasferta",
   altro: "Altro",
 };
 
