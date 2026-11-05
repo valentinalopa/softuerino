@@ -80,6 +80,9 @@ model Session {
   // Ultima attività (aggiornata al massimo una volta l'ora): senza attività per
   // qualche giorno la sessione scade anche prima di expiresAt.
   lastSeenAt DateTime @default(now())
+  // Chi la usa: "web" (cookie, inattività max 3 giorni) o "ios" (token Bearer
+  // dell'app iPhone, inattività max 30 giorni, rinnovata a ogni uso).
+  client String @default("web")
 
   // Come è nata la sessione: "password" o "oidc" (null = creata prima che si
   // registrasse). Per le sessioni "oidc" "Esci" passa anche da Keycloak.

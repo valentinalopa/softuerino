@@ -1,0 +1,52 @@
+// Importare PER PRIMO nei test che toccano codice server di Next (session.ts, network.ts...).
+// Sostituisce server-only, next/headers e next/navigation con versioni controllabili
+// dal test: nessuna modifica al codice dell'app.
+import Module from "node:module";
+
+type Cookie = { name: string; value: string };
+
+export const requestState = {
+  headers: new Headers(),
+  cookies: new Map<string, string>(),
+};
+
+export function setRequest(opts: { bearer?: string; cookie?: [string, string]; headers?: Record<string, string> } = {}) {
+  requestState.headers = new Headers(opts.headers ?? {});
+  if (opts.bearer) requestState.headers.set("authorization", `Bearer ${opts.bearer}`);
+  requestState.cookies = new Map();
+  if (opts.cookie) requestState.cookies.set(opts.cookie[0], opts.cookie[1]);
+}
+
+export class RedirectSignal extends Error {
+  constructor(readonly destination: string) {
+    super(`NEXT_REDIRECT:${destination}`);
+  }
+}
+
+const stubs: Record<string, unknown> = {
+  "server-only": {},
+  "next/headers": {
+    headers: async () => requestState.headers,
+    cookies: async () => ({
+      get: (name: string): Cookie | undefined => {
+        const value = requestState.cookies.get(name);
+        return value === undefined ? undefined : { name, value };
+      },
+      set: (name: string, value: string) => void requestState.cookies.set(name, value),
+      delete: (name: string) => void requestState.cookies.delete(name),
+    }),
+  },
+  "next/navigation": {
+    redirect: (destination: string) => {
+      throw new RedirectSignal(destination);
+    },
+  },
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const M = Module as any;
+const originalLoad = M._load;
+M._load = function (request: string, ...rest: unknown[]) {
+  if (request in stubs) return stubs[request];
+  return originalLoad.call(this, request, ...rest);
+};
