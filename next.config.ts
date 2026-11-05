@@ -47,6 +47,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Niente header "X-Powered-By: Next.js": non serve e rivela lo stack.
   poweredByHeader: false,
+  // Ottimizzatore immagini di Next disattivato (advisory su next/image).
+  images: { unoptimized: true },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
