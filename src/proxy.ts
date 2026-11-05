@@ -21,7 +21,10 @@ export function proxy(request: NextRequest) {
     PUBLIC_PATHS.includes(request.nextUrl.pathname) ||
     request.nextUrl.pathname.startsWith("/api/auth/oidc/") ||
     // Avvisi giornalieri: autenticati con CRON_SECRET, non con la sessione.
-    request.nextUrl.pathname.startsWith("/api/cron/");
+    request.nextUrl.pathname.startsWith("/api/cron/") ||
+    // API dell'app iPhone: autenticata dal token Bearer dentro ogni route
+    // (withMobileAuth), risponde 401 JSON invece di reindirizzare a /login.
+    request.nextUrl.pathname.startsWith("/api/mobile/");
 
   if (!hasSession && !isPublicPath) {
     return NextResponse.redirect(new URL("/login", request.url));
