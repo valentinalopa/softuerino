@@ -7,7 +7,7 @@ import { ForbiddenError } from "@/lib/task-archive";
 // "Authorization: Bearer <token>": il cookie web non vale. I permessi restano
 // nelle funzioni lib/service chiamate dai gestori: qui non se ne aggiungono né
 // se ne tolgono. Il ruolo effettivo lo decide getAuthContext come sul web: il
-// super admin fuori dalla rete interna fidata è un membro (elemento #310).
+// super admin fuori dalla rete interna fidata è un admin (elementi #310 e #314).
 
 export type AuthContext = NonNullable<Awaited<ReturnType<typeof getAuthContext>>>;
 
@@ -52,7 +52,7 @@ export function withMobileAuth<T>(handler: (ctx: AuthContext, req: Request) => P
       const ctx = await getAuthContext();
       if (!ctx) return unauthorized();
 
-      // Il super admin fuori dalla rete interna è già un membro: lo decide
+      // Il super admin fuori dalla rete interna è già un admin: lo decide
       // getAuthContext, come sul web (elemento #310). Nessun 403 dedicato.
 
       const result = await handler(ctx, req);

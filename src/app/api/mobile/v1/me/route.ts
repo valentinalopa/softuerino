@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 // Profilo di chi ha fatto il login nell'app: solo i campi che servono alla UI.
 // role è il ruolo effettivo: un super admin fuori dalla rete interna fidata
-// risulta "membro". hasSuperAdminRole dice se nel database è super admin,
+// risulta "admin" (elemento #314). hasSuperAdminRole dice se nel database è super admin,
 // superAdminActive se in questa richiesta i suoi poteri sono attivi (elemento
 // #310): per l'indicatore "super admin capabilities ok" dell'app.
 export const GET = withMobileAuth(async ({ user, hasSuperAdminRole, superAdminActive }) => {

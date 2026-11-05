@@ -125,7 +125,7 @@ describe("login mobile (code + PKCE)", () => {
     assert.equal(await prisma.session.count(), 0);
   });
 
-  it("super admin: il token si emette anche dal pubblico (nessun 403), ma da lì la sessione vale da membro", async () => {
+  it("super admin: il token si emette anche dal pubblico (nessun 403), ma da lì la sessione vale da admin", async () => {
     const admin = await prisma.user.create({
       data: { id: "sa1", name: "SA1", email: "sa1@example.test", passwordHash: "x", role: "super_admin", oidcSubject: "sub-sa1" },
     });
@@ -134,7 +134,7 @@ describe("login mobile (code + PKCE)", () => {
     assert.equal(fromPublic.status, 200);
     const { token } = await fromPublic.json();
     assert.equal(await prisma.session.count(), 1);
-    // con quel token, dal pubblico: membro; da una rete fidata: super admin
+    // con quel token, dal pubblico: admin; da una rete fidata: super admin
     setRequest({ bearer: token, headers: { "x-real-ip": "192.168.40.142", "x-softuerino-network": "public" } });
     assert.equal((await (await getMe(new Request("https://time.test/api/mobile/v1/me"))).json()).superAdminActive, false);
     setRequest({ bearer: token, headers: { "x-real-ip": "192.168.11.5" } });

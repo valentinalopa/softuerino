@@ -100,19 +100,19 @@ describe("withMobileAuth e GET /me", () => {
     assert.equal((await getMe(req())).status, 401);
   });
 
-  it("super admin con Bearer: dal pubblico è membro (superAdminActive=false), da 11.0/1.0/5.0 è super admin (true)", async () => {
+  it("super admin con Bearer: dal pubblico è admin (superAdminActive=false), da 11.0/1.0/5.0 è super admin (true)", async () => {
     const user = await makeUser("a6", "super_admin");
     const token = await iosToken(user.id);
     const publicHeaders = { "x-real-ip": "192.168.40.142", "x-softuerino-network": "public" };
-    // dal percorso pubblico: nessun 403, ma ruolo effettivo membro
+    // dal percorso pubblico: nessun 403, ma ruolo effettivo admin
     setRequest({ bearer: token, headers: publicHeaders });
     const outside = await getMe(req());
     assert.equal(outside.status, 200);
     const outsideBody = await outside.json();
-    assert.equal(outsideBody.role, "membro");
+    assert.equal(outsideBody.role, "admin");
     assert.equal(outsideBody.hasSuperAdminRole, true);
     assert.equal(outsideBody.superAdminActive, false);
-    // senza X-Real-IP (fail-closed) e con X-Forwarded-For falsificato: ancora membro
+    // senza X-Real-IP (fail-closed) e con X-Forwarded-For falsificato: ancora admin
     setRequest({ bearer: token, headers: { "x-forwarded-for": "192.168.1.5" } });
     assert.equal((await (await getMe(req())).json()).superAdminActive, false);
     // dalle reti fidate: super admin attivo

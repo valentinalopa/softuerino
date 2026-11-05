@@ -1,0 +1,200 @@
+openapi: 3.0.3
+info:
+  title: Softuerino - API mobile v1
+  version: 1.0.0
+  description: |
+    API dell'app iPhone di Softuerino. Autenticazione con token di sessione
+    `Authorization: Bearer <token>` (il cookie web non vale). Tutte le risposte
+    hanno `Cache-Control: private, no-store`.
+
+    ## Scelta automatica del percorso (locale o pubblico)
+    L'app prova `https://time.local.colibrivision.it` all'avvio, quando torna in
+    primo piano e quando cambia la rete, senza azioni dell'utente. Se risponde usa
+    quello, altrimenti usa `https://time.colibrivision.it`. Il server decide sempre
+    in base alla rete reale della richiesta, mai in base a ciò che dichiara l'app.
+
+    ## Super admin
+    Da una rete interna fidata (LAN 192.168.1.0/24, VPN di controllo
+    192.168.11.0/24, VPN 192.168.5.0/24) il super admin ha i suoi poteri
+    (`role = super_admin`, `superAdminActive = true`). Dal percorso pubblico il
+    ruolo effettivo diventa `admin` (non è un errore e non diventa membro):
+    `superAdminActive = false`. Le funzioni di super admin non esistono
+    nell'API mobile. L'app usa `superAdminActive` per l'indicatore
+    "super admin capabilities ok".
+servers:
+  - url: https://time.colibrivision.it/api/mobile
+    description: Percorso pubblico (SSO)
+  - url: https://time.local.colibrivision.it/api/mobile
+    description: Percorso locale (LAN e VPN)
+security:
+  - bearerAuth: []
+paths:
+  /v1/me:
+    get:
+      operationId: getMe
+      summary: Profilo di chi ha fatto il login
+      description: |
+        `role` è il ruolo effettivo per la rete di questa richiesta (un super admin
+        dal pubblico risulta `admin`). `hasSuperAdminRole` dice se nel database è
+        super admin; `superAdminActive` se in questa richiesta i suoi poteri sono
+        attivi (true solo da rete interna fidata).
+      responses:
+        "200":
+          description: Profilo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/auth/token:
+    post:
+      operationId: createToken
+      summary: Scambia il codice PKCE di Keycloak con un token di sessione
+      description: |
+        Pubblica (è il login): niente Bearer. L'app fa il login su Keycloak nel
+        browser di sistema (PKCE) e porta qui il codice. La sessione cade quando
+        scade la sessione Keycloak.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: Token di sessione
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Richiesta incompleta o redirectUri non ammesso (`invalid_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Codice non valido o scaduto (`invalid_grant`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Utente disattivato (`inactive`) o primo accesso da fare dal sito (`first_login_required`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoca la sessione del token usato
+      responses:
+        "204":
+          description: Sessione revocata
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Unauthorized:
+      description: Token assente, non valido, scaduto o utente disattivato (`unauthorized`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Errore imprevisto (`internal_error`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Codice stabile (unauthorized, forbidden, not_found, invalid_request, invalid_grant, inactive, first_login_required, internal_error)
+        message:
+          type: string
+          description: Testo in italiano per l'utente
+    Department:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Me:
+      type: object
+      required: [id, name, email, role, hasSuperAdminRole, superAdminActive, managedDepartments]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          description: Ruolo effettivo (super_admin solo da rete interna fidata; dal pubblico un super admin è admin)
+        hasSuperAdminRole:
+          type: boolean
+        superAdminActive:
+          type: boolean
+        managedDepartments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Department"
+    TokenRequest:
+      type: object
+      required: [code, codeVerifier, redirectUri]
+      properties:
+        code:
+          type: string
+          maxLength: 2048
+        codeVerifier:
+          type: string
+          minLength: 43
+          maxLength: 128
+        redirectUri:
+          type: string
+          description: Deve essere il redirect URI dell'app
+        nonce:
+          type: string
+          maxLength: 512
+    TokenResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          type: object
+          required: [id, name, email, role]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+            role:
+              type: string

@@ -41,8 +41,8 @@ export async function mobileTokenLogin(
     const { user } = await resolveOidcUser(claims, tokens, { provision: false });
 
     // Il super admin riceve il token anche da fuori rete: la sessione mobile
-    // segue la stessa regola del web (getAuthContext lo tratta da membro se la
-    // richiesta non arriva da una rete fidata, elemento #310).
+    // segue la stessa regola del web (getAuthContext lo tratta da admin se la
+    // richiesta non arriva da una rete fidata, elementi #310 e #314).
 
     // Si conserva solo il refresh_token (cifrato) per la verifica periodica con
     // Keycloak; l'id_token all'app non serve (minimizzazione).
