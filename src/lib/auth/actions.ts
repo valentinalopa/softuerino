@@ -13,12 +13,14 @@ import {
 } from "@/lib/auth/session";
 import { HOME_PATH, IMPERSONATABLE_ROLES, isAdminRole } from "@/lib/constants";
 import { buildOidcLogoutUrl, isOidcConfigured } from "@/lib/auth/oidc";
-import { isPublicRequest, requestHost } from "@/lib/network";
+import { isTrustedNetwork, requestHost } from "@/lib/network";
 
 export async function loginAction(formData: FormData) {
   // Il login con password (accesso d'emergenza) non è disponibile da internet:
   // da lì si entra solo con Keycloak (password + OTP/passkey).
-  if (await isPublicRequest()) {
+  // Ammesso solo da 192.168.1.0/24, 192.168.11.0/24 e 192.168.5.0/24
+  // (regola elemento #89, decisione elemento #310); fail-closed senza IP.
+  if (!(await isTrustedNetwork())) {
     redirect("/login?error=local_public");
   }
   const email = String(formData.get("email") ?? "")

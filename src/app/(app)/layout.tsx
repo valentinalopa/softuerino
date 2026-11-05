@@ -24,7 +24,7 @@ export default async function AppLayout({
   if (!context) {
     redirect("/login");
   }
-  const { user, impersonating } = context;
+  const { user, impersonating, hasSuperAdminRole, superAdminActive } = context;
 
   // Contatore in sidebar delle richieste da approvare (stesso criterio della
   // scheda Da approvare di /richieste: tutte quelle in attesa, anche le proprie).
@@ -71,6 +71,7 @@ export default async function AppLayout({
           showClients={!isAdmin && addClients}
           repartoPendingCount={repartoPendingCount}
           ssoAccountUrl={ssoAccountUrl()}
+          superAdminStatus={hasSuperAdminRole ? (superAdminActive ? "active" : "limited") : null}
         />
         {/* SidebarInset occupa tutto lo spazio lasciato dalla sidebar: quando
             si comprime, il contenuto si allarga. */}
