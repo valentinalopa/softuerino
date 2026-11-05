@@ -145,7 +145,11 @@ export function AppSidebar({
   showClients = false,
   repartoPendingCount = 0,
   ssoAccountUrl = null,
+  superAdminStatus = null,
 }: {
+  // Solo per chi è super admin nel database: "active" (rete interna fidata) o
+  // "limited" (da fuori trattato come membro). null per gli altri.
+  superAdminStatus?: "active" | "limited" | null;
   // managedDepartments: reparti di cui è responsabile (Keycloak).
   currentUser: { name: string; email: string; role: Role; managedDepartments?: string[] };
   // Richieste del team in attesa di approvazione (admin e super admin).
@@ -324,6 +328,22 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter>
+        {superAdminStatus && (
+          <p
+            data-testid="super-admin-status"
+            role="status"
+            className={
+              "rounded-md px-2 py-1 text-xs group-data-[collapsible=icon]:hidden " +
+              (superAdminStatus === "active"
+                ? "bg-primary/10 text-foreground"
+                : "bg-muted text-muted-foreground")
+            }
+          >
+            {superAdminStatus === "active"
+              ? "Super admin capabilities ok"
+              : "Super admin non attivo: accesso fuori dalla rete interna"}
+          </p>
+        )}
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>

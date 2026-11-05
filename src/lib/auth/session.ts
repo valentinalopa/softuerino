@@ -9,6 +9,7 @@ import { refreshOidcSession, type OidcTokens } from "@/lib/auth/oidc";
 import { syncUserOrg } from "@/lib/departments";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
 import { IMPERSONATABLE_ROLES, isAdminRole } from "@/lib/constants";
+import { isTrustedNetwork } from "@/lib/network";
 
 const SESSION_DURATION_DAYS = 30; // durata massima, anche con uso continuo
 // Senza attività per questi giorni la sessione scade (dispositivo dimenticato
@@ -192,7 +193,15 @@ export const getAuthContext = cache(async () => {
   const session = await getSession();
   if (!session || !session.user.active) return null;
 
-  const realUser = session.user;
+  // Poteri da super admin solo da rete interna fidata (decisione elemento
+  // #310): da fuori il super admin è trattato come un membro. È l'unico punto in
+  // cui il ruolo si declassa: tutti i controlli (requireSuperAdmin, requireAdmin,
+  // permessi, menu, impersonificazione) leggono il ruolo da qui. Il ruolo nel
+  // database non cambia.
+  const hasSuperAdminRole = session.user.role === "super_admin";
+  const superAdminActive = hasSuperAdminRole && (await isTrustedNetwork());
+  const realUser =
+    hasSuperAdminRole && !superAdminActive ? { ...session.user, role: "membro" } : session.user;
   const target = session.impersonatedUser;
   const impersonating =
     isAdminRole(realUser.role) &&
@@ -204,6 +213,10 @@ export const getAuthContext = cache(async () => {
     realUser,
     user: impersonating ? target : realUser,
     impersonating,
+    // Indicatore "super admin capabilities ok": ruolo super admin nel database
+    // (hasSuperAdminRole) e poteri attivi per la rete di questa richiesta.
+    hasSuperAdminRole,
+    superAdminActive,
   };
 });
 

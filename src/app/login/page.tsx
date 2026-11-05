@@ -12,7 +12,7 @@ import { LoginForm } from "@/components/auth/LoginForm";
 import { Marchio } from "@/components/brand/Marchio";
 import { TONE_SOFT } from "@/lib/tones";
 import { isOidcConfigured } from "@/lib/auth/oidc";
-import { isPublicRequest } from "@/lib/network";
+import { isTrustedNetwork } from "@/lib/network";
 import { buttonVariants } from "@/components/ui/button";
 import type { Metadata } from "next";
 
@@ -47,7 +47,7 @@ export default async function LoginPage({
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? ERROR_MESSAGES.sso_failed) : null;
   const sso = isOidcConfigured();
   // Da internet niente accesso con password: il form non si mostra nemmeno.
-  const localLogin = !(await isPublicRequest());
+  const localLogin = await isTrustedNetwork();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
