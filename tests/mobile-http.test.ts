@@ -17,6 +17,11 @@ import {
 import { POST as postLogout } from "../src/app/api/mobile/v1/auth/logout/route";
 import { ForbiddenError } from "../src/lib/task-archive";
 import { NotFoundError, withMobileAuth } from "../src/lib/mobile/http";
+import {
+  ConflictError,
+  NotFoundError as ServiceNotFoundError,
+  ValidationError,
+} from "../src/lib/services/errors";
 import { GET as getMe } from "../src/app/api/mobile/v1/me/route";
 import { proxy } from "../src/proxy";
 
@@ -169,6 +174,24 @@ describe("withMobileAuth e GET /me", () => {
     })(req());
     assert.equal(boom.status, 500);
     assert.ok(!(await boom.text()).includes("segreto interno"));
+  });
+
+  it("ValidationError → 400 invalid_request, ConflictError → 409 conflict, con il messaggio del service", async () => {
+    const user = await makeUser("a8b");
+    setRequest({ bearer: await iosToken(user.id) });
+    const invalid = await withMobileAuth(async () => {
+      throw new ValidationError("Dati evento non validi");
+    })(req());
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(await invalid.json(), { error: "invalid_request", message: "Dati evento non validi" });
+    const conflict = await withMobileAuth(async () => {
+      throw new ConflictError("Mario è assente in quelle date");
+    })(req());
+    assert.equal(conflict.status, 409);
+    assert.deepEqual(await conflict.json(), { error: "conflict", message: "Mario è assente in quelle date" });
+    assert.equal(conflict.headers.get("cache-control"), "private, no-store");
+    // NotFoundError resta esportato da http.ts (compatibilità) ed è la stessa classe del service.
+    assert.equal(NotFoundError, ServiceNotFoundError);
   });
 
   it("un handler che restituisce un oggetto diventa JSON 200; una Response passa invariata", async () => {

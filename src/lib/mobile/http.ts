@@ -2,6 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { getAuthContext } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/task-archive";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 
 // API dell'app iPhone (/api/mobile/v1). Autenticazione solo con
 // "Authorization: Bearer <token>": il cookie web non vale. I permessi restano
@@ -11,13 +12,9 @@ import { ForbiddenError } from "@/lib/task-archive";
 
 export type AuthContext = NonNullable<Awaited<ReturnType<typeof getAuthContext>>>;
 
-export class NotFoundError extends Error {
-  readonly status = 404;
-  constructor(message = "Risorsa non trovata") {
-    super(message);
-    this.name = "NotFoundError";
-  }
-}
+// Gli errori dei service vivono in services/errors.ts; NotFoundError resta
+// esportato anche da qui per le route esistenti.
+export { NotFoundError };
 
 // Risposte dell'API mobile: mai in cache (possono contenere dati personali).
 const BASE_HEADERS = { "Cache-Control": "private, no-store" };
@@ -62,6 +59,8 @@ export function withMobileAuth<T>(handler: (ctx: AuthContext, req: Request) => P
       if (isNextRedirect(err)) return unauthorized();
       if (err instanceof ForbiddenError) return apiError(403, "forbidden", err.message);
       if (err instanceof NotFoundError) return apiError(404, "not_found", err.message);
+      if (err instanceof ValidationError) return apiError(400, "invalid_request", err.message);
+      if (err instanceof ConflictError) return apiError(409, "conflict", err.message);
       console.error("[mobile-api] errore imprevisto:", err instanceof Error ? err.message : err);
       return apiError(500, "internal_error", "Errore imprevisto. Riprova più tardi.");
     }
