@@ -6,9 +6,10 @@ import { VpnSectionDialog } from "@/components/utilita/vpn/VpnSectionDialog";
 import { DeleteVpnSectionButton } from "@/components/utilita/vpn/DeleteVpnSectionButton";
 import { VpnDownloadActions } from "@/components/utilita/vpn/VpnDownloadActions";
 import { VpnGuide } from "@/components/utilita/vpn/VpnGuide";
+import { CertificateCard } from "@/components/utilita/vpn/CertificateCard";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "VPN" };
+export const metadata: Metadata = { title: "Security" };
 
 // Utilità → VPN: per tutti. Le sezioni (una per VPN, es. una sede) le
 // gestiscono i super admin; sotto, la guida per collegarsi con OpenVPN Connect.
@@ -37,7 +38,7 @@ export default async function VpnPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1>VPN</h1>
+          <h1>Security</h1>
           <p className="text-sm text-muted-foreground">
             Per raggiungere i servizi aziendali da fuori ufficio: scarica la configurazione della VPN
             che ti serve e segui la guida per il tuo dispositivo. Accedi con utente e password del tuo
@@ -105,6 +106,8 @@ export default async function VpnPage() {
           ))}
         </div>
       )}
+
+      <CertificateCard />
 
       {/* Margini interni ridotti su mobile: le 4 schede dei dispositivi stanno su una riga. */}
       <Card className="[--card-spacing:--spacing(4)] sm:[--card-spacing:--spacing(6)]">
