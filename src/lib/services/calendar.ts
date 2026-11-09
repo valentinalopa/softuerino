@@ -46,6 +46,49 @@ export function parseCalendarRange(fromRaw: unknown, toRaw: unknown) {
   return { from, to };
 }
 
+// Campi di un evento letti dal database e loro forma per le interfacce.
+export const EVENT_SELECT = {
+  id: true,
+  title: true,
+  type: true,
+  startAt: true,
+  endAt: true,
+  location: true,
+  description: true,
+  createdById: true,
+  participants: { select: { user: { select: { id: true, name: true } } } },
+} as const;
+
+type EventRow = {
+  id: string;
+  title: string;
+  type: string;
+  startAt: Date;
+  endAt: Date;
+  location: string | null;
+  description: string | null;
+  createdById: string | null;
+  participants: { user: { id: string; name: string } }[];
+};
+
+export function toEventDto(e: EventRow, viewer: Viewer) {
+  return {
+    id: e.id,
+    title: e.title,
+    type: e.type,
+    startAt: e.startAt.toISOString(),
+    endAt: e.endAt.toISOString(),
+    location: e.location,
+    description: e.description,
+    participants: e.participants.map((p) => ({ id: p.user.id, name: p.user.name })),
+    // Stessa regola del web (eventAccessError): admin, creatore o partecipante.
+    canEdit:
+      isAdminRole(viewer.role) ||
+      e.createdById === viewer.id ||
+      e.participants.some((p) => p.user.id === viewer.id),
+  };
+}
+
 export const UPCOMING_DAYS = 7;
 export const UPCOMING_MAX = 20;
 
@@ -83,17 +126,7 @@ export async function listCalendar(viewer: Viewer, range: { from: Date; to: Date
   const [events, leaves, presences] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: { startAt: { lte: to }, endAt: { gte: from } },
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        startAt: true,
-        endAt: true,
-        location: true,
-        description: true,
-        createdById: true,
-        participants: { select: { user: { select: { id: true, name: true } } } },
-      },
+      select: EVENT_SELECT,
       orderBy: { startAt: "asc" },
     }),
     prisma.leaveRequest.findMany({
@@ -122,20 +155,8 @@ export async function listCalendar(viewer: Viewer, range: { from: Date; to: Date
     }),
   ]);
 
-  const admin = isAdminRole(viewer.role);
   return {
-    events: events.map((e) => ({
-      id: e.id,
-      title: e.title,
-      type: e.type,
-      startAt: e.startAt.toISOString(),
-      endAt: e.endAt.toISOString(),
-      location: e.location,
-      description: e.description,
-      participants: e.participants.map((p) => ({ id: p.user.id, name: p.user.name })),
-      // Stessa regola del web (eventAccessError): admin, creatore o partecipante.
-      canEdit: admin || e.createdById === viewer.id || e.participants.some((p) => p.user.id === viewer.id),
-    })),
+    events: events.map((e) => toEventDto(e, viewer)),
     absences: leaves.map((leave) => {
       const l = maskLeaveForViewer(leave, viewer);
       return {
