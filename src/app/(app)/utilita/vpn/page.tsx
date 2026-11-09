@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Security" };
 const TABS = ["vpn", "sso", "cert"] as const;
 type Tab = (typeof TABS)[number];
 
-const TAB_LABELS: Record<Tab, string> = { vpn: "VPN", sso: "SSO", cert: "Certificato Colibrì" };
+const TAB_LABELS: Record<Tab, string> = { vpn: "VPN", sso: "SSO", cert: "CERT" };
 
 // Utilità → Security: per tutti, in tre tab (?tab=vpn|sso|cert, default vpn).
 // VPN: le sezioni (una per VPN, es. una sede) le gestiscono i super admin; sotto,

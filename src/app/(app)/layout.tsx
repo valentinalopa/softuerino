@@ -3,7 +3,6 @@ import { getAuthContext } from "@/lib/auth/session";
 import { managedDepartmentNames } from "@/lib/departments";
 import { can, peopleWhere } from "@/lib/permissions";
 import { hasLicenseAccess } from "@/lib/licenses/access";
-import { ssoAccountUrl } from "@/lib/auth/oidc";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppSidebar, MobileTopBar } from "@/components/AppSidebar";
@@ -70,7 +69,6 @@ export default async function AppLayout({
           showLicenses={showLicenses}
           showClients={!isAdmin && addClients}
           repartoPendingCount={repartoPendingCount}
-          ssoAccountUrl={ssoAccountUrl()}
           superAdminStatus={hasSuperAdminRole ? (superAdminActive ? "active" : "limited") : null}
         />
         {/* SidebarInset occupa tutto lo spazio lasciato dalla sidebar: quando
