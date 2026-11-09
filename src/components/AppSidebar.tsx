@@ -22,7 +22,7 @@ import {
   KeyRound,
   SlidersHorizontal,
   ShieldCheck,
-  EarthLock,
+  Shield,
   ChevronDown,
   type LucideIcon,
 } from "lucide-react";
@@ -85,7 +85,7 @@ const CLIENTS_LINK: NavLink = { href: "/clienti", label: "Clienti", icon: Buildi
 // Risorse: strumenti e accessi aziendali. Licenze: responsabili con il
 // permesso, admin e super admin; il resto per tutti.
 const LICENSES_LINK: NavLink = { href: "/utilita/licenze", label: "Licenze e abbonamenti", icon: KeyRound };
-const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "VPN", icon: EarthLock };
+const VPN_LINK: NavLink = { href: "/utilita/vpn", label: "Security", icon: Shield };
 const PRIVACY_LINK: NavLink = { href: "/privacy", label: "Privacy", icon: ShieldCheck };
 const CLOUD_LINK: NavLink = { href: "https://cloud.colibrivision.it", label: "Cloud", icon: Cloud, external: true };
 
