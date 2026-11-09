@@ -144,7 +144,6 @@ export function AppSidebar({
   showLicenses = false,
   showClients = false,
   repartoPendingCount = 0,
-  ssoAccountUrl = null,
   superAdminStatus = null,
 }: {
   // Solo per chi è super admin nel database: "active" (rete interna fidata) o
@@ -160,8 +159,6 @@ export function AppSidebar({
   showClients?: boolean;
   // Richieste del reparto in attesa, se il responsabile può approvarle.
   repartoPendingCount?: number;
-  // Account SSO (console di Keycloak), per tutti; null senza SSO.
-  ssoAccountUrl?: string | null;
 }) {
   const pathname = usePathname();
   const managed = currentUser.managedDepartments ?? [];
@@ -187,7 +184,6 @@ export function AppSidebar({
     VPN_LINK,
     CLOUD_LINK,
     PRIVACY_LINK,
-    ...(ssoAccountUrl ? [{ href: ssoAccountUrl, label: "Account SSO", icon: ShieldCheck, external: true }] : []),
   ];
   const sections = [
     { label: "Ogni giorno", links: DAILY_LINKS },
