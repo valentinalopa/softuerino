@@ -1,6 +1,7 @@
 // Eseguire con un DB di prova (mai quello di produzione):
 //   DATABASE_URL=file:/tmp/softuerino-test/t.db npx prisma migrate deploy
 //   DATABASE_URL=file:/tmp/softuerino-test/t.db npx tsx --test tests/retention.test.ts
+import "./helpers/db-guard";
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { prisma } from "../src/lib/prisma";

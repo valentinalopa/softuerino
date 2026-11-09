@@ -1,6 +1,7 @@
 // Importare PER PRIMO nei test che toccano codice server di Next (session.ts, network.ts...).
 // Sostituisce server-only, next/headers e next/navigation con versioni controllabili
 // dal test: nessuna modifica al codice dell'app.
+import "./db-guard";
 import Module from "node:module";
 
 type Cookie = { name: string; value: string };

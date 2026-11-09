@@ -132,11 +132,15 @@ describe("login mobile (code + PKCE)", () => {
     setRequest({ headers: { "x-softuerino-network": "public" } });
     const fromPublic = await mobileTokenLogin(goodBody, { exchangeCode: okExchange("sub-sa1", admin.email) });
     assert.equal(fromPublic.status, 200);
-    const { token } = await fromPublic.json();
+    const { token, user: loginUser } = await fromPublic.json();
     assert.equal(await prisma.session.count(), 1);
+    // il ruolo del login è quello effettivo: dal pubblico admin (non super_admin)
+    assert.equal(loginUser.role, "admin");
     // con quel token, dal pubblico: admin; da una rete fidata: super admin
     setRequest({ bearer: token, headers: { "x-real-ip": "192.168.40.142", "x-softuerino-network": "public" } });
-    assert.equal((await (await getMe(new Request("https://time.test/api/mobile/v1/me"))).json()).superAdminActive, false);
+    const meBody = await (await getMe(new Request("https://time.test/api/mobile/v1/me"))).json();
+    assert.equal(meBody.superAdminActive, false);
+    assert.equal(meBody.role, loginUser.role, "/auth/token e /me dicono lo stesso ruolo");
     setRequest({ bearer: token, headers: { "x-real-ip": "192.168.11.5" } });
     assert.equal((await (await getMe(new Request("https://time.test/api/mobile/v1/me"))).json()).superAdminActive, true);
   });

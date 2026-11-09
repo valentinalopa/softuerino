@@ -84,7 +84,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Utente disattivato (`inactive`) o primo accesso da fare dal sito (`first_login_required`)
+          description: Utente disattivato (`inactive`), primo accesso da fare dal sito (`first_login_required`) o accesso non consentito (`not_allowed`, per esempio utente non ammesso al gruppo SSO)
           content:
             application/json:
               schema:
@@ -151,6 +151,7 @@ components:
           type: string
         role:
           type: string
+          enum: [super_admin, admin, membro]
           description: Ruolo effettivo (super_admin solo da rete interna fidata; dal pubblico un super admin è admin)
         hasSuperAdminRole:
           type: boolean
@@ -186,6 +187,7 @@ components:
         expiresAt:
           type: string
           format: date-time
+          description: Scadenza del token per inattività (30 giorni dall'ultimo uso); ogni uso la sposta in avanti. Il logout o la scadenza della sessione SSO lo revocano prima.
         user:
           type: object
           required: [id, name, email, role]
@@ -198,3 +200,5 @@ components:
               type: string
             role:
               type: string
+              enum: [super_admin, admin, membro]
+              description: Ruolo effettivo per la rete di questa richiesta, uguale a quello di /v1/me (un super admin dal pubblico risulta admin)

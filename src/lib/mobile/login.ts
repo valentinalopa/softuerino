@@ -7,6 +7,13 @@ import {
 } from "@/lib/auth/oidc";
 import { issueSessionToken } from "@/lib/auth/session";
 import { apiError } from "@/lib/mobile/http";
+import { isTrustedNetwork } from "@/lib/network";
+
+// Stessa regola di getAuthContext (session.ts): il super admin fuori dalla rete
+// interna fidata è un admin (elemento #314). Il ruolo nel database non cambia.
+async function effectiveRole(role: string) {
+  return role === "super_admin" && !(await isTrustedNetwork()) ? "admin" : role;
+}
 
 type Deps = { exchangeCode: typeof realExchangeCode };
 
@@ -57,7 +64,8 @@ export async function mobileTokenLogin(
       {
         token,
         expiresAt: expiresAt.toISOString(),
-        user: { id: user.id, name: user.name, email: user.email, role: user.role },
+        // Ruolo effettivo, come in /me: stessa regola di getAuthContext.
+        user: { id: user.id, name: user.name, email: user.email, role: await effectiveRole(user.role) },
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );

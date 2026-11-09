@@ -2,6 +2,7 @@
 // network.ts, auth/actions.ts...). Sostituisce server-only, next/headers,
 // next/navigation e next/cache con versioni controllabili dal test: nessuna
 // modifica al codice dell'app.
+import "./db-guard";
 import Module from "node:module";
 
 export const requestState = {
