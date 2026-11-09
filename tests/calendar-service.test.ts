@@ -49,60 +49,53 @@ describe("parseCalendarRange", () => {
   });
 });
 
-describe("listCalendar", () => {
+describe("listCalendar (calendario dell'app: eventi + SOLO le proprie assenze e presenze)", () => {
   beforeEach(clean);
 
-  it("malattia altrui: il membro la vede come assenza generica, l'admin e l'interessato no", async () => {
+  it("assenze: solo le proprie, anche la malattia (con il tipo vero); quelle altrui non ci sono", async () => {
     await user("v1");
     await user("s1");
-    await user("ad1", "admin");
-    await prisma.leaveRequest.create({
-      data: { userId: "s1", type: "malattia", status: "registrata", startDate: day(2026, 12, 10), endDate: day(2026, 12, 11), note: "febbre" },
+    await prisma.leaveRequest.createMany({
+      data: [
+        { userId: "s1", type: "malattia", status: "registrata", startDate: day(2026, 12, 10), endDate: day(2026, 12, 11) },
+        { userId: "v1", type: "malattia", status: "registrata", startDate: day(2026, 12, 20), endDate: day(2026, 12, 21) },
+        { userId: "v1", type: "ferie", status: "approved", startDate: day(2026, 12, 14), endDate: day(2026, 12, 16) },
+      ],
     });
-    const member = await listCalendar(viewer("v1"), range());
-    assert.equal(member.absences.length, 1);
-    assert.equal(member.absences[0].type, "assenza");
-    assert.equal(member.absences[0].status, "approved");
-    const admin = await listCalendar(viewer("ad1", "admin"), range());
-    assert.deepEqual([admin.absences[0].type, admin.absences[0].status], ["malattia", "registrata"]);
-    const own = await listCalendar(viewer("s1"), range());
-    assert.equal(own.absences[0].type, "malattia");
+    const { absences } = await listCalendar(viewer("v1"), range());
+    assert.deepEqual(absences.map((a) => [a.type, a.startDate]), [
+      ["ferie", "2026-12-14"],
+      ["malattia", "2026-12-20"],
+    ]);
   });
 
-  it("le assenze non portano mai la nota né l'id della richiesta; le date sono AAAA-MM-GG", async () => {
+  it("le assenze non portano mai la nota, l'id né l'utente; le date sono AAAA-MM-GG", async () => {
     await user("v2");
-    await user("u2");
     await prisma.leaveRequest.create({
-      data: { userId: "u2", type: "ferie", status: "approved", startDate: day(2026, 12, 14), endDate: day(2026, 12, 16), note: "segreto" },
+      data: { userId: "v2", type: "ferie", status: "approved", startDate: day(2026, 12, 14), endDate: day(2026, 12, 16), note: "segreto" },
     });
     const { absences } = await listCalendar(viewer("v2"), range());
     assert.deepEqual(Object.keys(absences[0]).sort(), [
-      "endDate", "endTime", "hours", "startDate", "startTime", "status", "type", "userId", "userName",
+      "endDate", "endTime", "hours", "startDate", "startTime", "status", "type",
     ]);
-    assert.equal(absences[0].startDate, "2026-12-14");
     assert.equal(absences[0].endDate, "2026-12-16");
     assert.ok(!JSON.stringify(absences).includes("segreto"));
   });
 
-  it("escluse le richieste rifiutate, quelle di utenti disattivati e quelle fuori dal periodo", async () => {
+  it("escluse le richieste rifiutate e quelle fuori dal periodo", async () => {
     await user("v3");
-    await user("u3");
-    await user("off3", "membro", false);
-    const base = { type: "ferie", startDate: day(2026, 12, 10), endDate: day(2026, 12, 11) };
     await prisma.leaveRequest.createMany({
       data: [
-        { userId: "u3", status: "rejected", ...base },
-        { userId: "off3", status: "approved", ...base },
-        { userId: "u3", status: "approved", type: "ferie", startDate: day(2027, 3, 1), endDate: day(2027, 3, 2) },
-        { userId: "u3", status: "approved", ...base },
+        { userId: "v3", status: "rejected", type: "ferie", startDate: day(2026, 12, 10), endDate: day(2026, 12, 11) },
+        { userId: "v3", status: "approved", type: "ferie", startDate: day(2027, 3, 1), endDate: day(2027, 3, 2) },
+        { userId: "v3", status: "approved", type: "ferie", startDate: day(2026, 12, 10), endDate: day(2026, 12, 11) },
       ],
     });
     const { absences } = await listCalendar(viewer("v3"), range());
     assert.equal(absences.length, 1);
-    assert.equal(absences[0].userId, "u3");
   });
 
-  it("eventi: solo quelli che toccano il periodo; canEdit per admin, creatore e partecipante", async () => {
+  it("eventi: tutti quelli che toccano il periodo; canEdit per admin, creatore e partecipante", async () => {
     await user("c4");
     await user("p4");
     await user("x4");
@@ -128,20 +121,27 @@ describe("listCalendar", () => {
     assert.equal(await canEdit(viewer("x4")), false);
   });
 
-  it("presenze: degli utenti attivi nel periodo, con nome", async () => {
+  it("presenze: solo le proprie nel periodo, senza utente", async () => {
     await user("v5");
     await user("u5");
-    await user("off5", "membro", false);
     await prisma.presenceEntry.createMany({
       data: [
-        { userId: "u5", date: day(2026, 12, 3), slot: "giornata_intera", mode: "smartworking" },
-        { userId: "off5", date: day(2026, 12, 3), slot: "giornata_intera", mode: "ufficio" },
-        { userId: "u5", date: day(2027, 3, 3), slot: "giornata_intera", mode: "ufficio" },
+        { userId: "v5", date: day(2026, 12, 3), slot: "giornata_intera", mode: "smartworking" },
+        { userId: "u5", date: day(2026, 12, 3), slot: "giornata_intera", mode: "ufficio" },
+        { userId: "v5", date: day(2027, 3, 3), slot: "giornata_intera", mode: "ufficio" },
       ],
     });
     const { presences } = await listCalendar(viewer("v5"), range());
-    assert.deepEqual(presences, [
-      { userId: "u5", userName: "Nome u5", date: "2026-12-03", slot: "giornata_intera", mode: "smartworking" },
-    ]);
+    assert.deepEqual(presences, [{ date: "2026-12-03", slot: "giornata_intera", mode: "smartworking" }]);
+  });
+
+  it("navigazione libera: un evento di 3 anni fa si legge con una richiesta di 42 giorni", async () => {
+    await user("n6");
+    await prisma.calendarEvent.create({
+      data: { title: "T-storico", type: "altro", startAt: at("2023-11-15T09:00:00Z"), endAt: at("2023-11-15T10:00:00Z") },
+    });
+    const r = parseCalendarRange("2023-10-30", "2023-12-10"); // mese con settimane di bordo = 42 giorni
+    assert.deepEqual((await listCalendar(viewer("n6"), r)).events.map((e) => e.title), ["T-storico"]);
+    assert.doesNotThrow(() => parseCalendarRange("2031-01-01", "2031-02-11")); // anche nel futuro
   });
 });

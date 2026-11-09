@@ -46,8 +46,38 @@ export function parseCalendarRange(fromRaw: unknown, toRaw: unknown) {
   return { from, to };
 }
 
-// Eventi + assenze (malattia altrui mascherata) + presenze degli utenti attivi,
-// con la stessa visibilità delle pagine Calendario e Presenze del team.
+export const UPCOMING_DAYS = 7;
+export const UPCOMING_MAX = 20;
+
+// Widget: prossimi eventi dei prossimi 7 giorni (compreso quello in corso) in cui
+// la persona è partecipante o creatrice, come "Prossimi eventi" della dashboard
+// (anche per gli admin). Solo i campi minimi: niente luogo, descrizione,
+// partecipanti, assenze o presenze (minimizzazione: il widget sta sulla Home).
+export async function upcomingEvents(viewer: Viewer, now = new Date(), days = UPCOMING_DAYS) {
+  const until = new Date(now.getTime() + days * 86_400_000);
+  const events = await prisma.calendarEvent.findMany({
+    where: {
+      endAt: { gte: now },
+      startAt: { lte: until },
+      OR: [{ participants: { some: { userId: viewer.id } } }, { createdById: viewer.id }],
+    },
+    select: { id: true, title: true, type: true, startAt: true, endAt: true },
+    orderBy: { startAt: "asc" },
+    take: UPCOMING_MAX,
+  });
+  return events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    type: e.type,
+    startAt: e.startAt.toISOString(),
+    endAt: e.endAt.toISOString(),
+  }));
+}
+
+// Calendario dell'app: gli eventi (visibili a tutti gli utenti attivi, come nel
+// web) e SOLO le assenze e le presenze della persona stessa. Quelle dei colleghi
+// stanno in listTeamCalendar (solo admin e responsabili). Nelle assenze non
+// escono né la nota né l'id della richiesta.
 export async function listCalendar(viewer: Viewer, range: { from: Date; to: Date }) {
   const { from, to } = range;
   const [events, leaves, presences] = await Promise.all([
@@ -68,10 +98,10 @@ export async function listCalendar(viewer: Viewer, range: { from: Date; to: Date
     }),
     prisma.leaveRequest.findMany({
       where: {
+        userId: viewer.id,
         status: { not: "rejected" },
         startDate: { lte: to },
         endDate: { gte: from },
-        user: { active: true },
       },
       select: {
         userId: true,
@@ -82,14 +112,13 @@ export async function listCalendar(viewer: Viewer, range: { from: Date; to: Date
         hours: true,
         startTime: true,
         endTime: true,
-        user: { select: { name: true } },
       },
       orderBy: { startDate: "asc" },
     }),
     prisma.presenceEntry.findMany({
-      where: { user: { active: true }, date: { gte: from, lte: to } },
-      select: { userId: true, date: true, slot: true, mode: true, user: { select: { name: true } } },
-      orderBy: [{ date: "asc" }, { userId: "asc" }],
+      where: { userId: viewer.id, date: { gte: from, lte: to } },
+      select: { date: true, slot: true, mode: true },
+      orderBy: { date: "asc" },
     }),
   ]);
 
@@ -107,26 +136,18 @@ export async function listCalendar(viewer: Viewer, range: { from: Date; to: Date
       // Stessa regola del web (eventAccessError): admin, creatore o partecipante.
       canEdit: admin || e.createdById === viewer.id || e.participants.some((p) => p.user.id === viewer.id),
     })),
-    absences: leaves.map(({ user: owner, ...leave }) => {
-      const masked = maskLeaveForViewer(leave, viewer);
+    absences: leaves.map((leave) => {
+      const l = maskLeaveForViewer(leave, viewer);
       return {
-        userId: masked.userId,
-        userName: owner.name,
-        type: masked.type,
-        status: masked.status,
-        startDate: ymd(masked.startDate),
-        endDate: ymd(masked.endDate),
-        hours: masked.hours,
-        startTime: masked.startTime,
-        endTime: masked.endTime,
+        type: l.type,
+        status: l.status,
+        startDate: ymd(l.startDate),
+        endDate: ymd(l.endDate),
+        hours: l.hours,
+        startTime: l.startTime,
+        endTime: l.endTime,
       };
     }),
-    presences: presences.map((p) => ({
-      userId: p.userId,
-      userName: p.user.name,
-      date: ymd(p.date),
-      slot: p.slot,
-      mode: p.mode,
-    })),
+    presences: presences.map((p) => ({ date: ymd(p.date), slot: p.slot, mode: p.mode })),
   };
 }
