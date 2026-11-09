@@ -24,7 +24,16 @@ const routes = files
 
 describe("superficie dell'API mobile", () => {
   it("le route mobili sono solo quelle attese (aggiornare qui con consapevolezza)", () => {
-    assert.deepEqual(routes, ["/v1/auth/logout", "/v1/auth/token", "/v1/me"]);
+    assert.deepEqual(routes, [
+      "/v1/auth/logout",
+      "/v1/auth/token",
+      "/v1/calendar",
+      "/v1/calendar/upcoming",
+      "/v1/events",
+      "/v1/events/[id]",
+      "/v1/me",
+      "/v1/team-calendar",
+    ]);
   });
 
   it("nessun percorso mobile per Email/SMTP, Aggiornamenti, Ruoli, VPN, impersonificazione, password locale", () => {
@@ -50,7 +59,7 @@ describe("superficie dell'API mobile", () => {
     for (const file of files.filter((f) => /\/route\.ts$/.test(f))) {
       const route = "/" + relative(ROOT, file).replace(/\/route\.ts$/, "");
       if (route === "/v1/auth/token") continue;
-      assert.match(readFileSync(file, "utf8"), /withMobileAuth\(/, `${route} senza withMobileAuth`);
+      assert.match(readFileSync(file, "utf8"), /withMobileAuth(?:<[^>]*>)?\(/, `${route} senza withMobileAuth`);
     }
   });
 });

@@ -30,7 +30,7 @@ export class RedirectSignal extends Error {
   }
 }
 
-const stubs: Record<string, unknown> = {
+export const stubs: Record<string, unknown> = {
   "server-only": {},
   "next/headers": {
     headers: async () => requestState.headers,

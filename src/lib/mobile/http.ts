@@ -23,6 +23,20 @@ export function apiError(status: number, error: string, message: string) {
   return Response.json({ error, message }, { status, headers: BASE_HEADERS });
 }
 
+// Corpo JSON di una richiesta: deve essere un oggetto, altrimenti 400.
+export async function readJsonObject(req: Request): Promise<Record<string, unknown>> {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    throw new ValidationError("Il corpo della richiesta deve essere JSON valido.");
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new ValidationError("Il corpo della richiesta deve essere un oggetto JSON.");
+  }
+  return body as Record<string, unknown>;
+}
+
 export function unauthorized() {
   return apiError(401, "unauthorized", "Accesso non autorizzato: effettua di nuovo il login.");
 }
@@ -37,8 +51,13 @@ function isNextRedirect(err: unknown) {
   );
 }
 
-export function withMobileAuth<T>(handler: (ctx: AuthContext, req: Request) => Promise<T>) {
-  return async (req: Request): Promise<Response> => {
+// Secondo argomento delle route dinamiche di Next: { params: Promise<{...}> }.
+export type RouteContext<P extends Record<string, string> = Record<string, string>> = { params: Promise<P> };
+
+export function withMobileAuth<T, P extends Record<string, string> = Record<string, string>>(
+  handler: (ctx: AuthContext, req: Request, route: RouteContext<P>) => Promise<T>
+) {
+  return async (req: Request, route: RouteContext<P> = { params: Promise.resolve({} as P) }): Promise<Response> => {
     try {
       // Solo Bearer: senza header (anche con cookie web valido) → 401.
       const authorization = (await headers()).get("authorization");
@@ -52,7 +71,7 @@ export function withMobileAuth<T>(handler: (ctx: AuthContext, req: Request) => P
       // Il super admin fuori dalla rete interna è già un admin: lo decide
       // getAuthContext, come sul web (elemento #310). Nessun 403 dedicato.
 
-      const result = await handler(ctx, req);
+      const result = await handler(ctx, req, route);
       if (result instanceof Response) return result;
       return Response.json(result, { headers: BASE_HEADERS });
     } catch (err) {

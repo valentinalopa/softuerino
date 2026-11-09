@@ -2,7 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/constants";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
-import { ValidationError } from "@/lib/services/errors";
+import { peopleInScope } from "@/lib/permissions";
+import { NotFoundError, ValidationError } from "@/lib/services/errors";
 
 // Calendario di Softuerino per le interfacce che non sono le pagine web (app
 // iPhone). I permessi stanno qui, non nelle route: le route mobili non ne
@@ -170,5 +171,82 @@ export async function listCalendar(viewer: Viewer, range: { from: Date; to: Date
       };
     }),
     presences: presences.map((p) => ({ date: ymd(p.date), slot: p.slot, mode: p.mode })),
+  };
+}
+
+// Dettaglio di un evento: come sul web, lo vedono tutti gli utenti attivi.
+export async function getEvent(viewer: Viewer, eventId: string) {
+  const row = await prisma.calendarEvent.findUnique({ where: { id: eventId }, select: EVENT_SELECT });
+  if (!row) throw new NotFoundError("Evento non trovato (forse è stato eliminato)");
+  return toEventDto(row, viewer);
+}
+
+// Calendario del team: chi c'è e chi è assente (elemento #320: lo vedono tutti).
+// Il motivo dell'assenza (ferie, permesso...) lo vedono solo gli admin, i
+// responsabili (persone nell'ambito di "richieste" o "approvare") e
+// l'interessato; per gli altri il tipo è "assenza". La malattia resta mascherata
+// come sul web (maskLeaveForViewer). Nessun 403 al membro; mai note né id.
+export async function listTeamCalendar(viewer: Viewer, range: { from: Date; to: Date }) {
+  const { from, to } = range;
+  const [leaves, presences, richieste, approvare] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: {
+        user: { active: true },
+        status: { not: "rejected" },
+        startDate: { lte: to },
+        endDate: { gte: from },
+      },
+      select: {
+        userId: true,
+        type: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        hours: true,
+        startTime: true,
+        endTime: true,
+        user: { select: { name: true } },
+      },
+      orderBy: { startDate: "asc" },
+    }),
+    prisma.presenceEntry.findMany({
+      where: { user: { active: true }, date: { gte: from, lte: to } },
+      select: { userId: true, date: true, slot: true, mode: true, user: { select: { name: true } } },
+      orderBy: { date: "asc" },
+    }),
+    peopleInScope(viewer, "richieste"),
+    peopleInScope(viewer, "approvare"),
+  ]);
+
+  const seesReason = (userId: string) =>
+    isAdminRole(viewer.role) ||
+    userId === viewer.id ||
+    richieste === "all" ||
+    approvare === "all" ||
+    richieste.includes(userId) ||
+    approvare.includes(userId);
+
+  return {
+    absences: leaves.map(({ user, ...leave }) => {
+      const l = maskLeaveForViewer(leave, viewer);
+      return {
+        userId: l.userId,
+        userName: user.name,
+        type: seesReason(l.userId) ? l.type : "assenza",
+        status: l.status,
+        startDate: ymd(l.startDate),
+        endDate: ymd(l.endDate),
+        hours: l.hours,
+        startTime: l.startTime,
+        endTime: l.endTime,
+      };
+    }),
+    presences: presences.map((p) => ({
+      userId: p.userId,
+      userName: p.user.name,
+      date: ymd(p.date),
+      slot: p.slot,
+      mode: p.mode,
+    })),
   };
 }

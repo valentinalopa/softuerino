@@ -16,13 +16,13 @@ import { countedLeaveDays, isWorkingDay, slotsClash } from "@/lib/leave-days";
 import { addUpcomingClosuresFor } from "@/lib/closures";
 import { applyImport, parseImportFile, planImport, type ImportReport } from "@/lib/import-saldi";
 import { formatAmount, hoursBetween } from "@/lib/leave-format";
-import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { nextDeactivatedAt } from "@/lib/retention";
-import { purgeTaskArchive } from "@/lib/task-archive";
+import { ForbiddenError, purgeTaskArchive } from "@/lib/task-archive";
+import * as eventsService from "@/lib/services/events";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
-import { absenceConflict } from "@/lib/absence-conflicts";
 import { can, canOnPerson } from "@/lib/permissions";
 import { loggableClientsWhere } from "@/lib/clients";
 import {
@@ -34,7 +34,6 @@ import {
   notifyTaskAssigned,
 } from "@/lib/email/notifications";
 import {
-  EVENT_TYPES,
   leaveTypesFor,
   NOTE_REQUIRED_LEAVE_TYPES,
   OPTIONAL_HOURLY_LEAVE_TYPES,
@@ -941,143 +940,47 @@ function revalidateLeavePaths(userId: string) {
 
 // --- Calendario eventi (riunioni / shooting / altro) ---
 
-type EventFormData = {
-  title: string;
-  type: string;
-  startAt: Date;
-  endAt: Date;
-  location: string | null;
-  description: string | null;
-};
-
-// Campi del form evento, condivisi tra creazione e modifica.
-function parseEventForm(
-  formData: FormData
-): { error: string } | { data: EventFormData; participantIds: string[] } {
-  const title = String(formData.get("title") ?? "").trim();
-  const type = String(formData.get("type") ?? "");
-  const startAtRaw = String(formData.get("startAt") ?? "");
-  const endAtRaw = String(formData.get("endAt") ?? "");
-  const location = String(formData.get("location") ?? "").trim() || null;
-  const description =
-    String(formData.get("description") ?? "").trim() || null;
-  const participantIds = [...new Set(formData.getAll("participantIds").map(String))];
-
-  if (!title || !EVENT_TYPES.includes(type as (typeof EVENT_TYPES)[number])) {
-    return { error: "Dati evento non validi" };
-  }
-  if (!startAtRaw || !endAtRaw) {
-    return { error: "Le date/ora sono obbligatorie" };
-  }
-  const startAt = new Date(startAtRaw);
-  const endAt = new Date(endAtRaw);
-  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
-    return { error: "Le date/ora non sono valide" };
-  }
-  if (endAt < startAt) {
-    return { error: "La fine non può precedere l'inizio" };
-  }
-
+// Le regole stanno nel service (src/lib/services/events.ts), usato anche
+// dall'app iPhone: qui solo il passaggio dal form e il ritorno come ActionResult.
+function eventInputFromForm(formData: FormData): eventsService.EventInput {
   return {
-    data: { title, type, startAt, endAt, location, description },
-    participantIds,
+    title: formData.get("title"),
+    type: formData.get("type"),
+    startAt: formData.get("startAt"),
+    endAt: formData.get("endAt"),
+    location: formData.get("location"),
+    description: formData.get("description"),
+    participantIds: formData.getAll("participantIds"),
   };
 }
 
-// Chi è assente (giornata intera, già approvata/registrata) nelle date
-// dell'evento non può essere invitato: il form lo impedisce, qui lo si garantisce.
-async function participantAbsenceError(
-  participantIds: string[],
-  startAt: Date,
-  endAt: Date,
-  viewer: Parameters<typeof maskLeaveForViewer>[1]
-): Promise<ActionResult> {
-  if (participantIds.length === 0) return;
-  const [absences, participants] = await Promise.all([
-    prisma.leaveRequest.findMany({
-      where: {
-        userId: { in: participantIds },
-        status: { not: "rejected" },
-        startDate: { lte: endAt },
-        endDate: { gte: new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()) },
-      },
-      select: {
-        userId: true,
-        type: true,
-        status: true,
-        startDate: true,
-        endDate: true,
-        hours: true,
-        startTime: true,
-        endTime: true,
-      },
-    }),
-    prisma.user.findMany({
-      where: { id: { in: participantIds } },
-      select: { id: true, name: true },
-    }),
-  ]);
-  for (const participant of participants) {
-    // Il motivo finisce nel messaggio d'errore: niente "Malattia" dei colleghi.
-    const conflict = absenceConflict(
-      absences.map((absence) => maskLeaveForViewer(absence, viewer)),
-      participant.id,
-      startAt,
-      endAt
-    );
-    if (conflict?.kind === "blocked") {
-      return {
-        error: `${participant.name} è assente in quelle date (${conflict.reason}). Rimuovi questa persona dai partecipanti`,
-      };
-    }
+// Errori attesi del service → { error } (un throw non arriverebbe all'utente).
+function eventServiceError(err: unknown): { error: string } {
+  if (
+    err instanceof ValidationError ||
+    err instanceof ConflictError ||
+    err instanceof NotFoundError ||
+    err instanceof ForbiddenError
+  ) {
+    return { error: err.message };
   }
-}
-
-// Può modificare ed eliminare un evento: admin, chi l'ha creato, o un partecipante.
-async function eventAccessError(
-  eventId: string,
-  user: { id: string; role: string }
-): Promise<ActionResult> {
-  const event = await prisma.calendarEvent.findUnique({
-    where: { id: eventId },
-    select: { createdById: true },
-  });
-  if (!event) {
-    return { error: "Evento non trovato (forse è stato eliminato)" };
-  }
-  if (isAdminRole(user.role) || event.createdById === user.id) return;
-  const isParticipant = await prisma.eventParticipant.findUnique({
-    where: { eventId_userId: { eventId, userId: user.id } },
-  });
-  if (!isParticipant) {
-    return { error: "Non autorizzato" };
-  }
+  throw err;
 }
 
 export async function createEvent(formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const parsed = parseEventForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, participantIds } = parsed;
-
-  const absenceError = await participantAbsenceError(participantIds, data.startAt, data.endAt, user);
-  if (absenceError) return absenceError;
-
-  const event = await prisma.calendarEvent.create({
-    data: {
-      ...data,
-      createdById: user.id,
-      participants: {
-        create: participantIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let created;
+  try {
+    created = await eventsService.createEvent(user, eventInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/");
   revalidatePath("/calendario");
-  after(() => notifyEventInvite(event.id, participantIds, user.id));
+  after(() => notifyEventInvite(created.event.id, created.newParticipantIds, user.id));
 }
 
 // Modifica dal dettaglio dell'evento: tutti i campi, partecipanti compresi.
@@ -1085,37 +988,17 @@ export async function updateEvent(eventId: string, formData: FormData): Promise<
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const accessError = await eventAccessError(eventId, user);
-  if (accessError) return accessError;
-
-  const parsed = parseEventForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, participantIds } = parsed;
-
-  const absenceError = await participantAbsenceError(participantIds, data.startAt, data.endAt, user);
-  if (absenceError) return absenceError;
-
-  const previous = await prisma.eventParticipant.findMany({
-    where: { eventId },
-    select: { userId: true },
-  });
-
-  await prisma.calendarEvent.update({
-    where: { id: eventId },
-    data: {
-      ...data,
-      participants: {
-        deleteMany: {},
-        create: participantIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let updated;
+  try {
+    updated = await eventsService.updateEvent(user, eventId, eventInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/");
   revalidatePath("/calendario");
   // Invita solo chi è stato aggiunto adesso.
-  const previousIds = new Set(previous.map((p) => p.userId));
-  const added = participantIds.filter((id) => !previousIds.has(id));
+  const added = updated.newParticipantIds;
   if (added.length > 0) after(() => notifyEventInvite(eventId, added, user.id));
 }
 
@@ -1123,10 +1006,11 @@ export async function deleteEvent(eventId: string): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const accessError = await eventAccessError(eventId, user);
-  if (accessError) return accessError;
-
-  await prisma.calendarEvent.delete({ where: { id: eventId } });
+  try {
+    await eventsService.deleteEvent(user, eventId);
+  } catch (err) {
+    return eventServiceError(err);
+  }
   revalidatePath("/");
   revalidatePath("/calendario");
 }

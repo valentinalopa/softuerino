@@ -19,7 +19,7 @@ function walk(dir: string): string[] {
 const real = walk(ROOT)
   .filter((f) => /\/route\.ts$/.test(f))
   .flatMap((f) => {
-    const path = "/" + relative(ROOT, f).replace(/\/route\.ts$/, "");
+    const path = "/" + relative(ROOT, f).replace(/\/route\.ts$/, "").replace(/\[(\w+)\]/g, "{$1}");
     const src = readFileSync(f, "utf8");
     return [...src.matchAll(/export (?:const|async function) (GET|POST|PUT|PATCH|DELETE)\b/g)].map(
       (m) => `${m[1]} ${path}`

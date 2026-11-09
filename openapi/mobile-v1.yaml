@@ -102,12 +102,228 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/calendar:
+    get:
+      operationId: getCalendar
+      summary: Calendario dell'app (eventi e proprie assenze/presenze)
+      description: |
+        Eventi del periodo (visibili a tutti gli utenti attivi) e SOLO le assenze
+        e le presenze della persona stessa. Periodo `[from, to]` con estremi
+        inclusi, al massimo 62 giorni; nel passato non c'è limite. Le date a
+        giornata sono `AAAA-MM-GG`, gli eventi ISO 8601 UTC. Le note delle
+        assenze non sono mai esposte.
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: Calendario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Calendar"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/team-calendar:
+    get:
+      operationId: getTeamCalendar
+      summary: Chi c'è e chi è assente (tutti i colleghi)
+      description: |
+        Assenze e presenze di tutti gli utenti attivi. Il motivo dell'assenza
+        (`type`) lo vedono solo gli admin, i responsabili delle persone
+        interessate e l'interessato; per gli altri è `assenza`. La malattia è
+        sempre mascherata per chi non è l'interessato o admin. Nessun 403 al
+        membro. Mai note né identificativi delle richieste.
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: Calendario del team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamCalendar"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/calendar/upcoming:
+    get:
+      operationId: getUpcomingEvents
+      summary: Prossimi eventi per il widget
+      description: |
+        Eventi dei prossimi 7 giorni (compreso quello in corso) di cui la persona
+        è partecipante o creatrice, al massimo 20. Solo i campi minimi: mai
+        luogo, descrizione, partecipanti, assenze o presenze.
+      responses:
+        "200":
+          description: Prossimi eventi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UpcomingEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/events:
+    post:
+      operationId: createEvent
+      summary: Crea un evento
+      description: |
+        Chi crea l'evento lo può poi modificare. I nuovi partecipanti ricevono
+        l'invito per email. Con una sessione in impersonificazione la scrittura
+        è rifiutata (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "201":
+          description: Evento creato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/events/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getEvent
+      summary: Dettaglio di un evento
+      responses:
+        "200":
+          description: Evento
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateEvent
+      summary: Modifica un evento (tutti i campi, partecipanti compresi)
+      description: Solo admin, creatore o partecipante. Gli inviti partono solo per chi viene aggiunto.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "200":
+          description: Evento aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: deleteEvent
+      summary: Elimina un evento
+      description: Solo admin, creatore o partecipante.
+      responses:
+        "204":
+          description: Evento eliminato
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
+  parameters:
+    From:
+      name: from
+      in: query
+      required: true
+      description: Primo giorno del periodo (AAAA-MM-GG)
+      schema:
+        type: string
+        format: date
+    To:
+      name: to
+      in: query
+      required: true
+      description: Ultimo giorno del periodo, incluso (AAAA-MM-GG, al massimo 62 giorni da `from`)
+      schema:
+        type: string
+        format: date
   responses:
+    InvalidRequest:
+      description: Parametri o dati non validi, periodo oltre 62 giorni (`invalid_request`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Non autorizzato, o sessione in impersonificazione (`forbidden`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Evento inesistente (`not_found`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Un partecipante è assente nelle date dell'evento (`conflict`); la malattia è mascherata
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Token assente, non valido, scaduto o utente disattivato (`unauthorized`)
       content:
@@ -131,6 +347,181 @@ components:
         message:
           type: string
           description: Testo in italiano per l'utente
+    EventType:
+      type: string
+      enum: [riunione, riunione_cliente, shooting, trasferta, altro]
+    LeaveType:
+      type: string
+      description: Per chi non è l'interessato, un admin o un responsabile può essere solo `assenza` (malattia sempre mascherata)
+      enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra, chiusura]
+    LeaveStatus:
+      type: string
+      enum: [pending, approved, rejected, registrata]
+    PresenceSlot:
+      type: string
+      enum: [mattina, pomeriggio, giornata_intera]
+    PresenceMode:
+      type: string
+      enum: [ufficio, smartworking]
+    Event:
+      type: object
+      required: [id, title, type, startAt, endAt, location, description, participants, canEdit]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        startAt:
+          type: string
+          format: date-time
+          description: ISO 8601 UTC
+        endAt:
+          type: string
+          format: date-time
+        location:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonRef"
+        canEdit:
+          type: boolean
+          description: Vero per admin, creatore o partecipante
+    PersonRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    EventInput:
+      type: object
+      required: [title, type, startAt, endAt]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        type:
+          $ref: "#/components/schemas/EventType"
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        location:
+          type: [string, "null"]
+          maxLength: 200
+        description:
+          type: [string, "null"]
+          maxLength: 5000
+        participantIds:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+    Absence:
+      type: object
+      description: Assenza della persona stessa (senza nota né id)
+      required: [type, status, startDate, endDate, hours, startTime, endTime]
+      properties:
+        type:
+          $ref: "#/components/schemas/LeaveType"
+        status:
+          $ref: "#/components/schemas/LeaveStatus"
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        hours:
+          type: [number, "null"]
+        startTime:
+          type: [string, "null"]
+        endTime:
+          type: [string, "null"]
+    Presence:
+      type: object
+      required: [date, slot, mode]
+      properties:
+        date:
+          type: string
+          format: date
+        slot:
+          $ref: "#/components/schemas/PresenceSlot"
+        mode:
+          $ref: "#/components/schemas/PresenceMode"
+    Calendar:
+      type: object
+      required: [events, absences, presences]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        absences:
+          type: array
+          items:
+            $ref: "#/components/schemas/Absence"
+        presences:
+          type: array
+          items:
+            $ref: "#/components/schemas/Presence"
+    TeamAbsence:
+      allOf:
+        - $ref: "#/components/schemas/Absence"
+        - type: object
+          required: [userId, userName]
+          properties:
+            userId:
+              type: string
+            userName:
+              type: string
+    TeamPresence:
+      allOf:
+        - $ref: "#/components/schemas/Presence"
+        - type: object
+          required: [userId, userName]
+          properties:
+            userId:
+              type: string
+            userName:
+              type: string
+    TeamCalendar:
+      type: object
+      required: [absences, presences]
+      properties:
+        absences:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamAbsence"
+        presences:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamPresence"
+    UpcomingEvent:
+      type: object
+      description: Solo i campi minimi per il widget
+      required: [id, title, type, startAt, endAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
     Department:
       type: object
       required: [id, name]
