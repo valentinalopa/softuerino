@@ -190,7 +190,7 @@ describe("exchangeCode (client mobile pubblico)", () => {
   });
 
   it("il redirect URI dell'app è quello registrato sul client", () => {
-    assert.equal(MOBILE_REDIRECT_URI, "it.colibrivision.softuerino://oauth");
+    assert.equal(MOBILE_REDIRECT_URI, "https://time.colibrivision.it/mobile/oauth/callback");
   });
 
   it("errore di Keycloak → OidcError('failed')", async () => {

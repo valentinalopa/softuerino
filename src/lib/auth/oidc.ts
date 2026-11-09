@@ -69,8 +69,10 @@ export function isSsoManaged(user: { oidcSubject: string | null }) {
 // pubblico: nessun secret, solo PKCE; id da MOBILE_OIDC_CLIENT_ID).
 export type OidcClientKind = "web" | "ios";
 
-// Redirect URI dell'app iPhone (schema personalizzato registrato sul client).
-export const MOBILE_REDIRECT_URI = "it.colibrivision.softuerino://oauth";
+// Redirect URI dell'app iPhone: HTTPS (link universale, ASWebAuthenticationSession
+// .https, iOS 17.4+), registrato sul client softuerino-ios. Il dominio è
+// rivendicato dall'app con Associated Domains (vedi associated-domains.ts).
+export const MOBILE_REDIRECT_URI = "https://time.colibrivision.it/mobile/oauth/callback";
 
 const configPromises: Record<OidcClientKind, Promise<client.Configuration> | null> = {
   web: null,

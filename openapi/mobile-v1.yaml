@@ -174,7 +174,7 @@ components:
           maxLength: 128
         redirectUri:
           type: string
-          description: Deve essere il redirect URI dell'app
+          description: Deve essere esattamente `https://time.colibrivision.it/mobile/oauth/callback` (link universale dell'app)
         nonce:
           type: string
           maxLength: 512

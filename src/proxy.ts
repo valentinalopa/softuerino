@@ -2,7 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { MOBILE_REQUEST_HEADER, SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 
 // /privacy: informativa privacy, si legge anche senza accedere.
-const PUBLIC_PATHS = ["/login", "/privacy"];
+// Redirect HTTPS del login dell'app iPhone e file Associated Domains: percorsi
+// ESATTI (niente prefissi), li apre anche chi non ha sessione.
+const PUBLIC_PATHS = [
+  "/login",
+  "/privacy",
+  "/mobile/oauth/callback",
+  "/.well-known/apple-app-site-association",
+];
 
 // Controllo ottimistico: verifica solo la presenza del cookie di sessione,
 // non la sua validita/scadenza (richiede una query al DB, fatta invece
