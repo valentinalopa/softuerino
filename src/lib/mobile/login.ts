@@ -2,6 +2,7 @@ import "server-only";
 import {
   exchangeCode as realExchangeCode,
   MOBILE_REDIRECT_URI,
+  mobileDevRedirectUri,
   OidcError,
   resolveOidcUser,
 } from "@/lib/auth/oidc";
@@ -38,12 +39,19 @@ export async function mobileTokenLogin(
   if (nonce !== undefined && !isString(nonce, 1, 512)) {
     return apiError(400, "invalid_request", "Parametro nonce non valido.");
   }
-  if (redirectUri !== MOBILE_REDIRECT_URI) {
+  // Release: redirect HTTPS e client "ios". Il redirect di sviluppo (Simulatore)
+  // vale solo se le variabili MOBILE_DEV_* sono impostate (mai in produzione) e
+  // usa il client "ios-dev": il tipo si salva sulla sessione, così il refresh
+  // con Keycloak usa il client giusto.
+  const devRedirect = mobileDevRedirectUri();
+  const kind: "ios" | "ios-dev" | null =
+    redirectUri === MOBILE_REDIRECT_URI ? "ios" : devRedirect !== null && redirectUri === devRedirect ? "ios-dev" : null;
+  if (kind === null) {
     return apiError(400, "invalid_request", "redirectUri non ammesso.");
   }
 
   try {
-    const { claims, tokens } = await deps.exchangeCode(code, codeVerifier, redirectUri, nonce);
+    const { claims, tokens } = await deps.exchangeCode(code, codeVerifier, redirectUri, nonce, kind);
     // provision=false: dall'app non si collegano né si creano utenti.
     const { user } = await resolveOidcUser(claims, tokens, { provision: false });
 
@@ -55,7 +63,7 @@ export async function mobileTokenLogin(
     // Keycloak; l'id_token all'app non serve (minimizzazione).
     const { token, expiresAt } = await issueSessionToken(user.id, {
       authMethod: "oidc",
-      client: "ios",
+      client: kind,
       oidcSid: tokens.sid,
       refreshToken: tokens.refreshToken,
     });

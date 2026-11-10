@@ -44,11 +44,17 @@ function openToken(value: string | null) {
   }
 }
 
-export type SessionClient = "web" | "ios";
+// "ios-dev": app in sviluppo (Simulatore), nata dal client Keycloak di sviluppo.
+// Per Bearer, durata e logout vale come "ios"; cambia solo il client per il refresh.
+export type SessionClient = "web" | "ios" | "ios-dev";
+
+function isMobileClient(client: string) {
+  return client === "ios" || client === "ios-dev";
+}
 
 // Giorni senza attività dopo i quali la sessione scade, per client.
 function idleDays(client: string) {
-  return client === "ios" ? MOBILE_IDLE_DAYS : SESSION_IDLE_DAYS;
+  return isMobileClient(client) ? MOBILE_IDLE_DAYS : SESSION_IDLE_DAYS;
 }
 
 // Crea la riga di sessione e restituisce il token in chiaro (nel DB va solo
@@ -177,7 +183,10 @@ async function verifySsoSession(session: {
 
   // Il refresh_token appartiene al client che ha fatto il login: web
   // (confidenziale) o ios (pubblico).
-  const result = await refreshOidcSession(refreshToken, session.client === "ios" ? "ios" : "web");
+  const result = await refreshOidcSession(
+    refreshToken,
+    session.client === "ios" || session.client === "ios-dev" ? session.client : "web"
+  );
   if (result.status === "ended") {
     await prisma.$transaction([
       closeImpersonationLogs(session.id),
@@ -236,7 +245,7 @@ export const getSession = cache(async () => {
   const now = Date.now();
   if (
     !session ||
-    session.client !== expectedClient ||
+    (expectedClient === "ios" ? !isMobileClient(session.client) : session.client !== expectedClient) ||
     session.expiresAt.getTime() < now ||
     session.lastSeenAt.getTime() < now - idleDays(session.client) * DAY_MS
   ) {
@@ -253,7 +262,7 @@ export const getSession = cache(async () => {
       data: {
         lastSeenAt: new Date(now),
         // ios: la scadenza scorre con l'uso (30 giorni dall'ultimo utilizzo).
-        ...(session.client === "ios"
+        ...(isMobileClient(session.client)
           ? { expiresAt: new Date(now + SESSION_DURATION_DAYS * DAY_MS) }
           : {}),
       },
@@ -453,7 +462,7 @@ export async function revokeBearerSession() {
     where: { token: hashToken(token) },
     select: { id: true, client: true },
   });
-  if (!session || session.client !== "ios") return false;
+  if (!session || !isMobileClient(session.client)) return false;
   await prisma.$transaction([
     closeImpersonationLogs(session.id),
     prisma.session.delete({ where: { id: session.id } }),

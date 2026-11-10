@@ -34,6 +34,11 @@ function env() {
     allowedGroup: (process.env.OIDC_ALLOWED_GROUP ?? "").replace(/^\/+/, ""),
     // Client pubblico dell'app iPhone: solo da ambiente, mai scritto su file.
     mobileClientId: process.env.MOBILE_OIDC_CLIENT_ID || "softuerino-ios",
+    // Login di sviluppo dell'app (solo Simulatore, senza abbonamento Apple):
+    // client pubblico a parte e redirect con schema personalizzato. Il percorso
+    // è spento se manca una delle due variabili. In produzione non si impostano mai.
+    devClientId: process.env.MOBILE_DEV_OIDC_CLIENT_ID ?? "",
+    devRedirectUri: process.env.MOBILE_DEV_REDIRECT_URI ?? "",
   };
 }
 
@@ -67,7 +72,26 @@ export function isSsoManaged(user: { oidcSubject: string | null }) {
 // riprova alla richiesta successiva.
 // Due client Keycloak: "web" (confidenziale, con secret) e "ios" (app iPhone,
 // pubblico: nessun secret, solo PKCE; id da MOBILE_OIDC_CLIENT_ID).
-export type OidcClientKind = "web" | "ios";
+// Il terzo, "ios-dev", esiste solo con MOBILE_DEV_* impostate (login di sviluppo).
+export type OidcClientKind = "web" | "ios" | "ios-dev";
+
+// Login di sviluppo attivo solo se ci sono entrambe le variabili.
+export function isMobileDevEnabled() {
+  const { devClientId, devRedirectUri } = env();
+  return Boolean(devClientId && devRedirectUri);
+}
+
+// Redirect URI di sviluppo (schema personalizzato), o null se il dev è spento.
+export function mobileDevRedirectUri() {
+  return isMobileDevEnabled() ? env().devRedirectUri : null;
+}
+
+// Audience ammesse per il back-channel logout: client web, app iPhone e, solo
+// con il dev attivo, il client di sviluppo.
+export function backchannelAudiences() {
+  const { clientId, mobileClientId, devClientId } = env();
+  return [clientId, mobileClientId, ...(isMobileDevEnabled() ? [devClientId] : [])];
+}
 
 // Redirect URI dell'app iPhone: HTTPS (link universale, ASWebAuthenticationSession
 // .https, iOS 17.4+), registrato sul client softuerino-ios. Il dominio è
@@ -77,19 +101,23 @@ export const MOBILE_REDIRECT_URI = "https://time.colibrivision.it/mobile/oauth/c
 const configPromises: Record<OidcClientKind, Promise<client.Configuration> | null> = {
   web: null,
   ios: null,
+  "ios-dev": null,
 };
 
 function getConfig(kind: OidcClientKind = "web") {
+  if (kind === "ios-dev" && !isMobileDevEnabled()) {
+    throw new Error("login di sviluppo non attivo");
+  }
   if (!configPromises[kind]) {
-    const { issuer, clientId, clientSecret, mobileClientId } = env();
+    const { issuer, clientId, clientSecret, mobileClientId, devClientId } = env();
     configPromises[kind] = client
       // timeout (secondi) anche per le richieste successive: se Keycloak è lento
       // una pagina non resta appesa (vedi refreshOidcSession).
       .discovery(
         new URL(issuer),
-        kind === "ios" ? mobileClientId : clientId,
+        kind === "ios" ? mobileClientId : kind === "ios-dev" ? devClientId : clientId,
         undefined,
-        kind === "ios" ? client.None() : client.ClientSecretBasic(clientSecret),
+        kind === "web" ? client.ClientSecretBasic(clientSecret) : client.None(),
         { timeout: 5 }
       )
       .catch((err) => {
@@ -186,10 +214,11 @@ export async function exchangeCode(
   code: string,
   verifier: string,
   redirectUri: string,
-  nonce?: string
+  nonce?: string,
+  kind: "ios" | "ios-dev" = "ios"
 ): Promise<{ claims: client.IDToken; tokens: OidcTokens }> {
   try {
-    const config = await getConfig("ios");
+    const config = await getConfig(kind);
     const currentUrl = new URL(redirectUri);
     currentUrl.searchParams.set("code", code);
     // Keycloak lo allega alla risposta di autorizzazione (RFC 9207): l'app ci
@@ -392,7 +421,7 @@ export async function verifyBackchannelLogoutToken(logoutToken: string) {
   const { payload } = await jwtVerify(logoutToken, jwks.set, {
     issuer: metadata.issuer,
     // Logout token destinato al client web o a quello dell'app iPhone.
-    audience: [env().clientId, env().mobileClientId],
+    audience: backchannelAudiences(),
     algorithms: ASYMMETRIC_ALGS,
     maxTokenAge: "2 minutes", // iat recente
     clockTolerance: 30,

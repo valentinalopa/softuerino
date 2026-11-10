@@ -565,7 +565,11 @@ components:
           maxLength: 128
         redirectUri:
           type: string
-          description: Deve essere esattamente `https://time.colibrivision.it/mobile/oauth/callback` (link universale dell'app)
+          description: |
+            Deve essere esattamente `https://time.colibrivision.it/mobile/oauth/callback` (link universale dell'app).
+            Solo sull'istanza di prova (variabili `MOBILE_DEV_*` impostate) è ammesso anche
+            `it.colibrivision.softuerino.dev:/oauth`, del client Keycloak di sviluppo; in produzione
+            quel valore dà sempre 400.
         nonce:
           type: string
           maxLength: 512
