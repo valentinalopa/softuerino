@@ -277,6 +277,102 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/presence:
+    put:
+      operationId: setPresence
+      summary: Imposta la propria presenza su uno o più giorni
+      description: |
+        Solo per sé stessi (nessun userId). Stessa regola del web: "giornata_intera"
+        sostituisce mattina e pomeriggio dello stesso giorno, e viceversa; una fascia
+        già presente cambia modalità. Al massimo 62 giorni per volta. Non blocca i
+        giorni con un'assenza. Sola lettura se si guarda l'app come un altro membro (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresenceInput"
+      responses:
+        "200":
+          description: Presenze di quei giorni dopo il salvataggio
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [presences]
+                properties:
+                  presences:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Presence"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: deletePresences
+      summary: Toglie le proprie presenze di più giorni
+      description: Senza `slot` toglie tutte le fasce dei giorni indicati. Un giorno senza presenze non è un errore.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dates]
+              properties:
+                dates:
+                  type: array
+                  minItems: 1
+                  maxItems: 62
+                  items:
+                    type: string
+                    format: date
+                slot:
+                  $ref: "#/components/schemas/PresenceSlot"
+      responses:
+        "204":
+          description: Presenze eliminate
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/presence/{date}:
+    parameters:
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: slot
+        in: query
+        required: false
+        schema:
+          $ref: "#/components/schemas/PresenceSlot"
+    delete:
+      operationId: deletePresenceDay
+      summary: Toglie le proprie presenze di un giorno
+      description: Tutte le fasce, oppure solo `slot`.
+      responses:
+        "204":
+          description: Presenze eliminate
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     bearerAuth:
@@ -453,6 +549,21 @@ components:
         date:
           type: string
           format: date
+        slot:
+          $ref: "#/components/schemas/PresenceSlot"
+        mode:
+          $ref: "#/components/schemas/PresenceMode"
+    PresenceInput:
+      type: object
+      required: [dates, slot, mode]
+      properties:
+        dates:
+          type: array
+          minItems: 1
+          maxItems: 62
+          items:
+            type: string
+            format: date
         slot:
           $ref: "#/components/schemas/PresenceSlot"
         mode:

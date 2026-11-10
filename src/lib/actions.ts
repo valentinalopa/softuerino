@@ -19,6 +19,7 @@ import { formatAmount, hoursBetween } from "@/lib/leave-format";
 import { nextDeactivatedAt } from "@/lib/retention";
 import { ForbiddenError, purgeTaskArchive } from "@/lib/task-archive";
 import * as eventsService from "@/lib/services/events";
+import * as presenceService from "@/lib/services/presence";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
@@ -38,8 +39,6 @@ import {
   NOTE_REQUIRED_LEAVE_TYPES,
   OPTIONAL_HOURLY_LEAVE_TYPES,
   type LeaveType,
-  PRESENCE_SLOTS,
-  PRESENCE_MODES,
   ROLES,
   assignableRoles,
   isAdminRole,
@@ -1017,12 +1016,8 @@ export async function deleteEvent(eventId: string): Promise<ActionResult> {
 
 // --- Calendario presenze (self-log, nessuna approvazione) ---
 
-// Slot incompatibili sullo stesso giorno: "giornata intera" non può convivere
-// con mattina/pomeriggio (e viceversa). Impostare uno slot rimuove i conflitti.
-function conflictingSlots(slot: string) {
-  return slot === "giornata_intera" ? ["mattina", "pomeriggio"] : ["giornata_intera"];
-}
-
+// Le regole (slot incompatibili, validazione) stanno nel service
+// src/lib/services/presence.ts, usato anche dall'app iPhone.
 export async function createPresenceEntry(formData: FormData) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
@@ -1034,29 +1029,12 @@ export async function createPresenceEntry(formData: FormData) {
   if (!date) {
     return { error: "La data è obbligatoria" };
   }
-  if (!PRESENCE_SLOTS.includes(slot as (typeof PRESENCE_SLOTS)[number])) {
-    return { error: "Fascia oraria non valida" };
-  }
-  if (!PRESENCE_MODES.includes(mode as (typeof PRESENCE_MODES)[number])) {
-    return { error: "Modalità non valida" };
-  }
 
-  await prisma.$transaction([
-    prisma.presenceEntry.deleteMany({
-      where: {
-        userId: user.id,
-        date: localDate(date),
-        slot: { in: conflictingSlots(slot) },
-      },
-    }),
-    prisma.presenceEntry.upsert({
-      where: {
-        userId_date_slot: { userId: user.id, date: localDate(date), slot },
-      },
-      update: { mode },
-      create: { userId: user.id, date: localDate(date), slot, mode },
-    }),
-  ]);
+  try {
+    await presenceService.savePresenceFor(user.id, { dates: [date], slot, mode });
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/calendario");
 }
@@ -1087,41 +1065,11 @@ export async function createPresenceEntries({
     return { error: "Non autorizzato" };
   }
 
-  if (dates.length === 0) {
-    return { error: "Seleziona almeno un giorno" };
+  try {
+    await presenceService.savePresenceFor(userId, { dates, slot, mode, replace });
+  } catch (err) {
+    return eventServiceError(err);
   }
-  if (!PRESENCE_SLOTS.includes(slot as (typeof PRESENCE_SLOTS)[number])) {
-    return { error: "Fascia oraria non valida" };
-  }
-  if (!PRESENCE_MODES.includes(mode as (typeof PRESENCE_MODES)[number])) {
-    return { error: "Modalità non valida" };
-  }
-
-  await prisma.$transaction([
-    ...replace.map((item) =>
-      prisma.presenceEntry.deleteMany({
-        where: { userId, date: localDate(item.date), slot: item.slot },
-      })
-    ),
-    ...dates.map((date) =>
-      prisma.presenceEntry.deleteMany({
-        where: {
-          userId,
-          date: localDate(date),
-          slot: { in: conflictingSlots(slot) },
-        },
-      })
-    ),
-    ...dates.map((date) =>
-      prisma.presenceEntry.upsert({
-        where: {
-          userId_date_slot: { userId, date: localDate(date), slot },
-        },
-        update: { mode },
-        create: { userId, date: localDate(date), slot, mode },
-      })
-    ),
-  ]);
 
   revalidatePath("/calendario");
 }
@@ -1152,17 +1100,11 @@ export async function deletePresenceEntries({
     return { error: "Non autorizzato" };
   }
 
-  if (items.length === 0) {
-    return { error: "Seleziona almeno un giorno" };
+  try {
+    await presenceService.removePresenceFor(userId, items);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  await prisma.$transaction(
-    items.map((item) =>
-      prisma.presenceEntry.deleteMany({
-        where: { userId, date: localDate(item.date), slot: item.slot },
-      })
-    )
-  );
 
   revalidatePath("/calendario");
 }
