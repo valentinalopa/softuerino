@@ -39,6 +39,9 @@ describe("superficie dell'API mobile", () => {
       "/v1/presence/[date]",
       "/v1/recovery-credits",
       "/v1/team-calendar",
+      "/v1/time",
+      "/v1/time/[date]",
+      "/v1/time/clients",
     ]);
   });
 

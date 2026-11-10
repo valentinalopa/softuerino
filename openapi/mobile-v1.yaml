@@ -514,6 +514,115 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/time:
+    get:
+      operationId: getTimeMonth
+      summary: Le proprie ore in un mese
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}-(0[1-9]|1[0-2])$"
+            example: "2026-11"
+      responses:
+        "200":
+          description: Totale del mese e ore per giorno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlySummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/time/clients:
+    get:
+      operationId: listTimeClients
+      summary: Clienti su cui si possono registrare ore
+      description: Attivi e aperti a tutti, oppure riservati a chi è indicato.
+      responses:
+        "200":
+          description: Clienti, ogni voce subito sotto il suo cliente padre
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clients]
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Client"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/time/{date}:
+    parameters:
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+    get:
+      operationId: getTimeDay
+      summary: Le proprie ore di un giorno
+      responses:
+        "200":
+          description: Ore del giorno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      operationId: saveTimeDay
+      summary: Registra le proprie ore di un giorno
+      description: |
+        Sostituisce tutte le righe del giorno (elenco vuoto = giornata svuotata; righe a 0
+        ignorate). Solo per sé stessi. 400: ore non numeriche, negative, oltre 24 per riga
+        o per giorno, cliente ripetuto. 403: cliente non ammesso (non attivo o riservato ad
+        altri), oppure sola lettura in impersonificazione. 409: un membro modifica una
+        giornata già registrata (la corregge un admin).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entries]
+              properties:
+                entries:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/TimeEntryInput"
+      responses:
+        "200":
+          description: Ore del giorno dopo il salvataggio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     bearerAuth:
@@ -948,6 +1057,76 @@ components:
           enum: [giorni, ore]
         remaining:
           type: number
+    TimeEntryInput:
+      type: object
+      required: [clientId, hours]
+      properties:
+        clientId:
+          type: string
+        hours:
+          type: number
+          minimum: 0
+          maximum: 24
+        note:
+          type: [string, "null"]
+          maxLength: 500
+    DailyHours:
+      type: object
+      required: [date, entries, totalHours, editable]
+      properties:
+        date:
+          type: string
+          format: date
+        entries:
+          type: array
+          items:
+            type: object
+            required: [clientId, clientLabel, hours, note]
+            properties:
+              clientId:
+                type: string
+              clientLabel:
+                type: string
+              hours:
+                type: number
+              note:
+                type: [string, "null"]
+        totalHours:
+          type: number
+        editable:
+          type: boolean
+          description: false per un membro se la giornata è già registrata
+    MonthlySummary:
+      type: object
+      required: [month, totalHours, days]
+      properties:
+        month:
+          type: string
+          example: "2026-11"
+        totalHours:
+          type: number
+        days:
+          type: array
+          items:
+            type: object
+            required: [date, hours]
+            properties:
+              date:
+                type: string
+                format: date
+              hours:
+                type: number
+    Client:
+      type: object
+      required: [id, name, label]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        label:
+          type: string
+          description: Con il nome del cliente padre per le voci interne
     Department:
       type: object
       required: [id, name]

@@ -19,12 +19,12 @@ import { ForbiddenError, purgeTaskArchive } from "@/lib/task-archive";
 import * as eventsService from "@/lib/services/events";
 import * as presenceService from "@/lib/services/presence";
 import * as leaveService from "@/lib/services/leave";
+import * as timeService from "@/lib/services/time";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import { can, canOnPerson } from "@/lib/permissions";
-import { loggableClientsWhere } from "@/lib/clients";
 import {
   notifyEventInvite,
   notifyLeaveDecision,
@@ -1049,79 +1049,21 @@ export async function saveDailyTimeEntries(formData: FormData) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
-  const targetUserId = targetUserIdRaw || user.id;
-  if (targetUserId !== user.id && !isAdminRole(user.role)) {
-    return { error: "Non autorizzato" };
-  }
-
+  // Regole nel service (condiviso con l'app). userId: un admin può farlo anche sul
+  // log di un altro membro.
+  const targetUserId = String(formData.get("userId") ?? "").trim() || user.id;
   const dateRaw = String(formData.get("date") ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-    return { error: "Data non valida" };
-  }
-
   const clientIds = formData.getAll("clientId").map(String);
   const hoursRaw = formData.getAll("hours").map(String);
-
-  const day = localDate(dateRaw);
-  const nextDay = new Date(day);
-  nextDay.setDate(nextDay.getDate() + 1);
-
   const entries = clientIds
     .map((clientId, i) => ({ clientId, hours: Number(hoursRaw[i]) }))
     .filter((e) => e.clientId && Number.isFinite(e.hours) && e.hours > 0);
 
-  // Una giornata già registrata la corregge solo un admin (dalla scheda
-  // membro): il form la nasconde, ma il vincolo va garantito anche qui.
-  if (!isAdminRole(user.role)) {
-    const alreadyLogged = await prisma.timeEntry.count({
-      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
-    });
-    if (alreadyLogged > 0) {
-      return { error: "Questa giornata è già registrata" };
-    }
+  try {
+    await timeService.replaceDayFor({ id: user.id, role: user.role }, targetUserId, dateRaw, entries);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  // Solo clienti su cui la persona può loggare (le voci riservate restano
-  // a chi è indicato), più quelli che hanno già ore quel giorno: in modifica
-  // un admin non deve perderle se nel frattempo il cliente è cambiato.
-  const requestedIds = [...new Set(entries.map((e) => e.clientId))];
-  if (requestedIds.length > 0) {
-    const allowed = await prisma.client.findMany({
-      where: {
-        id: { in: requestedIds },
-        OR: [
-          loggableClientsWhere(targetUserId),
-          { timeEntries: { some: { userId: targetUserId, date: { gte: day, lt: nextDay } } } },
-        ],
-      },
-      select: { id: true },
-    });
-    if (allowed.length !== requestedIds.length) {
-      return { error: "Non puoi loggare ore su uno dei clienti indicati" };
-    }
-  }
-
-  await prisma.$transaction([
-    prisma.timeEntry.deleteMany({
-      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
-    }),
-    // Ore registrate: il giorno non è più "non lavorato".
-    ...(entries.length > 0
-      ? [prisma.dayNotWorked.deleteMany({ where: { userId: targetUserId, date: { gte: day, lt: nextDay } } })]
-      : []),
-    ...entries.map((e) =>
-      prisma.timeEntry.create({
-        data: {
-          userId: targetUserId,
-          clientId: e.clientId,
-          date: day,
-          hours: e.hours,
-          description: "",
-        },
-      })
-    ),
-  ]);
 
   revalidatePath("/ore");
   revalidatePath(`/team/${targetUserId}`);
