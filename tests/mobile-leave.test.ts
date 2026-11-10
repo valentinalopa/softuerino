@@ -132,6 +132,9 @@ describe("richieste dell'app", () => {
     const { request } = await ok.json();
     assert.equal(request.hours, 2.5);
     assert.equal(request.endDate, "2027-08-02");
+    // A ore la data di fine è ignorata, anche se non valida (come sul web).
+    const ignoredEnd = await postRequest(send("POST", "/leave-requests", { type: "permesso", startDate: "2027-08-03", endDate: "boh", startTime: "09:00", endTime: "10:00" }));
+    assert.equal(ignoredEnd.status, 201);
   });
 
   it("punto 5: recupero senza credito e senza nota → 400; con nota o con credito → 201", async () => {
