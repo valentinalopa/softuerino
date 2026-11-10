@@ -71,7 +71,7 @@ describe("withMobileAuth e GET /me", () => {
     assert.equal((await getMe(req())).status, 401);
   });
 
-  it("Bearer valido → 200 con id, name, email, role, managedDepartments", async () => {
+  it("Bearer valido → 200 con id, name, email, role, employmentType, leaveTypes, managedDepartments", async () => {
     const user = await makeUser("a3");
     const dep = await prisma.department.create({ data: { name: "T-Reparto" } });
     await prisma.userDepartment.create({ data: { userId: user.id, departmentId: dep.id, isManager: true } });
@@ -84,6 +84,8 @@ describe("withMobileAuth e GET /me", () => {
       name: user.name,
       email: user.email,
       role: "membro",
+      employmentType: "dipendente",
+      leaveTypes: ["ferie", "permesso", "recupero", "permesso_104", "malattia"],
       hasSuperAdminRole: false,
       superAdminActive: false,
       managedDepartments: [{ id: dep.id, name: "T-Reparto" }],

@@ -373,6 +373,147 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/leave-requests:
+    get:
+      operationId: listLeaveRequests
+      summary: Le proprie richieste di assenza
+      description: |
+        Solo le richieste della persona stessa (anche malattia: dato sanitario, mai
+        quelle di altri). `year` limita a quelle che toccano quell'anno.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 2000
+            maximum: 2100
+      responses:
+        "200":
+          description: Richieste, dalla più recente
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LeaveRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createLeaveRequest
+      summary: Nuova richiesta di assenza per sé
+      description: |
+        Stesse regole del web. Nasce `pending` (la malattia `registrata`); parte la
+        mail ai responsabili, una volta sola e mai in caso di errore. Nessun `userId`
+        (l'app non registra per conto di altri) e nessun annullamento da parte del
+        richiedente. 400: dati non validi, tipo non ammesso per il rapporto di
+        lavoro (`Me.leaveTypes`), fascia oraria non valida (formato o fine non dopo
+        l'inizio), recupero senza nota né recupero da fare. 409: le date si
+        sovrappongono a una richiesta approvata o in attesa. 404: recupero da fare
+        inesistente. Sola lettura se si guarda l'app come un altro membro (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaveRequestInput"
+      responses:
+        "201":
+          description: Richiesta creata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/LeaveRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getLeaveRequest
+      summary: Una propria richiesta
+      description: Le richieste di altri rispondono 404.
+      responses:
+        "200":
+          description: Richiesta
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/LeaveRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/balance:
+    get:
+      operationId: getBalance
+      summary: Saldi dell'anno corrente
+      description: Gli stessi numeri della pagina Richieste del web.
+      responses:
+        "200":
+          description: Saldi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Balance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/recovery-credits:
+    get:
+      operationId: listRecoveryCredits
+      summary: Recuperi da fare ancora da smaltire
+      description: Sola lettura (li registra solo il super admin dal web).
+      responses:
+        "200":
+          description: Recuperi aperti
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recoveryCredits]
+                properties:
+                  recoveryCredits:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecoveryCredit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     bearerAuth:
@@ -449,7 +590,7 @@ components:
     LeaveType:
       type: string
       description: Per chi non è l'interessato, un admin o un responsabile può essere solo `assenza` (malattia sempre mascherata)
-      enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra, chiusura]
+      enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra, permesso_104, chiusura]
     LeaveStatus:
       type: string
       enum: [pending, approved, rejected, registrata]
@@ -633,6 +774,180 @@ components:
         endAt:
           type: string
           format: date-time
+    LeaveRequest:
+      type: object
+      description: Richiesta propria
+      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, createdAt, recoveryCredit]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/LeaveType"
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        hours:
+          type: [number, "null"]
+        startTime:
+          type: [string, "null"]
+          description: HH:MM
+        endTime:
+          type: [string, "null"]
+          description: HH:MM
+        status:
+          $ref: "#/components/schemas/LeaveStatus"
+        note:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        recoveryCredit:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [id, reason, amount, unit]
+              properties:
+                id:
+                  type: string
+                reason:
+                  type: string
+                amount:
+                  type: number
+                unit:
+                  type: string
+                  enum: [giorni, ore]
+    LeaveRequestInput:
+      type: object
+      required: [type, startDate]
+      properties:
+        type:
+          type: string
+          enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra, permesso_104]
+          description: Quelli ammessi sono in `Me.leaveTypes`
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          description: Omessa = come startDate. Ignorata per le richieste a ore.
+        startTime:
+          type: string
+          description: HH:MM, obbligatoria per permesso e recupero a ore
+        endTime:
+          type: string
+          description: HH:MM, dopo startTime
+        note:
+          type: string
+          description: Obbligatoria per il recupero senza `recoveryCreditId`
+        recoveryCreditId:
+          type: string
+          description: Solo per il recupero
+        unit:
+          type: string
+          enum: [giorni, ore]
+          description: "\"A ore\" o \"a giorni\" per recupero (senza `recoveryCreditId`), assenza e permesso_104; il permesso è sempre a ore"
+    BalanceFigures:
+      type: object
+      required: [remaining, used, reference]
+      properties:
+        remaining:
+          type: number
+        used:
+          type: number
+        reference:
+          type: number
+        referenceNote:
+          type: string
+        planned:
+          type: number
+          description: Già approvato nei giorni futuri
+        missing:
+          type: boolean
+          description: Saldo della busta paga non ancora inserito dal super admin
+    HourBalance:
+      type: object
+      description: Saldo in ore dalla busta paga (PR #50)
+      required: [start, perYear, perMonth, accrued, used, remaining, planned, afterPlanned]
+      properties:
+        start: { type: number }
+        perYear: { type: number }
+        perMonth: { type: number }
+        accrued: { type: number }
+        used: { type: number }
+        remaining: { type: number }
+        planned: { type: number }
+        afterPlanned: { type: number }
+    ChargeInfo:
+      type: object
+      properties:
+        unit: { type: string, enum: [h, gg] }
+        base: { type: number }
+        perMonth: { type: number }
+        from: { type: string, format: date, nullable: true }
+        perDay: { type: number, nullable: true }
+        maxPerDay: { type: number, nullable: true }
+        dayHours: { type: number, nullable: true }
+    Balance:
+      type: object
+      required: [year, kind, figures, charges]
+      description: "Dipendenti (kind=dipendente): ferie e permesso ROL in ore (null finché manca la busta paga), dailyHours, startMonth. Partite IVA (kind=assenze): assenze in giorni."
+      properties:
+        year:
+          type: integer
+        kind:
+          type: string
+          enum: [dipendente, assenze]
+        figures:
+          type: object
+          description: Una voce per saldo del contratto (ferie e permesso, oppure assenze), come le barrette del web
+          properties:
+            ferie:
+              $ref: "#/components/schemas/BalanceFigures"
+            permesso:
+              $ref: "#/components/schemas/BalanceFigures"
+            assenze:
+              $ref: "#/components/schemas/BalanceFigures"
+        charges:
+          type: object
+          properties:
+            ferie: { $ref: "#/components/schemas/ChargeInfo" }
+            permesso: { $ref: "#/components/schemas/ChargeInfo" }
+            assenza: { $ref: "#/components/schemas/ChargeInfo" }
+        dailyHours:
+          type: number
+        startMonth:
+          type: string
+          nullable: true
+          description: yyyy-MM della busta paga di partenza
+        ferie:
+          allOf: [{ $ref: "#/components/schemas/HourBalance" }]
+          nullable: true
+        permesso:
+          allOf: [{ $ref: "#/components/schemas/HourBalance" }]
+          nullable: true
+        assenze:
+          type: object
+          properties:
+            allowance: { type: number }
+            used: { type: number }
+            remaining: { type: number }
+    RecoveryCredit:
+      type: object
+      required: [id, reason, unit, remaining]
+      properties:
+        id:
+          type: string
+        reason:
+          type: string
+        unit:
+          type: string
+          enum: [giorni, ore]
+        remaining:
+          type: number
     Department:
       type: object
       required: [id, name]
@@ -643,7 +958,7 @@ components:
           type: string
     Me:
       type: object
-      required: [id, name, email, role, hasSuperAdminRole, superAdminActive, managedDepartments]
+      required: [id, name, email, role, employmentType, leaveTypes, hasSuperAdminRole, superAdminActive, managedDepartments]
       properties:
         id:
           type: string
@@ -655,6 +970,15 @@ components:
           type: string
           enum: [super_admin, admin, membro]
           description: Ruolo effettivo (super_admin solo da rete interna fidata; dal pubblico un super admin è admin)
+        employmentType:
+          type: string
+          enum: [dipendente, partita_iva]
+        leaveTypes:
+          type: array
+          description: Tipi di richiesta ammessi per il rapporto di lavoro
+          items:
+            type: string
+            enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra]
         hasSuperAdminRole:
           type: boolean
         superAdminActive:

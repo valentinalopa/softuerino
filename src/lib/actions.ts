@@ -11,15 +11,14 @@ import {
   revokeSessions,
 } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
-import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
-import { countedLeaveDays, isWorkingDay, slotsClash } from "@/lib/leave-days";
+import { isWorkingDay } from "@/lib/leave-days";
 import { addUpcomingClosuresFor } from "@/lib/closures";
 import { applyImport, parseImportFile, planImport, type ImportReport } from "@/lib/import-saldi";
-import { formatAmount, hoursBetween } from "@/lib/leave-format";
 import { nextDeactivatedAt } from "@/lib/retention";
 import { ForbiddenError, purgeTaskArchive } from "@/lib/task-archive";
 import * as eventsService from "@/lib/services/events";
 import * as presenceService from "@/lib/services/presence";
+import * as leaveService from "@/lib/services/leave";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
@@ -27,18 +26,11 @@ import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
 import { can, canOnPerson } from "@/lib/permissions";
 import { loggableClientsWhere } from "@/lib/clients";
 import {
-  LEAVE_SNAPSHOT_SELECT,
   notifyEventInvite,
   notifyLeaveDecision,
-  notifyLeaveWithdrawn,
-  notifyNewLeaveRequest,
   notifyTaskAssigned,
 } from "@/lib/email/notifications";
 import {
-  leaveTypesFor,
-  NOTE_REQUIRED_LEAVE_TYPES,
-  OPTIONAL_HOURLY_LEAVE_TYPES,
-  type LeaveType,
   ROLES,
   assignableRoles,
   isAdminRole,
@@ -330,201 +322,34 @@ export async function changeOwnPassword(formData: FormData) {
 
 // --- Ferie / permesso / malattia ---
 
-type ParsedLeave = {
-  type: LeaveType;
-  startDate: Date;
-  endDate: Date;
-  hours: number | null;
-  startTime: string | null;
-  endTime: string | null;
-  note: string | null;
-  recoveryCreditId: string | null;
-};
-
-// Legge e controlla i campi del form di richiesta (nuova o modificata) per la
-// persona `targetUserId`. `excludeRequestId`: la richiesta che si sta
-// modificando, da non contare né nelle sovrapposizioni né nei recuperi.
-async function parseLeaveForm(
-  formData: FormData,
-  target: { id: string; employmentType: string },
-  excludeRequestId: string | null
-): Promise<{ error: string } | ParsedLeave> {
-  const type = String(formData.get("type") ?? "");
-  const startDateRaw = String(formData.get("startDate") ?? "");
-  const endDateRaw = String(formData.get("endDate") ?? startDateRaw) || startDateRaw;
-  const startTimeRaw = String(formData.get("startTime") ?? "").trim();
-  const endTimeRaw = String(formData.get("endTime") ?? "").trim();
-  const note = String(formData.get("note") ?? "").trim() || null;
-
-  // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
-  // (monte unico), recupero e assenza extra (fuori monte).
-  if (!leaveTypesFor(target.employmentType).includes(type as LeaveType)) {
-    return { error: "Tipo di richiesta non valido" };
-  }
-  if (!startDateRaw) {
-    return { error: "La data è obbligatoria" };
-  }
-  // Un recupero può smaltire un recupero da fare registrato dal super admin:
-  // in quel caso il motivo è già lì e la nota diventa facoltativa.
-  const recoveryCreditIdRaw =
-    type === "recupero" ? String(formData.get("recoveryCreditId") ?? "").trim() : "";
-  const recoveryCredit = recoveryCreditIdRaw
-    ? await prisma.recoveryCredit.findFirst({
-        where: { id: recoveryCreditIdRaw, userId: target.id },
-        select: { id: true, unit: true },
-      })
-    : null;
-  if (recoveryCreditIdRaw && !recoveryCredit) {
-    return { error: "Recupero da fare non trovato" };
-  }
-  if (NOTE_REQUIRED_LEAVE_TYPES.includes(type as LeaveType) && !note && !recoveryCredit) {
-    return { error: "Per il recupero la nota è obbligatoria: indica il motivo (es. la trasferta)" };
-  }
-  // A ore = un solo giorno con una fascia oraria: il permesso sempre,
-  // recupero e assenza quando si sceglie "A ore" (o quando il recupero da
-  // fare è in ore).
-  const isHourly =
-    type === "permesso" ||
-    (OPTIONAL_HOURLY_LEAVE_TYPES.includes(type as LeaveType) &&
-      (recoveryCredit ? recoveryCredit.unit === "ore" : String(formData.get("unit") ?? "") === "ore"));
-  const effectiveEndDateRaw = isHourly ? startDateRaw : endDateRaw;
-  if (effectiveEndDateRaw < startDateRaw) {
-    return { error: "La data di fine non può precedere quella di inizio" };
-  }
-
-  // A ore si indica la fascia (dalle/alle): le ore ne sono la durata. Dal
-  // saldo un permesso scala al massimo le ore di una giornata (leave-balance.ts).
-  let hours: number | null = null;
-  let startTime: string | null = null;
-  let endTime: string | null = null;
-  if (isHourly) {
-    if (!startTimeRaw || !endTimeRaw) {
-      return { error: "Indica la fascia oraria (dalle / alle)" };
-    }
-    hours = hoursBetween(startTimeRaw, endTimeRaw);
-    if (hours === null) {
-      return { error: "Fascia oraria non valida: l'orario di fine deve seguire quello di inizio" };
-    }
-    startTime = startTimeRaw;
-    endTime = endTimeRaw;
-  }
-
-  const startDate = localDate(startDateRaw);
-  const endDate = localDate(effectiveEndDateRaw);
-  // Festivi e weekend non si chiedono: non pesano su ferie, permessi o assenze.
-  if (isHourly ? !isWorkingDay(startDate) : countedLeaveDays(startDate, endDate) === 0) {
-    return {
-      error: isHourly
-        ? "È un giorno festivo o nel weekend: non serve chiedere il permesso"
-        : "Nel periodo non ci sono giorni lavorativi (solo weekend o festivi)",
-    };
-  }
-
-  const conflict = await findLeaveConflict(target.id, { startDate, endDate, startTime, endTime }, excludeRequestId);
-  if (conflict) return { error: conflict };
-
-  // Il recupero non può superare quanto resta del recupero da fare (le
-  // richieste già approvate o in attesa collegate lo hanno già in parte coperto).
-  if (recoveryCredit) {
-    const open = (await getRecoveryCreditsForUsers([target.id], excludeRequestId))
-      .get(target.id)
-      ?.find((c) => c.id === recoveryCredit.id);
-    const left = open ? Math.max(open.amount - open.used - open.pending, 0) : 0;
-    const requested = recoveryCredit.unit === "ore" ? (hours ?? 0) : countedLeaveDays(startDate, endDate);
-    if (requested > left + 1e-9) {
-      const unit = recoveryCredit.unit === "ore" ? "ore" : "giorni";
-      return {
-        error:
-          left > 0
-            ? `Di questo recupero restano ${formatAmount(left)} ${unit}: riduci la richiesta`
-            : "Questo recupero è già coperto da altre richieste",
-      };
-    }
-  }
-
+// Le regole (PR #50) stanno nel service (src/lib/services/leave.ts), usato anche
+// dall'app iPhone: qui solo il passaggio dal form e il ritorno come ActionResult.
+function leaveInputFromForm(formData: FormData): leaveService.LeaveRequestInput {
   return {
-    type: type as LeaveType,
-    startDate,
-    endDate,
-    hours,
-    startTime,
-    endTime,
-    note,
-    recoveryCreditId: recoveryCredit?.id ?? null,
+    type: formData.get("type"),
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate"),
+    startTime: formData.get("startTime"),
+    endTime: formData.get("endTime"),
+    note: formData.get("note"),
+    recoveryCreditId: formData.get("recoveryCreditId"),
+    unit: formData.get("unit"),
+    userId: formData.get("userId"),
   };
 }
 
-// Una richiesta si sovrappone a un'altra (non rifiutata) della stessa persona
-// se tocca uno stesso giorno, salvo quando sono entrambe a ore con fasce che
-// non si toccano (es. permesso 9–11 e permesso 15–17 dello stesso giorno).
-async function findLeaveConflict(
-  userId: string,
-  request: { startDate: Date; endDate: Date; startTime: string | null; endTime: string | null },
-  excludeRequestId: string | null
-): Promise<string | null> {
-  const overlapping = await prisma.leaveRequest.findMany({
-    where: {
-      userId,
-      status: { not: "rejected" },
-      startDate: { lte: request.endDate },
-      endDate: { gte: request.startDate },
-      ...(excludeRequestId ? { id: { not: excludeRequestId } } : {}),
-    },
-    select: { startTime: true, endTime: true },
-  });
-  const clash = overlapping.find((other) => slotsClash(request, other));
-  if (!clash) return null;
-  return clash.startTime && clash.endTime && request.startTime
-    ? `C'è già una richiesta a ore in questo giorno (${clash.startTime}–${clash.endTime}) che si sovrappone alla fascia`
-    : "C'è già una richiesta che copre (in parte) queste date";
-}
-
-export async function createLeaveRequest(formData: FormData) {
+// Un admin può registrare ferie/permesso/malattia per conto di un altro membro:
+// la richiesta nasce già approvata/registrata (regole nel service).
+export async function createLeaveRequest(formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-
-  // Un admin può registrare ferie/permesso/malattia per conto di un altro
-  // membro (es. malattia comunicata a voce): in quel caso la richiesta nasce già
-  // approvata/registrata, senza passare dal flusso di approvazione.
-  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
-  const targetUserId = targetUserIdRaw || user.id;
-  const onBehalfOfOther = targetUserId !== user.id;
-  if (onBehalfOfOther && !isAdminRole(user.role)) {
-    return { error: "Non autorizzato" };
+  try {
+    const { userId, notify } = await leaveService.createLeaveRequest(user, leaveInputFromForm(formData));
+    revalidateLeavePaths(userId);
+    after(notify);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  const targetUser = onBehalfOfOther
-    ? await prisma.user.findUnique({
-        where: { id: targetUserId },
-        select: { id: true, employmentType: true },
-      })
-    : user;
-  if (!targetUser) {
-    return { error: "Membro non trovato" };
-  }
-
-  const parsed = await parseLeaveForm(formData, targetUser, null);
-  if ("error" in parsed) {
-    return onBehalfOfOther ? { error: parsed.error.replace("C'è già una richiesta", "Questo membro ha già una richiesta") } : parsed;
-  }
-
-  // La malattia si registra e basta, non richiede approvazione. Le richieste
-  // inserite dall'admin per conto di altri nascono già approvate.
-  const status =
-    parsed.type === "malattia"
-      ? "registrata"
-      : onBehalfOfOther
-        ? "approved"
-        : "pending";
-
-  const created = await prisma.leaveRequest.create({
-    data: { userId: targetUserId, status, ...parsed },
-  });
-
-  revalidateLeavePaths(targetUserId);
-  // Avviso ai responsabili ferie (e ai responsabili del reparto che possono
-  // approvare): solo per le richieste fatte dalla persona stessa.
-  if (!onBehalfOfOther) after(() => notifyNewLeaveRequest(created.id, user.id));
 }
 
 // Chi ha fatto una richiesta può cambiarla finché è in attesa: torna in attesa
@@ -532,34 +357,13 @@ export async function createLeaveRequest(formData: FormData) {
 export async function updateOwnLeaveRequest(requestId: string, formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-
-  const request = await prisma.leaveRequest.findUnique({
-    where: { id: requestId },
-    select: { userId: true, status: true },
-  });
-  if (!request || request.userId !== user.id) {
-    return { error: "Richiesta non trovata" };
+  try {
+    const { notify } = await leaveService.updateOwnLeaveRequest(user, requestId, leaveInputFromForm(formData));
+    revalidateLeavePaths(user.id);
+    after(notify);
+  } catch (err) {
+    return eventServiceError(err);
   }
-  if (request.status !== "pending") {
-    return { error: "La richiesta è già stata decisa: per cambiarla chiedi a un admin" };
-  }
-
-  const parsed = await parseLeaveForm(formData, user, requestId);
-  if ("error" in parsed) return parsed;
-  if (parsed.type === "malattia") {
-    return { error: "La malattia non passa dall'approvazione: registrala come nuova richiesta" };
-  }
-
-  // Solo se è ancora in attesa (nel frattempo qualcuno potrebbe averla decisa).
-  const updated = await prisma.leaveRequest.updateMany({
-    where: { id: requestId, userId: user.id, status: "pending" },
-    data: parsed,
-  });
-  if (updated.count === 0) {
-    return { error: "La richiesta è già stata decisa: per cambiarla chiedi a un admin" };
-  }
-  revalidateLeavePaths(user.id);
-  after(() => notifyNewLeaveRequest(requestId, user.id, "modificata"));
 }
 
 // Chi ha fatto una richiesta può ritirarla finché è in attesa: sparisce, e
@@ -568,22 +372,13 @@ export async function updateOwnLeaveRequest(requestId: string, formData: FormDat
 export async function withdrawOwnLeaveRequest(requestId: string): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-
-  const request = await prisma.leaveRequest.findUnique({
-    where: { id: requestId },
-    select: LEAVE_SNAPSHOT_SELECT,
-  });
-  if (!request || request.userId !== user.id) {
-    return { error: "Richiesta non trovata" };
+  try {
+    const { notify } = await leaveService.withdrawOwnLeaveRequest(user, requestId);
+    revalidateLeavePaths(user.id);
+    after(notify);
+  } catch (err) {
+    return eventServiceError(err);
   }
-  const deleted = await prisma.leaveRequest.deleteMany({
-    where: { id: requestId, userId: user.id, status: "pending" },
-  });
-  if (deleted.count === 0) {
-    return { error: "La richiesta è già stata decisa: per annullarla chiedi a un admin" };
-  }
-  revalidateLeavePaths(user.id);
-  after(() => notifyLeaveWithdrawn(request, user.id));
 }
 
 export async function updateLeaveStatus(

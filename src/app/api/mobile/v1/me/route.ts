@@ -1,5 +1,6 @@
 import { withMobileAuth } from "@/lib/mobile/http";
 import { prisma } from "@/lib/prisma";
+import { leaveTypesFor } from "@/lib/constants";
 
 // Profilo di chi ha fatto il login nell'app: solo i campi che servono alla UI.
 // role è il ruolo effettivo: un super admin fuori dalla rete interna fidata
@@ -17,6 +18,9 @@ export const GET = withMobileAuth(async ({ user, hasSuperAdminRole, superAdminAc
     name: user.name,
     email: user.email,
     role: user.role,
+    // Rapporto di lavoro e tipi di richiesta ammessi (dipendente / partita IVA).
+    employmentType: user.employmentType,
+    leaveTypes: leaveTypesFor(user.employmentType),
     hasSuperAdminRole,
     superAdminActive,
     managedDepartments: managed.map((m) => m.department),

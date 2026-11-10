@@ -27,13 +27,17 @@ describe("superficie dell'API mobile", () => {
     assert.deepEqual(routes, [
       "/v1/auth/logout",
       "/v1/auth/token",
+      "/v1/balance",
       "/v1/calendar",
       "/v1/calendar/upcoming",
       "/v1/events",
       "/v1/events/[id]",
+      "/v1/leave-requests",
+      "/v1/leave-requests/[id]",
       "/v1/me",
       "/v1/presence",
       "/v1/presence/[date]",
+      "/v1/recovery-credits",
       "/v1/team-calendar",
     ]);
   });
