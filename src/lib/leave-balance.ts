@@ -1,12 +1,27 @@
 import { prisma } from "@/lib/prisma";
 import {
-  LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE,
-  annualAllowance,
-  ferieAccruedInMonth,
+  DEFAULT_DAILY_HOURS,
+  PARTITA_IVA_ASSENZE_DAYS_PER_YEAR,
   type BalanceKind,
   type EmploymentType,
 } from "@/lib/constants";
-import { clippedDayKeysInRange, clippedDaysInRange, countedLeaveDays } from "@/lib/leave-days";
+import {
+  clippedDayKeysInRange,
+  clippedDaysInRange,
+  countedLeaveDays,
+  dayKey,
+  workingDates,
+  isWorkingDay,
+} from "@/lib/leave-days";
+import {
+  accrualFrom,
+  availableAt,
+  chargeAmount,
+  chargeKind,
+  monthsEnded,
+  round2,
+  type LeaveCharges,
+} from "@/lib/leave-accrual";
 import { formatAmount } from "@/lib/leave-format";
 
 export type LeaveTally = {
@@ -18,6 +33,8 @@ export type LeaveTally = {
   recuperoDays: number;
   recuperoHours: number;
   assenzaExtraDays: number;
+  permesso104Days: number;
+  permesso104Hours: number;
 };
 
 type TallyableRequest = {
@@ -39,7 +56,8 @@ export function tallyLeave(
   requests: TallyableRequest[],
   yearStart: Date,
   yearEnd: Date,
-  employmentTypeOf: (userId: string) => string | undefined
+  employmentTypeOf: (userId: string) => string | undefined,
+  dailyHoursOf: (userId: string) => number = () => DEFAULT_DAILY_HOURS
 ): LeaveTally {
   const ferieDays = new Set<string>();
   const assenzaDaysSet = new Set<string>();
@@ -48,6 +66,12 @@ export function tallyLeave(
   let recuperoDays = 0;
   let recuperoHours = 0;
   let assenzaExtraDays = 0;
+  // Permesso 104: fuori monte, a giorni o a ore come il recupero.
+  const permesso104 = { days: 0, hours: 0 };
+
+  // Assenze a ore delle partite IVA: ore per persona e giorno, poi frazione
+  // di giornata (ore / ore della giornata, al massimo 1).
+  const assenzaHours = new Map<string, number>();
 
   const addDays = (target: Set<string>, request: TallyableRequest) => {
     for (const key of clippedDayKeysInRange(request.startDate, request.endDate, yearStart, yearEnd)) {
@@ -56,6 +80,8 @@ export function tallyLeave(
   };
 
   for (const request of requests) {
+    // A ore in un giorno festivo o nel weekend: non pesa su nessun conteggio.
+    if (request.hours !== null && !isWorkingDay(request.startDate)) continue;
     if (request.type === "ferie" && request.status === "approved") {
       addDays(ferieDays, request);
     } else if (request.type === "chiusura" && request.status === "approved") {
@@ -68,7 +94,14 @@ export function tallyLeave(
     } else if (request.type === "malattia" && request.status === "registrata") {
       malattiaDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
     } else if (request.type === "assenza" && request.status === "approved") {
-      addDays(assenzaDaysSet, request);
+      if (request.hours !== null) {
+        for (const key of clippedDayKeysInRange(request.startDate, request.endDate, yearStart, yearEnd)) {
+          const dayId = `${request.userId}|${key}`;
+          assenzaHours.set(dayId, (assenzaHours.get(dayId) ?? 0) + request.hours);
+        }
+      } else {
+        addDays(assenzaDaysSet, request);
+      }
     } else if (request.type === "recupero" && request.status === "approved") {
       if (request.hours !== null) {
         recuperoHours += request.hours;
@@ -77,39 +110,73 @@ export function tallyLeave(
       }
     } else if (request.type === "assenza_extra" && request.status === "approved") {
       assenzaExtraDays += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
+    } else if (request.type === "permesso_104" && request.status === "approved") {
+      if (request.hours !== null) {
+        if (clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd) > 0) {
+          permesso104.hours += request.hours;
+        }
+      } else {
+        permesso104.days += clippedDaysInRange(request.startDate, request.endDate, yearStart, yearEnd);
+      }
     }
+  }
+
+  // Un'assenza a ore in un giorno già coperto (assenza intera o chiusura)
+  // non si scala di nuovo.
+  let assenzaPartialDays = 0;
+  for (const [dayId, hours] of assenzaHours) {
+    if (assenzaDaysSet.has(dayId)) continue;
+    const userId = dayId.slice(0, dayId.indexOf("|"));
+    assenzaPartialDays += Math.min(hours / dailyHoursOf(userId), 1);
   }
 
   return {
     ferieUsed: ferieDays.size,
     permessoUsed,
     malattiaDays,
-    assenzaDays: assenzaDaysSet.size,
+    assenzaDays: Math.round((assenzaDaysSet.size + assenzaPartialDays) * 100) / 100,
     recuperoDays,
     recuperoHours,
     assenzaExtraDays,
+    permesso104Days: permesso104.days,
+    permesso104Hours: permesso104.hours,
   };
 }
 
-// Dipendenti: ferie (giorni) + permessi (ore) + malattia senza tetto.
-// Partite IVA: un unico monte "assenze" in giorni.
-// Allowance = disponibile nell'anno: monte annuale (per le ferie: maturato
-// finora) + residuo riportato (o rettifica del super admin).
+
+// --- Saldi ---
+
+// Saldo in ore di un dipendente (ferie o ROL), confrontabile con la busta paga:
+// residuo della busta + maturato da allora − goduto da allora = residuo oggi.
+// planned = già approvato nei giorni che devono ancora venire: non è goduto,
+// ma va tolto per sapere quanto resta da chiedere.
+export type HourBalance = {
+  start: number;
+  perYear: number;
+  perMonth: number;
+  accrued: number;
+  used: number;
+  remaining: number;
+  planned: number;
+  afterPlanned: number;
+};
+
 export type LeaveBalance =
   | {
       kind: "dipendente";
-      // Ferie maturate nell'anno a oggi (dal mese di creazione dell'utente).
-      ferieMatured: number;
-      ferieAllowance: number;
-      ferieUsed: number;
-      ferieRemaining: number;
-      permessoAllowance: number;
-      permessoUsed: number;
-      permessoRemaining: number;
+      dailyHours: number;
+      // Mese della busta paga da cui partono i saldi; null = non ancora
+      // impostati dal super admin (ferie e permesso restano vuoti).
+      startMonth: Date | null;
+      ferie: HourBalance | null;
+      permesso: HourBalance | null;
       malattiaDaysRegistered: number;
-      // Fuori monte, solo informativi.
+      // Fuori monte nell'anno, solo informativi.
       recuperoDays: number;
       recuperoHours: number;
+      permesso104Days: number;
+      permesso104Hours: number;
+      charges: LeaveCharges;
     }
   | {
       kind: "assenze";
@@ -120,144 +187,129 @@ export type LeaveBalance =
       recuperoDays: number;
       recuperoHours: number;
       assenzaExtraDays: number;
+      charges: LeaveCharges;
     };
 
-type BalanceAdjustment = { kind: string; year: number; amount: number; setAt: Date };
-
-// Contesto per il calcolo: da quando l'utente esiste (punto di partenza del
-// riporto se non ci sono rettifiche) e le rettifiche del super admin.
-type BalanceSubject = {
-  employmentType: EmploymentType;
-  createdAt: Date;
-  adjustments: BalanceAdjustment[];
+type BalanceStart = {
+  month: Date;
+  ferieHours: number;
+  rolHours: number;
+  ferieHoursPerYear: number;
+  rolHoursPerYear: number;
 };
 
-// Evita residui tipo 2.4999999999 sommando mezze giornate e ore decimali.
-function round2(value: number) {
-  return Math.round(value * 100) / 100;
+type UsageRequest = TallyableRequest & { startTime?: string | null };
+
+export type HourUsage = {
+  ferieTaken: number;
+  feriePlanned: number;
+  permessoTaken: number;
+  permessoPlanned: number;
+};
+
+// Ore di ferie e permesso approvate da `from` in poi, divise tra godute (fino
+// a oggi compreso) e programmate (dopo oggi). Ogni giorno lavorativo di ferie
+// o di chiusura aziendale vale dailyHours, contato una volta sola. I permessi
+// di un giorno si sommano fino a dailyHours, e non contano nei giorni già
+// coperti da ferie o chiusura.
+export function hourUsage(
+  requests: UsageRequest[],
+  from: Date,
+  today: Date,
+  dailyHours: number
+): HourUsage {
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const ferieDays = new Map<string, Date>();
+  for (const r of requests) {
+    if (r.status !== "approved" || (r.type !== "ferie" && r.type !== "chiusura")) continue;
+    for (const date of workingDates(r.startDate, r.endDate)) {
+      if (date >= from) ferieDays.set(dayKey(date), date);
+    }
+  }
+  const permessoByDay = new Map<string, { date: Date; hours: number }>();
+  for (const r of requests) {
+    if (r.status !== "approved" || r.type !== "permesso" || r.hours === null) continue;
+    const date = new Date(r.startDate.getFullYear(), r.startDate.getMonth(), r.startDate.getDate());
+    const key = dayKey(date);
+    // Festivi e weekend non pesano, come per le ferie.
+    if (date < from || ferieDays.has(key) || !isWorkingDay(date)) continue;
+    const current = permessoByDay.get(key) ?? { date, hours: 0 };
+    current.hours = Math.min(current.hours + r.hours, dailyHours);
+    permessoByDay.set(key, current);
+  }
+
+  const usage: HourUsage = { ferieTaken: 0, feriePlanned: 0, permessoTaken: 0, permessoPlanned: 0 };
+  for (const date of ferieDays.values()) {
+    if (date <= todayStart) usage.ferieTaken += dailyHours;
+    else usage.feriePlanned += dailyHours;
+  }
+  for (const { date, hours } of permessoByDay.values()) {
+    if (date <= todayStart) usage.permessoTaken += hours;
+    else usage.permessoPlanned += hours;
+  }
+  return {
+    ferieTaken: round2(usage.ferieTaken),
+    feriePlanned: round2(usage.feriePlanned),
+    permessoTaken: round2(usage.permessoTaken),
+    permessoPlanned: round2(usage.permessoPlanned),
+  };
+}
+
+function hourBalance(start: number, perYear: number, from: Date, now: Date, used: number, planned: number): HourBalance {
+  const perMonth = perYear / 12;
+  const accrued = round2(perMonth * monthsEnded(from, now));
+  const remaining = round2(start + accrued - used);
+  return {
+    start,
+    perYear,
+    perMonth: round2(perMonth),
+    accrued,
+    used,
+    remaining,
+    planned,
+    afterPlanned: round2(remaining - planned),
+  };
+}
+
+// Saldo di un dipendente al momento `now`, partendo dall'ultima busta paga.
+export function employeeBalance(
+  start: BalanceStart | null,
+  dailyHours: number,
+  requests: UsageRequest[],
+  now: Date
+) {
+  if (!start) return { ferie: null, permesso: null, charges: {} as LeaveCharges };
+  const from = accrualFrom(start.month);
+  const usage = hourUsage(requests, from, now, dailyHours);
+  const ferie = hourBalance(start.ferieHours, start.ferieHoursPerYear, from, now, usage.ferieTaken, usage.feriePlanned);
+  const permesso = hourBalance(start.rolHours, start.rolHoursPerYear, from, now, usage.permessoTaken, usage.permessoPlanned);
+  const charges: LeaveCharges = {
+    ferie: {
+      unit: "h",
+      base: round2(start.ferieHours - usage.ferieTaken - usage.feriePlanned),
+      perMonth: start.ferieHoursPerYear / 12,
+      from,
+      perDay: dailyHours,
+      maxPerDay: null,
+      dayHours: null,
+    },
+    permesso: {
+      unit: "h",
+      base: round2(start.rolHours - usage.permessoTaken - usage.permessoPlanned),
+      perMonth: start.rolHoursPerYear / 12,
+      from,
+      perDay: null,
+      maxPerDay: dailyHours,
+      dayHours: null,
+    },
+  };
+  return { ferie, permesso, charges };
 }
 
 function yearRange(year: number) {
   return {
     yearStart: new Date(year, 0, 1),
     yearEnd: new Date(year, 11, 31, 23, 59, 59, 999),
-  };
-}
-
-// Ferie maturate nell'anno `year` fino ad `asOf`. Maturano a fine mese: un
-// mese conta dal 1° del mese dopo, e solo se finisce dopo `from` (la creazione
-// dell'utente, il cui mese conta intero, o la rettifica, che comprende già le
-// ferie maturate fino a lì).
-export function ferieAccrued(year: number, from: Date, asOf: Date) {
-  let days = 0;
-  for (let month = 0; month < 12; month++) {
-    const monthEnd = new Date(year, month + 1, 1);
-    if (monthEnd > from && monthEnd <= asOf) days += ferieAccruedInMonth(month);
-  }
-  return days;
-}
-
-// Punto di partenza del riporto di un saldo da dipendente: l'ultima rettifica
-// fino a `year` (che fissa il residuo di quell'anno nel momento in cui è
-// salvata), altrimenti la creazione dell'utente.
-function carryBaseline(subject: BalanceSubject, kind: BalanceKind, year: number) {
-  const latest = subject.adjustments
-    .filter((a) => a.kind === kind && a.year <= year)
-    .sort((a, b) => b.year - a.year)[0];
-  if (latest) return { baseYear: latest.year, baseAmount: latest.amount, baseFrom: latest.setAt };
-  return {
-    baseYear: Math.min(subject.createdAt.getFullYear(), year),
-    baseAmount: 0,
-    baseFrom: subject.createdAt,
-  };
-}
-
-// Primo anno di cui servono le richieste per calcolare il saldo di `year`.
-function firstYearNeeded(subject: BalanceSubject, year: number) {
-  if (subject.employmentType === "partita_iva") return year;
-  return Math.min(
-    carryBaseline(subject, "ferie", year).baseYear,
-    carryBaseline(subject, "permesso", year).baseYear
-  );
-}
-
-// Saldo da dipendente con riporto: l'anno base vale rettifica + quanto
-// matura da lì, ogni anno successivo quanto matura + residuo dell'anno prima.
-// `accrue(y, from)` = quanto matura nell'anno y a partire da `from` (permessi:
-// il monte intero dal 1° gennaio; ferie: i mesi finiti).
-function carriedBalance(
-  subject: BalanceSubject,
-  kind: "ferie" | "permesso",
-  accrue: (y: number, from: Date) => number,
-  year: number,
-  tallyFor: (y: number) => LeaveTally
-) {
-  const { baseYear, baseAmount, baseFrom } = carryBaseline(subject, kind, year);
-  const usedIn = (y: number) => (kind === "ferie" ? tallyFor(y).ferieUsed : tallyFor(y).permessoUsed);
-
-  let allowance = baseAmount + accrue(baseYear, baseFrom);
-  let used = usedIn(baseYear);
-  for (let y = baseYear + 1; y <= year; y++) {
-    allowance = accrue(y, subject.createdAt) + (allowance - used);
-    used = usedIn(y);
-  }
-  return {
-    allowance: round2(allowance),
-    used: round2(used),
-    remaining: round2(allowance - used),
-  };
-}
-
-function computeBalance(
-  subject: BalanceSubject,
-  requests: TallyableRequest[],
-  year: number
-): LeaveBalance {
-  const tallies = new Map<number, LeaveTally>();
-  const tallyFor = (y: number) => {
-    let tally = tallies.get(y);
-    if (!tally) {
-      const { yearStart, yearEnd } = yearRange(y);
-      tally = tallyLeave(requests, yearStart, yearEnd, () => subject.employmentType);
-      tallies.set(y, tally);
-    }
-    return tally;
-  };
-
-  if (subject.employmentType === "partita_iva") {
-    // Nessun riporto: vale solo la rettifica dell'anno stesso.
-    const adjustment =
-      subject.adjustments.find((a) => a.kind === "assenze" && a.year === year)?.amount ?? 0;
-    const allowance = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE.partita_iva.assenzeDaysPerYear + adjustment;
-    const used = tallyFor(year).assenzaDays;
-    return {
-      kind: "assenze",
-      assenzeAllowance: round2(allowance),
-      assenzeUsed: round2(used),
-      assenzeRemaining: round2(allowance - used),
-      recuperoDays: tallyFor(year).recuperoDays,
-      recuperoHours: round2(tallyFor(year).recuperoHours),
-      assenzaExtraDays: tallyFor(year).assenzaExtraDays,
-    };
-  }
-
-  const now = new Date();
-  const ferieAccruedFrom = (y: number, from: Date) => ferieAccrued(y, from, now);
-  const permessoPerYear = () => LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE.dipendente.permessoHoursPerYear;
-  const ferie = carriedBalance(subject, "ferie", ferieAccruedFrom, year, tallyFor);
-  const permesso = carriedBalance(subject, "permesso", permessoPerYear, year, tallyFor);
-  return {
-    kind: "dipendente",
-    ferieMatured: ferieAccruedFrom(year, subject.createdAt),
-    ferieAllowance: ferie.allowance,
-    ferieUsed: ferie.used,
-    ferieRemaining: ferie.remaining,
-    permessoAllowance: permesso.allowance,
-    permessoUsed: permesso.used,
-    permessoRemaining: permesso.remaining,
-    malattiaDaysRegistered: tallyFor(year).malattiaDays,
-    recuperoDays: tallyFor(year).recuperoDays,
-    recuperoHours: round2(tallyFor(year).recuperoHours),
   };
 }
 
@@ -271,80 +323,118 @@ export async function getLeaveBalance(
 }
 
 // Versione batch: poche query per tutti gli utenti invece di una a testa
-// (la pagina Team la usa per evitare l'N+1 sui membri).
+// (la pagina Team la usa per evitare l'N+1 sui membri). `year` vale per le
+// partite IVA e per i conteggi informativi (malattia, recuperi); i saldi in
+// ore dei dipendenti sono sempre quelli di oggi.
 export async function getLeaveBalancesForUsers(
   users: { id: string; employmentType: EmploymentType }[],
   year: number = new Date().getFullYear()
 ): Promise<Map<string, LeaveBalance>> {
+  const now = new Date();
   const userIds = users.map((u) => u.id);
+  const { yearStart, yearEnd } = yearRange(year);
   const rows = await prisma.user.findMany({
     where: { id: { in: userIds } },
     select: {
       id: true,
-      createdAt: true,
+      dailyHours: true,
       balanceAdjustments: {
-        where: { year: { lte: year } },
-        select: { kind: true, year: true, amount: true, setAt: true },
+        where: { year, kind: "assenze" },
+        select: { amount: true },
+      },
+      balanceStarts: {
+        orderBy: { month: "desc" },
+        take: 1,
+        select: { month: true, ferieHours: true, rolHours: true, ferieHoursPerYear: true, rolHoursPerYear: true },
       },
     },
   });
   const rowById = new Map(rows.map((row) => [row.id, row]));
 
-  const subjects = new Map<string, BalanceSubject>(
-    users.map((user) => {
-      const row = rowById.get(user.id);
-      return [
-        user.id,
-        {
-          employmentType: user.employmentType,
-          createdAt: row?.createdAt ?? new Date(year, 0, 1),
-          adjustments: row?.balanceAdjustments ?? [],
-        },
-      ];
-    })
-  );
-
-  // Il riporto dei dipendenti richiede anche le richieste degli anni prima.
-  const fromYear = Math.min(
-    year,
-    ...[...subjects.values()].map((subject) => firstYearNeeded(subject, year))
-  );
+  // Richieste dall'inizio dell'anno (o dal mese dopo la busta, se prima) in
+  // poi, senza limite: le ferie già approvate nei mesi futuri contano come
+  // programmate.
+  const earliest = rows.reduce((min, row) => {
+    const start = row.balanceStarts[0];
+    if (!start) return min;
+    const from = accrualFrom(start.month);
+    return from < min ? from : min;
+  }, yearStart);
   const requests = await prisma.leaveRequest.findMany({
-    where: {
-      userId: { in: userIds },
-      startDate: { lte: yearRange(year).yearEnd },
-      endDate: { gte: yearRange(fromYear).yearStart },
-    },
+    where: { userId: { in: userIds }, endDate: { gte: earliest } },
   });
-
   const byUser = new Map<string, typeof requests>();
   for (const request of requests) {
     const list = byUser.get(request.userId);
-    if (list) {
-      list.push(request);
-    } else {
-      byUser.set(request.userId, [request]);
-    }
+    if (list) list.push(request);
+    else byUser.set(request.userId, [request]);
   }
 
   return new Map(
-    users.map((user) => [
-      user.id,
-      computeBalance(subjects.get(user.id)!, byUser.get(user.id) ?? [], year),
-    ])
+    users.map((user): [string, LeaveBalance] => {
+      const row = rowById.get(user.id);
+      const own = byUser.get(user.id) ?? [];
+      const dailyHours = row?.dailyHours ?? DEFAULT_DAILY_HOURS;
+      const tally = tallyLeave(own, yearStart, yearEnd, () => user.employmentType, () => dailyHours);
+      if (user.employmentType === "partita_iva") {
+        const allowance = PARTITA_IVA_ASSENZE_DAYS_PER_YEAR + (row?.balanceAdjustments[0]?.amount ?? 0);
+        const remaining = round2(allowance - tally.assenzaDays);
+        const balance: LeaveBalance = {
+          kind: "assenze",
+          assenzeAllowance: round2(allowance),
+          assenzeUsed: round2(tally.assenzaDays),
+          assenzeRemaining: remaining,
+          recuperoDays: tally.recuperoDays,
+          recuperoHours: round2(tally.recuperoHours),
+          assenzaExtraDays: tally.assenzaExtraDays,
+          charges: {
+            assenza: { unit: "gg", base: remaining, perMonth: 0, from: null, perDay: null, maxPerDay: null, dayHours: dailyHours },
+          },
+        };
+        return [user.id, balance];
+      }
+      const start = row?.balanceStarts[0] ?? null;
+      const { ferie, permesso, charges } = employeeBalance(start, dailyHours, own, now);
+      const balance: LeaveBalance = {
+        kind: "dipendente",
+        dailyHours,
+        startMonth: start?.month ?? null,
+        ferie,
+        permesso,
+        malattiaDaysRegistered: tally.malattiaDays,
+        recuperoDays: tally.recuperoDays,
+        recuperoHours: round2(tally.recuperoHours),
+        permesso104Days: tally.permesso104Days,
+        permesso104Hours: round2(tally.permesso104Hours),
+        charges,
+      };
+      return [user.id, balance];
+    })
   );
 }
 
-// Residuo e goduto per saldo (solo quelli del contratto del membro): dati
-// semplici per le barrette di Team e della scheda membro. `reference` è il
-// riferimento accanto al residuo: per le ferie il maturato nell'anno, per gli
-// altri il monte annuale.
+// Residuo per saldo (solo quelli del contratto del membro): dati semplici per
+// le barrette di Team e della scheda membro. `reference` è il monte annuale,
+// `missing` = saldi del dipendente non ancora impostati dalla busta paga.
 export type BalanceFigures = {
   remaining: number;
   used: number;
   reference: number;
   referenceNote?: string;
+  planned?: number;
+  missing?: boolean;
 };
+
+function hourFigures(balance: HourBalance | null, dailyHours: number, label: string): BalanceFigures {
+  if (!balance) return { remaining: 0, used: 0, reference: 0, missing: true };
+  return {
+    remaining: balance.remaining,
+    used: balance.used,
+    reference: balance.perYear,
+    referenceNote: `${formatAmount(balance.perMonth)} h al mese${label === "ferie" ? ` · ${formatAmount(dailyHours)} h al giorno` : ""}`,
+    planned: balance.planned,
+  };
+}
 
 export function balanceFigures(balance: LeaveBalance): Partial<Record<BalanceKind, BalanceFigures>> {
   return balance.kind === "assenze"
@@ -352,58 +442,33 @@ export function balanceFigures(balance: LeaveBalance): Partial<Record<BalanceKin
         assenze: {
           remaining: balance.assenzeRemaining,
           used: balance.assenzeUsed,
-          reference: annualAllowance("assenze"),
+          reference: PARTITA_IVA_ASSENZE_DAYS_PER_YEAR,
         },
       }
     : {
-        ferie: {
-          remaining: balance.ferieRemaining,
-          used: balance.ferieUsed,
-          reference: balance.ferieMatured,
-          referenceNote: `maturate, ${formatAmount(annualAllowance("ferie"))} l'anno`,
-        },
-        permesso: {
-          remaining: balance.permessoRemaining,
-          used: balance.permessoUsed,
-          reference: annualAllowance("permesso"),
-        },
+        ferie: hourFigures(balance.ferie, balance.dailyHours, "ferie"),
+        permesso: hourFigures(balance.permesso, balance.dailyHours, "permesso"),
       };
 }
 
-// Fuori monte nell'anno (recuperi goduti, malattia, assenze extra): solo
-// informativi, non scalano i saldi.
-export function outsideAllowance(balance: LeaveBalance) {
+// Fuori monte nell'anno (recuperi goduti, malattia, permessi 104, assenze
+// extra): solo informativi, non scalano i saldi.
+// `sensitive`: dati sanitari, da non mostrare a chi non è admin.
+export type OutsideAllowanceItem = { label: string; value: number; unit: string; sensitive?: boolean };
+
+export function outsideAllowance(balance: LeaveBalance): OutsideAllowanceItem[] {
+  const common: OutsideAllowanceItem[] = [
+    { label: "Recuperi goduti", value: balance.recuperoDays, unit: "gg" },
+    { label: "Recuperi goduti (ore)", value: balance.recuperoHours, unit: "h" },
+  ];
   return balance.kind === "assenze"
-    ? [
-        { label: "Recuperi goduti", value: balance.recuperoDays, unit: "gg" },
-        { label: "Recuperi goduti (ore)", value: balance.recuperoHours, unit: "h" },
-        { label: "Assenze extra", value: balance.assenzaExtraDays, unit: "gg" },
-      ]
+    ? [...common, { label: "Assenze extra", value: balance.assenzaExtraDays, unit: "gg" }]
     : [
-        { label: "Recuperi goduti", value: balance.recuperoDays, unit: "gg" },
-        { label: "Recuperi goduti (ore)", value: balance.recuperoHours, unit: "h" },
-        { label: "Malattia", value: balance.malattiaDaysRegistered, unit: "gg" },
+        ...common,
+        { label: "Malattia", value: balance.malattiaDaysRegistered, unit: "gg", sensitive: true },
+        { label: "Permessi 104", value: balance.permesso104Days, unit: "gg", sensitive: true },
+        { label: "Permessi 104 (ore)", value: balance.permesso104Hours, unit: "h", sensitive: true },
       ];
-}
-
-// Residuo per tipo di richiesta che scala un monte (ferie, permesso, assenza):
-// i tipi fuori monte (malattia, recupero, assenza extra) non ci sono. Oggetto
-// semplice, così arriva anche al form di richiesta (client).
-export type RemainingByLeaveType = Partial<Record<"ferie" | "permesso" | "assenza", number>>;
-
-export function remainingByLeaveType(balance: LeaveBalance): RemainingByLeaveType {
-  return balance.kind === "assenze"
-    ? { assenza: balance.assenzeRemaining }
-    : { ferie: balance.ferieRemaining, permesso: balance.permessoRemaining };
-}
-
-// Saldo che un tipo di richiesta scala (residuo e unità), o null se il tipo è
-// fuori monte. La chiusura aziendale scala ferie o assenze, a seconda del contratto.
-function chargedBalance(balance: LeaveBalance, type: string) {
-  const charged = type === "chiusura" ? (balance.kind === "assenze" ? "assenza" : "ferie") : type;
-  const remaining = remainingByLeaveType(balance)[charged as keyof RemainingByLeaveType];
-  if (remaining === undefined) return null;
-  return { remaining, unit: type === "permesso" ? "h" : "gg" };
 }
 
 type PendingRequest = {
@@ -417,26 +482,35 @@ type PendingRequest = {
 };
 
 // Richieste in attesa che, se approvate, portano il saldo in negativo: non si
-// bloccano, ma chi approva va avvisato. Le richieste dello stesso membro si
-// sommano nell'ordine in cui arrivano (di solito per data di inizio).
+// bloccano, ma chi approva va avvisato. Il disponibile si guarda alla data
+// della richiesta (con quanto sarà maturato fino ad allora), meno tutto ciò
+// che è già approvato e le richieste in attesa dello stesso membro che
+// vengono prima.
 export async function getPendingOverdrafts(requests: PendingRequest[]) {
   const users = [...new Map(requests.map((r) => [r.userId, r.user.employmentType])).entries()];
   const balances = await getLeaveBalancesForUsers(
     users.map(([id, employmentType]) => ({ id, employmentType: employmentType as EmploymentType }))
   );
 
-  const projected = new Map<string, number>();
+  const pendingSoFar = new Map<string, number>();
   const warnings = new Map<string, string>();
-  for (const request of requests) {
-    const charged = chargedBalance(balances.get(request.userId)!, request.type);
-    if (!charged) continue;
-    const key = `${request.userId}:${charged.unit}`;
-    const before = projected.get(key) ?? charged.remaining;
-    const amount = request.hours ?? countedLeaveDays(request.startDate, request.endDate);
-    const after = round2(before - amount);
-    projected.set(key, after);
+  const ordered = [...requests].sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+  for (const request of ordered) {
+    const charges = balances.get(request.userId)!.charges;
+    const kind = chargeKind(charges, request.type);
+    const info = kind ? charges[kind] : undefined;
+    if (!kind || !info) continue;
+    // Un totale per saldo: ferie e ROL sono entrambi in ore, ma separati.
+    const key = `${request.userId}:${kind}`;
+    const amount = chargeAmount(info, {
+      days: countedLeaveDays(request.startDate, request.endDate),
+      hours: request.hours !== null && !isWorkingDay(request.startDate) ? 0 : request.hours,
+    });
+    const total = (pendingSoFar.get(key) ?? 0) + amount;
+    pendingSoFar.set(key, total);
+    const after = round2(availableAt(info, request.endDate) - total);
     if (after < 0) {
-      warnings.set(request.id, `Se approvata, il saldo va in negativo: ${formatAmount(after)} ${charged.unit}`);
+      warnings.set(request.id, `Se approvata, il saldo va in negativo: ${formatAmount(after)} ${info.unit}`);
     }
   }
   return warnings;

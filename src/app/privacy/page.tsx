@@ -122,8 +122,8 @@ export default function PrivacyPage() {
           <strong>Presenze</strong>: pianificazione giornaliera per fascia (ufficio / smart working).
         </li>
         <li>
-          <strong>Assenze</strong>: ferie, permessi, recuperi, chiusure aziendali, <strong>malattia</strong> (solo
-          come tipo di assenza e periodo), saldi e rettifiche, note.{" "}
+          <strong>Assenze</strong>: ferie, permessi, recuperi, chiusure aziendali, <strong>malattia</strong> e{" "}
+          <strong>permessi 104</strong> (solo come tipo di assenza e periodo), saldi e rettifiche, note.{" "}
           <strong>Non inserire diagnosi né altre informazioni sanitarie nelle note</strong>: l&apos;azienda non ne
           ha bisogno e non le deve conoscere.
         </li>
@@ -167,7 +167,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>I responsabili di reparto</strong> vedono i dati del proprio reparto secondo i permessi
-          configurati (presenze, richieste, ore). La malattia viene mostrata solo come &quot;assenza&quot;.
+          configurati (presenze, richieste, ore). Malattia e permessi 104 vengono mostrati solo come &quot;assenza&quot;.
         </li>
         <li>
           <strong>Gli amministratori dell&apos;applicazione</strong> (personale autorizzato di amministrazione e IT)

@@ -4,6 +4,7 @@ import {
   CalendarOff,
   Clock3,
   DoorClosed,
+  HeartHandshake,
   Home,
   CalendarMinus,
   Palmtree,
@@ -48,6 +49,12 @@ export const LEAVE_STYLES = {
     title: "Assenza extra",
     icon: CalendarMinus,
   },
+  // Legge 104: dato sanitario, visibile solo agli admin (leave-privacy.ts).
+  permesso_104: {
+    chip: TONE_CHIP.danger,
+    title: "Permesso 104",
+    icon: HeartHandshake,
+  },
   // Chiusura aziendale: vale per tutto il team, scala ferie o assenze.
   chiusura: {
     chip: TONE_CHIP.success,
@@ -69,10 +76,12 @@ export const MODE_STYLES = {
   },
 } as const;
 
-// Assenze a ore (un solo giorno): permesso e recupero a ore.
+// Assenze a ore (un solo giorno): permesso, recupero e assenza a ore.
 export const HOURLY_STYLES = {
   permesso: { chip: TONE_CHIP.warning, title: "Permesso", icon: Clock3 },
   recupero: { chip: TONE_CHIP.teal, title: "Recupero", icon: RotateCcw },
+  assenza: { chip: TONE_CHIP.success, title: "Assenza", icon: CalendarOff },
+  permesso_104: { chip: TONE_CHIP.danger, title: "Permesso 104", icon: HeartHandshake },
 } as const;
 
 export type DayCategory = {
@@ -101,6 +110,8 @@ const CATEGORY_ORDER = [
   "assenza-pending",
   "assenza_extra",
   "assenza_extra-pending",
+  "permesso_104",
+  "permesso_104-pending",
   "permesso",
   "permesso-pending",
 ];

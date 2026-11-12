@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { addMonths, endOfMonth, formatMonthYear, startOfMonth } from "@/lib/calendar-utils";
 import { buildAttendanceMap, dateKey, monthQuery, parseMonthParam } from "@/lib/attendance-utils";
-import { isAdminRole } from "@/lib/constants";
+import { isAdminRole, isHourlyLeave, isSensitiveLeave } from "@/lib/constants";
 import { peopleInScope } from "@/lib/permissions";
 import { appendQuery } from "@/lib/utils";
 import { AttendanceTeamMonthCalendar } from "@/components/presenze/AttendanceTeamMonthCalendar";
@@ -71,10 +71,8 @@ export async function TeamAttendanceView({
     if (!leave.note || leave.status === "rejected") continue;
     const own = leave.userId === viewer.id;
     const admin = isAdminRole(viewer.role);
-    if (!own && !admin && (leave.type === "malattia" || !inScope(leave.userId))) continue;
-    const hourly =
-      leave.type === "permesso" || (leave.type === "recupero" && leave.hours !== null);
-    if (hourly) {
+    if (!own && !admin && (isSensitiveLeave(leave.type) || !inScope(leave.userId))) continue;
+    if (isHourlyLeave(leave)) {
       notes[`${leave.userId}__${dateKey(leave.startDate)}__hourly`] = leave.note;
       continue;
     }

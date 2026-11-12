@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
     formatAmount(row.recuperoDays),
     formatAmount(row.recuperoHours),
     formatAmount(row.assenzaExtraDays),
+    formatAmount(row.permesso104Days),
+    formatAmount(row.permesso104Hours),
   ];
   const lines = [
     [
@@ -33,6 +35,8 @@ export async function GET(request: NextRequest) {
       "Recuperi (gg)",
       "Recuperi (h)",
       "Assenze extra (gg)",
+      "Permessi 104 (gg)",
+      "Permessi 104 (h)",
     ],
     ...rows.map((row) => [
       row.user.name,

@@ -10,7 +10,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/Toaster";
 import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
-import { HOME_PATH, isAdminRole, type Role } from "@/lib/constants";
+import { HOME_PATH, isAdminRole, SENSITIVE_LEAVE_TYPES, type Role } from "@/lib/constants";
 
 export default async function AppLayout({
   children,
@@ -26,11 +26,11 @@ export default async function AppLayout({
   const { user, impersonating, hasSuperAdminRole, superAdminActive } = context;
 
   // Contatore in sidebar delle richieste da approvare (stesso criterio della
-  // scheda Da approvare di /richieste: tutte quelle in attesa, anche le proprie).
+  // scheda Da approvare di /richieste: tutte quelle in attesa, tranne le proprie).
   const teamPendingCount =
     isAdminRole(user.role)
       ? await prisma.leaveRequest.count({
-          where: { status: "pending" },
+          where: { status: "pending", userId: { not: user.id } },
         })
       : 0;
 
@@ -48,7 +48,14 @@ export default async function AppLayout({
   // Richieste in attesa che può approvare.
   const repartoPendingCount =
     !isAdmin && approve
-      ? await prisma.leaveRequest.count({ where: { status: "pending", user: await peopleWhere(user, "approvare") } })
+      ? await prisma.leaveRequest.count({
+          // Malattia e 104 li decide solo un admin.
+          where: {
+            status: "pending",
+            type: { notIn: [...SENSITIVE_LEAVE_TYPES] },
+            user: await peopleWhere(user, "approvare"),
+          },
+        })
       : 0;
 
   // Sidebar aperta o compressa: la ricorda il cookie del SidebarProvider di

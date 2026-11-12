@@ -13,6 +13,7 @@ import { parseDateParam, buildMonthlySummary, formatHours } from "@/lib/ore-util
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { DayStrip } from "@/components/ore/DayStrip";
 import { DailyHoursForm } from "@/components/ore/DailyHoursForm";
+import { DayNotWorkedToggle } from "@/components/ore/DayNotWorkedToggle";
 import { LoggedHoursSummary } from "@/components/ore/LoggedHoursSummary";
 import { MonthlySummaryTable } from "@/components/ore/MonthlySummaryTable";
 import { Card, CardContent } from "@/components/ui/card";
@@ -143,7 +144,7 @@ async function DailyView({
   const selectedEnd = addDays(selectedDate, 1);
   const leavesTo = selectedEnd > windowEnd ? selectedEnd : windowEnd;
 
-  const [activeClients, dayEntries, windowEntries, leaveRequests, recentEntries] = await Promise.all([
+  const [activeClients, dayEntries, windowEntries, leaveRequests, recentEntries, notWorked] = await Promise.all([
     // Le voci riservate (es. "Organizzazione IT") solo a chi è indicato.
     prisma.client.findMany({
       where: loggableClientsWhere(userId),
@@ -185,21 +186,29 @@ async function DailyView({
       by: ["clientId"],
       where: { userId, date: { gte: addDays(startOfDay(new Date()), -RECENT_DAYS) } },
     }),
+    // Giornate segnate "non ho lavorato" (finestra e giorno selezionato).
+    prisma.dayNotWorked.findMany({
+      where: { userId, date: { gte: leavesFrom, lt: leavesTo } },
+      select: { date: true },
+    }),
   ]);
+  const notWorkedKeys = new Set(notWorked.map((d) => dateKey(d.date)));
 
   // Giorni da non registrare oltre ai weekend: feste comandate e assenze a
   // giornata intera. Un permesso a ore no: il resto della giornata si lavora.
   const absences = buildAttendanceMap({ leaveRequests, presenceEntries: [] });
-  const absentKeys = new Set(
-    windowDays
-      .filter((day) => lookupAttendance(absences, userId, day)?.leave)
-      .map(dateKey)
-  );
+  const absentKeys = new Set([
+    ...windowDays.filter((day) => lookupAttendance(absences, userId, day)?.leave).map(dateKey),
+    ...notWorkedKeys,
+  ]);
+  const selectedNotWorked = notWorkedKeys.has(selectedKey);
   const selectedAbsence = lookupAttendance(absences, userId, selectedDate);
   const weekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
   const restLabel = selectedAbsence?.leave
     ? LEAVE_TYPE_LABELS[selectedAbsence.leave.type]
-    : weekend
+    : selectedNotWorked
+      ? "Non lavorato"
+      : weekend
       ? "Weekend"
       : isHoliday(selectedDate)
         ? "Festività"
@@ -266,6 +275,16 @@ async function DailyView({
       </div>
 
       <div className="mx-auto max-w-xl space-y-3">
+        {/* Solo nei giorni lavorativi senza ore né assenze a giornata intera. */}
+        {!alreadyLogged && (!restLabel || selectedNotWorked) && (
+          <DayNotWorkedToggle
+            key={`${selectedKey}-${userId}-${selectedNotWorked}`}
+            userId={userId}
+            dateValue={selectedKey}
+            isToday={selectedKey === dateKey(new Date())}
+            checked={selectedNotWorked}
+          />
+        )}
         {!alreadyLogged && restLabel && (
           <p className="text-sm text-muted-foreground">
             Giornata da non registrare: se si è lavorato comunque, le ore si possono segnare qui sotto.

@@ -3,6 +3,7 @@ import type {
   PresenceMode,
   PresenceSlot,
 } from "@/lib/constants";
+import { isHourlyLeave } from "@/lib/constants";
 
 // Assenze a giornata intera (una per giorno del periodo richiesto).
 export const DAY_LEAVE_TYPES = [
@@ -11,12 +12,13 @@ export const DAY_LEAVE_TYPES = [
   "malattia",
   "assenza",
   "assenza_extra",
+  "permesso_104",
   "chiusura",
 ] as const;
 export type DayLeaveType = (typeof DAY_LEAVE_TYPES)[number];
 
-// Assenze a ore, su un solo giorno: il permesso e il recupero "a ore".
-export type HourlyLeaveType = "permesso" | "recupero";
+// Assenze a ore, su un solo giorno: il permesso sempre, gli altri "a ore".
+export type HourlyLeaveType = "permesso" | "recupero" | "assenza" | "permesso_104";
 
 export type LeaveInfo = {
   type: DayLeaveType;
@@ -90,14 +92,11 @@ export function buildAttendanceMap(params: {
   for (const leave of params.leaveRequests) {
     if (leave.status === "rejected") continue;
 
-    // A ore: il permesso sempre, il recupero quando ha le ore valorizzate.
-    if (
-      leave.type === "permesso" ||
-      (leave.type === "recupero" && leave.hours !== null)
-    ) {
+    // A ore: il permesso sempre, recupero e assenza quando hanno le ore.
+    if (isHourlyLeave(leave)) {
       const entry = getEntry(leave.userId, dateKey(leave.startDate));
       entry.hourly = {
-        type: leave.type,
+        type: leave.type as HourlyLeaveType,
         hours: leave.hours ?? 0,
         startTime: leave.startTime ?? null,
         endTime: leave.endTime ?? null,

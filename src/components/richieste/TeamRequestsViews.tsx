@@ -49,7 +49,15 @@ export function parseTeamView(view?: string): TeamView {
 
 // Del team: le richieste già decise, dal futuro allo storico, più riepilogo
 // mensile e chiusure aziendali. I saldi di una persona sono nella sua scheda.
-export async function TeamRequestsView({ params, canDelete }: { params: TeamParams; canDelete: boolean }) {
+export async function TeamRequestsView({
+  params,
+  canDelete,
+  viewerId,
+}: {
+  params: TeamParams;
+  canDelete: boolean;
+  viewerId: string;
+}) {
   const view = parseTeamView(params.view);
   // endDate è a mezzanotte dell'ultimo giorno incluso: "passata" solo da
   // domani in poi, non dalle 00:01 dell'ultimo giorno.
@@ -93,13 +101,14 @@ export async function TeamRequestsView({ params, canDelete }: { params: TeamPara
               showMember
               showActions
               canDelete={canDelete}
+              currentUserId={viewerId}
               emptyMessage="Nessuna assenza in programma."
             />
           </CardContent>
         </Card>
       )}
 
-      {view === "storico" && <HistoryView where={historyWhere} params={params} canDelete={canDelete} />}
+      {view === "storico" && <HistoryView where={historyWhere} params={params} canDelete={canDelete} viewerId={viewerId} />}
 
       {view === "mensile" && <MonthlySummaryView month={params.month} />}
 
@@ -117,16 +126,19 @@ async function MonthlySummaryView({ month }: { month?: string }) {
   // Celle vuote invece di tanti zeri: si vede subito chi è stato assente.
   const cell = (value: number, unit: string) => (value > 0 ? `${formatAmount(value)} ${unit}` : "—");
   const figureCells = (figures: MonthlySummaryFigures) => {
-    const recuperi = [cell(figures.recuperoDays, "gg"), cell(figures.recuperoHours, "h")].filter(
-      (part) => part !== "—"
-    );
+    // Giorni e ore nella stessa cella ("2 gg · 3 h").
+    const both = (days: number, hours: number) => {
+      const parts = [cell(days, "gg"), cell(hours, "h")].filter((part) => part !== "—");
+      return parts.length > 0 ? parts.join(" · ") : "—";
+    };
     return (
       <>
         <TableCell>{cell(figures.ferieAssenzeDays, "gg")}</TableCell>
         <TableCell className="text-muted-foreground">{cell(figures.closureDays, "gg")}</TableCell>
         <TableCell>{cell(figures.permessoHours, "h")}</TableCell>
         <TableCell>{cell(figures.malattiaDays, "gg")}</TableCell>
-        <TableCell>{recuperi.length > 0 ? recuperi.join(" · ") : "—"}</TableCell>
+        <TableCell>{both(figures.recuperoDays, figures.recuperoHours)}</TableCell>
+        <TableCell>{both(figures.permesso104Days, figures.permesso104Hours)}</TableCell>
         <TableCell>{cell(figures.assenzaExtraDays, "gg")}</TableCell>
       </>
     );
@@ -164,6 +176,7 @@ async function MonthlySummaryView({ month }: { month?: string }) {
                 <TableHead>Permessi</TableHead>
                 <TableHead>Malattia</TableHead>
                 <TableHead>Recuperi</TableHead>
+                <TableHead>Permessi 104</TableHead>
                 <TableHead>Assenze extra</TableHead>
               </TableRow>
             </TableHeader>
@@ -214,10 +227,10 @@ async function ClosuresView() {
   );
 }
 
-// Da approvare per admin e super admin: tutte le richieste in attesa,
-// comprese quelle di chi guarda (un admin può decidere anche le proprie).
-export async function AllPendingView({ canDelete }: { canDelete: boolean }) {
-  const where: Prisma.LeaveRequestWhereInput = { status: "pending" };
+// Da approvare per admin e super admin: tutte le richieste in attesa, tranne
+// quelle di chi guarda (le proprie le decide un altro admin).
+export async function AllPendingView({ canDelete, viewerId }: { canDelete: boolean; viewerId: string }) {
+  const where: Prisma.LeaveRequestWhereInput = { status: "pending", userId: { not: viewerId } };
   const pending = await prisma.leaveRequest.findMany({
     where,
     include: INCLUDE,
@@ -256,7 +269,9 @@ async function HistoryView({
   where,
   params,
   canDelete,
+  viewerId,
 }: {
+  viewerId: string;
   where: Prisma.LeaveRequestWhereInput;
   params: { user?: string; type?: string; year?: string };
   canDelete: boolean;
@@ -319,6 +334,7 @@ async function HistoryView({
             showMember
             showActions
             canDelete={canDelete}
+            currentUserId={viewerId}
             emptyMessage={
               filtered
                 ? "Nessuna richiesta corrisponde ai filtri selezionati."

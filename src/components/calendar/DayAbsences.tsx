@@ -43,7 +43,7 @@ export function DayAbsences({
         <span className="text-muted-foreground">Nessuno, c&apos;è tutto il team.</span>
       )}
       {todays.map((absence) => {
-        // A ore: permesso e recupero a ore, sempre su un solo giorno.
+        // A ore: permesso, recupero e assenza a ore, sempre su un solo giorno.
         const hourly = absence.hours !== null;
         const style = hourly
           ? HOURLY_STYLES[absence.type as keyof typeof HOURLY_STYLES]

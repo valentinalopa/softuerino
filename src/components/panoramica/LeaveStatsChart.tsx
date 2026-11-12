@@ -18,6 +18,8 @@ const config: ChartConfig = {
   recupero: { label: LEAVE_TYPE_LABELS.recupero, color: "var(--chart-5)" },
   recuperoOre: { label: `${LEAVE_TYPE_LABELS.recupero} (ore)`, color: "var(--chart-5)" },
   assenzaExtra: { label: "Assenze extra (P.IVA)", color: "var(--chart-4)" },
+  permesso104: { label: LEAVE_TYPE_LABELS.permesso_104, color: "var(--chart-3)" },
+  permesso104Ore: { label: `${LEAVE_TYPE_LABELS.permesso_104} (ore)`, color: "var(--chart-3)" },
 };
 
 export function LeaveStatsChart({ totals }: { totals: LeaveTotals }) {
@@ -30,6 +32,8 @@ export function LeaveStatsChart({ totals }: { totals: LeaveTotals }) {
     { key: "recupero", label: LEAVE_TYPE_LABELS.recupero, value: totals.recuperoDays, unit: "giorni" },
     { key: "recuperoOre", label: `${LEAVE_TYPE_LABELS.recupero} (ore)`, value: totals.recuperoHours, unit: "ore" },
     { key: "assenzaExtra", label: "Assenze extra (P.IVA)", value: totals.assenzeExtraDays, unit: "giorni" },
+    { key: "permesso104", label: LEAVE_TYPE_LABELS.permesso_104, value: totals.permesso104Days, unit: "giorni" },
+    { key: "permesso104Ore", label: `${LEAVE_TYPE_LABELS.permesso_104} (ore)`, value: totals.permesso104Hours, unit: "ore" },
   ];
 
   return (

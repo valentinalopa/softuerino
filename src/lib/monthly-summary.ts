@@ -12,6 +12,8 @@ export type MonthlySummaryFigures = {
   recuperoDays: number;
   recuperoHours: number;
   assenzaExtraDays: number;
+  permesso104Days: number;
+  permesso104Hours: number;
 };
 
 export type MonthlySummaryRow = {
@@ -26,6 +28,8 @@ const FIGURE_KEYS = [
   "recuperoDays",
   "recuperoHours",
   "assenzaExtraDays",
+  "permesso104Days",
+  "permesso104Hours",
 ] as const satisfies readonly (keyof MonthlySummaryFigures)[];
 
 // Riepilogo di un mese per persona (pagina Richieste del team ed export CSV):
@@ -69,6 +73,8 @@ export async function buildMonthlySummary(month: Date) {
       recuperoDays: tally.recuperoDays,
       recuperoHours: tally.recuperoHours,
       assenzaExtraDays: tally.assenzaExtraDays,
+      permesso104Days: tally.permesso104Days,
+      permesso104Hours: tally.permesso104Hours,
     };
   });
 

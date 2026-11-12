@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getEmailSettings, sendMail } from "@/lib/email/mailer";
-import { isAdminRole } from "@/lib/constants";
+import { isAdminRole, isSensitiveLeave } from "@/lib/constants";
 import { approversOf } from "@/lib/permissions";
 import {
   eventInviteEmail,
@@ -61,38 +61,63 @@ export async function notifyLeaveDecision(requestId: string, actorId: string) {
   );
 }
 
-// Nuova richiesta di assenza: ai responsabili ferie (scelti in Ruoli e
-// permessi) e ai responsabili del reparto che possono approvarla.
-export async function notifyNewLeaveRequest(requestId: string, actorId: string) {
-  const request = await prisma.leaveRequest.findUnique({
-    where: { id: requestId },
-    select: {
-      userId: true,
-      type: true,
-      status: true,
-      startDate: true,
-      endDate: true,
-      hours: true,
-      startTime: true,
-      endTime: true,
-      note: true,
-      user: { select: { name: true } },
-    },
-  });
-  if (!request || (request.status !== "pending" && request.status !== "registrata")) return;
+// Chi va avvisato delle richieste di assenza di una persona: i responsabili
+// ferie (scelti in Ruoli e permessi) e chi può approvarle (es. i
+// responsabili del reparto). Mai la persona stessa né chi ha fatto l'azione.
+async function leaveWatchers(userId: string, type: string, actorId: string) {
   const [approvers, notified] = await Promise.all([
-    approversOf(request.userId),
+    approversOf(userId),
     prisma.user.findMany({ where: { leaveNotify: true }, select: { id: true } }),
   ]);
-  const ids = [...new Set([...approvers, ...notified.map((u) => u.id)])].filter((id) => id !== request.userId);
-  const recipients = (
+  const ids = [...new Set([...approvers, ...notified.map((u) => u.id)])].filter(
+    (id) => id !== userId && id !== actorId
+  );
+  return (
     await prisma.user.findMany({
-      where: { id: { in: ids.filter((id) => id !== actorId) }, active: true },
+      where: { id: { in: ids }, active: true },
       select: { name: true, email: true, role: true },
     })
   )
-    // La malattia è un dato sanitario: l'avviso va solo ad admin e super admin.
-    .filter((r) => request.type !== "malattia" || isAdminRole(r.role));
+    // Malattia e permesso 104 sono dati sanitari: l'avviso va solo ad admin e
+    // super admin.
+    .filter((r) => !isSensitiveLeave(type) || isAdminRole(r.role));
+}
+
+type LeaveSnapshot = {
+  userId: string;
+  type: string;
+  status: string;
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  note: string | null;
+  user: { name: string };
+};
+
+const LEAVE_SNAPSHOT_SELECT = {
+  userId: true,
+  type: true,
+  status: true,
+  startDate: true,
+  endDate: true,
+  hours: true,
+  startTime: true,
+  endTime: true,
+  note: true,
+  user: { select: { name: true } },
+} as const;
+
+// Nuova richiesta di assenza (o richiesta in attesa modificata da chi l'ha
+// fatta): a chi deve approvarla e ai responsabili ferie.
+export async function notifyNewLeaveRequest(requestId: string, actorId: string, change?: "modificata") {
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: LEAVE_SNAPSHOT_SELECT,
+  });
+  if (!request || (request.status !== "pending" && request.status !== "registrata")) return;
+  const recipients = await leaveWatchers(request.userId, request.type, actorId);
   // Admin e responsabili: la scheda "Da approvare" di Richieste (ognuno vede
   // quelle che può decidere).
   await deliver(recipients, (recipient, appUrl) =>
@@ -100,9 +125,26 @@ export async function notifyNewLeaveRequest(requestId: string, actorId: string) 
       ...request,
       requester: request.user.name,
       path: "/richieste?vista=da-approvare",
+      change,
     })
   );
 }
+
+// Richiesta in attesa ritirata da chi l'aveva fatta: non serve più deciderla.
+// La riga è già cancellata, quindi arrivano i dati letti prima.
+export async function notifyLeaveWithdrawn(request: LeaveSnapshot, actorId: string) {
+  const recipients = await leaveWatchers(request.userId, request.type, actorId);
+  await deliver(recipients, (recipient, appUrl) =>
+    newLeaveRequestEmail(recipient, appUrl, {
+      ...request,
+      requester: request.user.name,
+      path: "/richieste?vista=da-approvare",
+      change: "ritirata",
+    })
+  );
+}
+
+export { LEAVE_SNAPSHOT_SELECT };
 
 // Richiesta di un nuovo utente: a chi gestisce gli account (Ruoli e
 // permessi); se nessuno è indicato, a tutti i super admin.

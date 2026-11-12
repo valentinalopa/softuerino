@@ -51,14 +51,13 @@ function easterSunday(year: number) {
   return new Date(year, month - 1, day);
 }
 
-// Festa comandata: le feste fisse più Pasquetta (la Pasqua cade di domenica,
-// già esclusa come ogni weekend).
+// Festa comandata: le feste fisse più Pasqua e Pasquetta.
 export function isHoliday(date: Date) {
   if (FIXED_HOLIDAYS.has(`${date.getMonth() + 1}-${date.getDate()}`)) return true;
   const easter = easterSunday(date.getFullYear());
   const easterMonday = new Date(easter.getFullYear(), easter.getMonth(), easter.getDate() + 1);
-  return (
-    date.getMonth() === easterMonday.getMonth() && date.getDate() === easterMonday.getDate()
+  return [easter, easterMonday].some(
+    (holiday) => date.getMonth() === holiday.getMonth() && date.getDate() === holiday.getDate()
   );
 }
 
@@ -89,6 +88,23 @@ export function workingDayKeys(startDate: Date, endDate: Date) {
     d.setDate(d.getDate() + 1);
   }
   return keys;
+}
+
+// Giorni lavorativi del periodo (inclusi gli estremi), a mezzanotte locale.
+export function workingDates(startDate: Date, endDate: Date) {
+  const dates: Date[] = [];
+  const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  while (d <= end) {
+    if (isWorkingDay(d)) dates.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
+// Chiave "yyyy-m-d" di un giorno (stesso formato di workingDayKeys).
+export function dayKey(date: Date) {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
 // Giorni conteggiati ai fini dei monti ferie/malattia/assenze: sabati,
@@ -126,4 +142,20 @@ export function clippedDayKeysInRange(
 ) {
   const clipped = clipRange(startDate, endDate, rangeStart, rangeEnd);
   return clipped ? workingDayKeys(clipped.start, clipped.end) : [];
+}
+
+// "HH:MM" → minuti.
+function minutesOf(time: string) {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+type Slot = { startTime?: string | null; endTime?: string | null };
+
+// Due richieste della stessa persona che toccano uno stesso giorno si
+// scontrano, salvo quando sono entrambe a ore con fasce che non si toccano
+// (es. permesso 9–11 e permesso 15–17 dello stesso giorno).
+export function slotsClash(a: Slot, b: Slot) {
+  if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
+  return minutesOf(a.startTime) < minutesOf(b.endTime) && minutesOf(b.startTime) < minutesOf(a.endTime);
 }

@@ -7,8 +7,8 @@ export const BALANCE_KIND_LABELS: Record<
   BalanceKind,
   { label: string; fieldLabel: string; unit: "gg" | "h" }
 > = {
-  ferie: { label: "Ferie", fieldLabel: "Ferie residue", unit: "gg" },
-  permesso: { label: "Permessi", fieldLabel: "Permessi residui", unit: "h" },
+  ferie: { label: "Ferie", fieldLabel: "Ferie residue", unit: "h" },
+  permesso: { label: "Permessi ROL", fieldLabel: "ROL residui", unit: "h" },
   assenze: { label: "Assenze", fieldLabel: "Assenze residue", unit: "gg" },
 };
 
@@ -43,11 +43,20 @@ export function BalanceMeters({
   );
 }
 
-// Residuo in evidenza rispetto al riferimento (monte annuale, per le ferie il
-// maturato), con una barra di quanto resta. In negativo la barra è rossa e
+// Residuo in evidenza rispetto al riferimento (monte annuale), con una barra
+// di quanto resta. In negativo la barra è rossa e
 // mostra di quanto si è sotto.
 function BalanceMeter({ kind, figures }: { kind: BalanceKind; figures: BalanceFigures }) {
   const { label, unit } = BALANCE_KIND_LABELS[kind];
+  if (figures.missing) {
+    return (
+      <div className="w-32">
+        <span className="block text-xs text-muted-foreground">{label}</span>
+        <span className="block text-base font-semibold text-muted-foreground">—</span>
+        <span className="mt-1 block text-xs text-muted-foreground">Da impostare dalla busta paga</span>
+      </div>
+    );
+  }
   const { remaining, reference, referenceNote } = figures;
   const negative = remaining < 0;
   const ratio = reference > 0 ? Math.min(Math.abs(remaining) / reference, 1) : 0;

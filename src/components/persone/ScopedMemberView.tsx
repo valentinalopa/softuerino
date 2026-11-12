@@ -145,10 +145,20 @@ async function SaldiTab({ memberId, employmentType }: { memberId: string; employ
       userId={memberId}
       year={year}
       balances={balanceFigures(balance)}
+      hours={
+        balance.kind === "dipendente"
+          ? {
+              dailyHours: balance.dailyHours,
+              startMonth: balance.startMonth,
+              ferie: balance.ferie,
+              permesso: balance.permesso,
+            }
+          : undefined
+      }
       toRecover={formatToRecover(credits)}
       recoveryCredits={credits}
       // Niente giorni di malattia: dato sanitario, solo per la persona e gli admin.
-      outsideAllowance={outsideAllowance(balance).filter((item) => item.label !== "Malattia")}
+      outsideAllowance={outsideAllowance(balance).filter((item) => !item.sensitive)}
       canEdit={false}
     />
   );

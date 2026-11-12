@@ -165,6 +165,8 @@ export function newLeaveRequestEmail(
     endTime: string | null;
     note: string | null;
     path: string;
+    // Richiesta in attesa cambiata da chi l'ha fatta: modificata o ritirata.
+    change?: "modificata" | "ritirata";
   }
 ): Mail {
   const type = (LEAVE_TYPE_LABELS[data.type as LeaveType] ?? data.type).toLowerCase();
@@ -178,6 +180,23 @@ export function newLeaveRequestEmail(
   const pending = data.status === "pending";
   // "ferie", "un permesso", "un'assenza", "una malattia"
   const article = type === "ferie" ? "" : type.startsWith("assenza") ? "un'" : type === "malattia" ? "una " : "un ";
+  if (data.change === "ritirata") {
+    return render(recipient, appUrl, {
+      subject: `Richiesta ritirata: ${type} di ${data.requester}`,
+      intro: [{ strong: data.requester }, ` ha ritirato la richiesta di ${type}: non serve più approvarla.`],
+      details,
+      link: { path: data.path, label: "Apri le richieste da approvare" },
+    });
+  }
+  if (data.change === "modificata") {
+    return render(recipient, appUrl, {
+      subject: `Richiesta modificata: ${type} di ${data.requester}`,
+      intro: [{ strong: data.requester }, ` ha modificato la richiesta di ${type}: è in attesa di approvazione.`],
+      details,
+      note: data.note ?? undefined,
+      link: { path: data.path, label: "Apri le richieste da approvare" },
+    });
+  }
   return render(recipient, appUrl, {
     subject: pending ? `Nuova richiesta: ${type} di ${data.requester}` : `${type.charAt(0).toUpperCase()}${type.slice(1)} registrata: ${data.requester}`,
     intro: pending
