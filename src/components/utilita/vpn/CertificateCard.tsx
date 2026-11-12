@@ -49,6 +49,8 @@ function DmgLink({ primary }: { primary: boolean }) {
 
 function CrtLink({ primary }: { primary: boolean }) {
   return (
+    // Download di un file (non una navigazione): <Link> non è adatto.
+    // eslint-disable-next-line @next/next/no-html-link-for-pages
     <a href="/api/cert/crt" className={buttonVariants({ variant: primary ? "default" : "outline" })}>
       <Download className="size-4" aria-hidden />
       Scarica certificato (.crt)
