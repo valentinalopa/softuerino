@@ -21,11 +21,12 @@ import * as presenceService from "@/lib/services/presence";
 import * as leaveService from "@/lib/services/leave";
 import * as timeService from "@/lib/services/time";
 import * as tasksService from "@/lib/services/tasks";
+import * as clientsService from "@/lib/services/clients";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
-import { can, canOnPerson } from "@/lib/permissions";
+import { canOnPerson } from "@/lib/permissions";
 import {
   notifyEventInvite,
   notifyLeaveDecision,
@@ -930,42 +931,25 @@ async function parseClientStructure(
 }
 
 export async function createClient(formData: FormData) {
-  // Admin e super admin, o chi ha il permesso "Aggiungere clienti".
+  // Admin e super admin, o chi ha il permesso "Aggiungere clienti". Regole nel
+  // service (condiviso con l'app iPhone). Chi non è admin aggiunge solo clienti
+  // semplici, aperti a tutti: il form web non invia padre e persone, qui si
+  // scartano comunque.
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
   const isAdmin = isAdminRole(user.role);
-  if (!isAdmin && !(await can(user, "clienti"))) return { error: "Non autorizzato" };
-
-  const name = String(formData.get("name") ?? "").trim();
-  const categories = formData.getAll("categories").map(String);
-  if (!name) {
-    return { error: "Il nome del cliente è obbligatorio" };
-  }
-  if (
-    categories.some(
-      (c) => !CLIENT_CATEGORIES.includes(c as (typeof CLIENT_CATEGORIES)[number])
-    )
-  ) {
-    return { error: "Categoria non valida" };
-  }
-  // Chi non è admin aggiunge solo clienti semplici, aperti a tutti.
-  const structure = isAdmin ? await parseClientStructure(formData) : { parentId: null, loggerIds: [] };
-  if ("error" in structure) return structure;
 
   try {
-    await prisma.client.create({
-      data: {
-        name,
-        categories: categories.join(","),
-        parentId: structure.parentId,
-        loggers: { create: structure.loggerIds.map((userId) => ({ userId })) },
-      },
-    });
+    await clientsService.createClient(
+      { id: user.id, role: user.role },
+      {
+        name: formData.get("name"),
+        categories: formData.getAll("categories"),
+        ...(isAdmin ? { parentId: formData.get("parentId"), loggerIds: formData.getAll("loggerIds") } : {}),
+      }
+    );
   } catch (err) {
-    if (isUniqueViolation(err)) {
-      return { error: "Esiste già un cliente con questo nome" };
-    }
-    throw err;
+    return eventServiceError(err);
   }
   revalidatePath("/clienti");
   revalidatePath("/ore");

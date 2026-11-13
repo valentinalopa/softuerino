@@ -623,6 +623,68 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/clients:
+    get:
+      operationId: listClients
+      summary: Clienti (elenco completo)
+      description: |
+        Per admin, super admin e chi ha il permesso "Aggiungere clienti"; per gli
+        altri 403. Comprende i clienti non attivi; ogni voce sta subito sotto il
+        suo cliente padre. I clienti su cui registrare ore sono in `/v1/time/clients`.
+      responses:
+        "200":
+          description: Clienti
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clients]
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ClientDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createClient
+      summary: Nuovo cliente
+      description: |
+        Admin e super admin possono indicare `parentId` (cliente padre, un solo
+        livello) e `loggerIds` (persone che possono registrare ore; nessuna = tutti).
+        Chi ha solo il permesso "Aggiungere clienti" crea clienti semplici: con
+        `parentId` o `loggerIds` risponde 403. Nome già esistente: 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientInput"
+      responses:
+        "201":
+          description: Cliente creato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [client]
+                properties:
+                  client:
+                    $ref: "#/components/schemas/ClientDetail"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/tasks:
     get:
       operationId: listTasks
@@ -1492,6 +1554,48 @@ components:
           type: [string, "null"]
           format: date
         assigneeIds:
+          type: array
+          items:
+            type: string
+    ClientDetail:
+      type: object
+      required: [id, name, active, categories, parent, loggers, childrenCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+        categories:
+          type: array
+          items:
+            type: string
+            enum: [comunicazione, it_design, produzione]
+        parent:
+          oneOf:
+            - $ref: "#/components/schemas/TaskRef"
+            - type: "null"
+        loggers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskRef"
+        childrenCount:
+          type: integer
+    ClientInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+            enum: [comunicazione, it_design, produzione]
+        parentId:
+          type: [string, "null"]
+        loggerIds:
           type: array
           items:
             type: string

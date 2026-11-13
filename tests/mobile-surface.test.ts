@@ -30,6 +30,7 @@ describe("superficie dell'API mobile", () => {
       "/v1/balance",
       "/v1/calendar",
       "/v1/calendar/upcoming",
+      "/v1/clients",
       "/v1/events",
       "/v1/events/[id]",
       "/v1/leave-requests",
