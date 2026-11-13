@@ -17,7 +17,7 @@ export type AuthContext = NonNullable<Awaited<ReturnType<typeof getAuthContext>>
 export { NotFoundError };
 
 // Risposte dell'API mobile: mai in cache (possono contenere dati personali).
-const BASE_HEADERS = { "Cache-Control": "private, no-store" };
+const BASE_HEADERS = { "Cache-Control": "private, no-store", Pragma: "no-cache" };
 
 export function apiError(status: number, error: string, message: string) {
   return Response.json({ error, message }, { status, headers: BASE_HEADERS });

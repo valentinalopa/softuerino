@@ -685,6 +685,132 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/licenses:
+    get:
+      operationId: listLicenses
+      summary: Licenze e abbonamenti (mascherati)
+      description: |
+        Licenze nell'ambito del permesso "Vedere le licenze" più quelle visibili a
+        tutti; senza nessuna delle due 403. Chiave e account sono solo mascherati;
+        non compare mai alcun campo cifrato.
+      responses:
+        "200":
+          description: Licenze
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [licenses]
+                properties:
+                  licenses:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/License"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/licenses/{id}:
+    get:
+      operationId: getLicense
+      summary: Dettaglio licenza (mascherato)
+      description: Con note e attivazioni. Licenza inesistente o non visibile: 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Licenza
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [license]
+                properties:
+                  license:
+                    $ref: "#/components/schemas/LicenseDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/licenses/{id}/reveal:
+    post:
+      operationId: revealLicenseSecret
+      summary: Mostra o copia chiave, password o account
+      description: |
+        Valore in chiaro, mai in cache (`Cache-Control: no-store, private`, anche
+        sugli errori); l'app non lo salva né lo registra nei log. Ogni richiesta
+        va nel registro degli accessi. Bisogna indicare dove si usa: un'attivazione
+        esistente (`activationId`) oppure `"new"` con `label` (1-120 caratteri),
+        che crea l'attivazione entro `activationLimit` (oltre: 409). `field=account`
+        solo per il super admin con poteri attivi (altrimenti 403). Non disponibile
+        in impersonificazione (403). Licenza non accessibile: 403 senza dettagli.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [show, copy]
+                field:
+                  type: string
+                  enum: [key, password, account]
+                  default: key
+                activationId:
+                  type: string
+                  description: Id di un'attivazione della licenza, oppure "new" (predefinito)
+                label:
+                  type: string
+                  maxLength: 120
+                  description: Obbligatoria con activationId "new"
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Valore in chiaro
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [value, field, activationId]
+                properties:
+                  value:
+                    type: string
+                  field:
+                    type: string
+                    enum: [key, password, account]
+                  activationId:
+                    type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/tasks:
     get:
       operationId: listTasks
@@ -1407,6 +1533,47 @@ components:
         label:
           type: string
           description: Con il nome del cliente padre per le voci interne
+    License:
+      type: object
+      required: [id, name, kind, vendor, department, keyMasked, accountMasked, hasPassword, expiresAt, expiry, activationLimit, activationsUsed]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [licenza, abbonamento] }
+        vendor: { type: [string, "null"] }
+        department:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/Department"
+        keyMasked: { type: [string, "null"] }
+        accountMasked: { type: [string, "null"] }
+        hasPassword: { type: boolean }
+        expiresAt: { type: [string, "null"], format: date-time }
+        expiry:
+          type: object
+          required: [status, label]
+          properties:
+            status: { type: string, enum: [none, ok, soon, expired, renews] }
+            label: { type: string }
+        activationLimit: { type: [integer, "null"] }
+        activationsUsed: { type: integer }
+    LicenseDetail:
+      allOf:
+        - $ref: "#/components/schemas/License"
+        - type: object
+          required: [notes, activations]
+          properties:
+            notes: { type: [string, "null"] }
+            activations:
+              type: array
+              items:
+                type: object
+                required: [id, label, note, createdAt]
+                properties:
+                  id: { type: string }
+                  label: { type: string }
+                  note: { type: [string, "null"] }
+                  createdAt: { type: string, format: date-time }
     Department:
       type: object
       required: [id, name]
