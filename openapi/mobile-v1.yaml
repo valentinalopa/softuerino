@@ -623,6 +623,224 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/tasks:
+    get:
+      operationId: listTasks
+      summary: Task
+      description: |
+        Stesse viste della pagina Task del web. Senza `user`: i membri partono dai
+        propri task, gli admin da tutti, l'archivio da tutti. L'archivio (task
+        completati da più di 30 giorni) è solo per admin, project manager e
+        responsabili di reparto (questi ultimi vedono i task con assegnatari nei
+        propri reparti); per gli altri risponde 403. Lo svuotamento dell'archivio
+        non è disponibile nell'app.
+      parameters:
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [active, done, archive]
+            default: active
+        - name: user
+          in: query
+          description: "`me`, `all` o l'id di una persona"
+          schema:
+            type: string
+        - name: clientId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks]
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createTask
+      summary: Nuovo task
+      description: I task sono condivisi nel team (come sul web). La mail agli assegnatari parte dopo il successo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Task creato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tasks/options:
+    get:
+      operationId: getTaskOptions
+      summary: Scelte del form task
+      description: Clienti attivi e persone attive, e se l'archivio è visibile a chi chiede.
+      responses:
+        "200":
+          description: Scelte
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clients, users, canViewArchive]
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TaskRef"
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TaskRef"
+                  canViewArchive:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getTask
+      summary: Un task
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      operationId: updateTask
+      summary: Modifica completa di un task (assegnatari compresi)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "200":
+          description: Task aggiornato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: deleteTask
+      summary: Elimina un task
+      responses:
+        "204":
+          description: Eliminato
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tasks/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: setTaskStatus
+      summary: Cambia lo stato di un task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [not_started, in_progress, in_pausa, done]
+      responses:
+        "200":
+          description: Task aggiornato (passando a `done` si valorizza `completedAt`, uscendone si azzera)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     bearerAuth:
@@ -1211,3 +1429,69 @@ components:
               type: string
               enum: [super_admin, admin, membro]
               description: Ruolo effettivo per la rete di questa richiesta, uguale a quello di /v1/me (un super admin dal pubblico risulta admin)
+    TaskRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Task:
+      type: object
+      required: [id, title, notes, status, priority, dueDate, completedAt, createdAt, client, assignees]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [not_started, in_progress, in_pausa, done]
+        priority:
+          type: [string, "null"]
+          enum: [low, medium, high, null]
+        dueDate:
+          type: [string, "null"]
+          format: date
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Valorizzato quando il task è `done`. Dopo 30 giorni il task passa in archivio, dopo 365 viene eliminato.
+        createdAt:
+          type: string
+          format: date-time
+        client:
+          oneOf:
+            - $ref: "#/components/schemas/TaskRef"
+            - type: "null"
+        assignees:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskRef"
+    TaskInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        notes:
+          type: string
+        clientId:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [not_started, in_progress, in_pausa, done]
+          default: not_started
+        priority:
+          type: [string, "null"]
+          enum: [low, medium, high, null]
+        dueDate:
+          type: [string, "null"]
+          format: date
+        assigneeIds:
+          type: array
+          items:
+            type: string

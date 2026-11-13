@@ -20,6 +20,7 @@ import * as eventsService from "@/lib/services/events";
 import * as presenceService from "@/lib/services/presence";
 import * as leaveService from "@/lib/services/leave";
 import * as timeService from "@/lib/services/time";
+import * as tasksService from "@/lib/services/tasks";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
@@ -28,7 +29,6 @@ import { can, canOnPerson } from "@/lib/permissions";
 import {
   notifyEventInvite,
   notifyLeaveDecision,
-  notifyTaskAssigned,
 } from "@/lib/email/notifications";
 import {
   ROLES,
@@ -36,8 +36,6 @@ import {
   isAdminRole,
   isSensitiveLeave,
   EMPLOYMENT_TYPES,
-  TASK_STATUSES,
-  TASK_PRIORITIES,
   CLIENT_CATEGORIES,
   PARTITA_IVA_ASSENZE_DAYS_PER_YEAR,
   type BalanceKind,
@@ -1142,94 +1140,53 @@ export async function applySaldiImport(
 
 // --- Task ---
 
-// Campi del form task (nuovo e modifica), già validati.
-type TaskFormData = {
-  title: string;
-  notes: string;
-  clientId: string | null;
-  status: string;
-  priority: string | null;
-  dueDate: Date | null;
-};
-
-function parseTaskForm(
-  formData: FormData
-): { error: string } | { data: TaskFormData; assigneeIds: string[] } {
-  const title = String(formData.get("title") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
-  const clientIdRaw = String(formData.get("clientId") ?? "").trim();
-  const clientId = clientIdRaw && clientIdRaw !== "none" ? clientIdRaw : null;
-  const status = String(formData.get("status") ?? "not_started");
-  const priorityRaw = String(formData.get("priority") ?? "").trim();
-  const priority = priorityRaw || null;
-  const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
-  const assigneeIds = [...new Set(formData.getAll("assigneeIds").map(String))];
-
-  if (!title) {
-    return { error: "Il task è obbligatorio" };
-  }
-  if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
-    return { error: "Stato non valido" };
-  }
-  if (priority && !TASK_PRIORITIES.includes(priority as (typeof TASK_PRIORITIES)[number])) {
-    return { error: "Priorità non valida" };
-  }
-  if (dueDateRaw && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw)) {
-    return { error: "Scadenza non valida" };
-  }
-
+// Regole nel service (condiviso con l'app iPhone): qui solo il passaggio dal form
+// e il ritorno come ActionResult. Durante un "vedi come" la scrittura è rifiutata.
+function taskInputFromForm(formData: FormData) {
   return {
-    data: {
-      title,
-      notes,
-      clientId,
-      status,
-      priority,
-      // localDate, non new Date(): una stringa data-only verrebbe letta come
-      // mezzanotte UTC e mostrata un giorno prima nei fusi negativi.
-      dueDate: dueDateRaw ? localDate(dueDateRaw) : null,
-    },
-    assigneeIds,
+    title: formData.get("title"),
+    notes: formData.get("notes"),
+    clientId: formData.get("clientId"),
+    status: formData.get("status") ?? undefined,
+    priority: formData.get("priority"),
+    dueDate: formData.get("dueDate"),
+    assigneeIds: formData.getAll("assigneeIds"),
   };
 }
+
+const taskActor = (user: { id: string; role: string; projectManager: boolean }) => ({
+  id: user.id,
+  role: user.role,
+  projectManager: user.projectManager,
+});
 
 export async function createTask(formData: FormData) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const parsed = parseTaskForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, assigneeIds } = parsed;
-
-  const task = await prisma.task.create({
-    data: {
-      ...data,
-      completedAt: data.status === "done" ? new Date() : null,
-      assignees: {
-        create: assigneeIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let created;
+  try {
+    created = await tasksService.createTask(taskActor(user), taskInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/task");
-  after(() => notifyTaskAssigned(task.id, assigneeIds, user.id));
+  after(created.notify);
 }
 
 export async function updateTaskStatus(
   taskId: string,
   status: string
 ): Promise<ActionResult> {
-  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
-  if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
-    return { error: "Stato non valido" };
+  try {
+    await tasksService.setTaskStatus(taskActor(user), taskId, status);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  const updated = await prisma.task.updateMany({
-    where: { id: taskId },
-    data: { status, completedAt: status === "done" ? new Date() : null },
-  });
-  if (updated.count === 0) return { error: "Task non trovato (forse è stato eliminato)" };
   revalidatePath("/task");
 }
 
@@ -1238,45 +1195,26 @@ export async function updateTask(taskId: string, formData: FormData): Promise<Ac
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const parsed = parseTaskForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, assigneeIds } = parsed;
-
-  const current = await prisma.task.findUnique({
-    where: { id: taskId },
-    select: { status: true, completedAt: true, assignees: { select: { userId: true } } },
-  });
-  if (!current) return { error: "Task non trovato" };
-
-  // completedAt fa partire il conto per l'eliminazione: si azzera solo se il
-  // task esce da "done", e non si sposta se ci resta.
-  const completedAt =
-    data.status !== "done" ? null : current.status === "done" ? current.completedAt : new Date();
-
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      ...data,
-      completedAt,
-      assignees: {
-        deleteMany: {},
-        create: assigneeIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let updated;
+  try {
+    updated = await tasksService.updateTask(taskActor(user), taskId, taskInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/task");
-  // Avvisa solo chi è stato aggiunto adesso.
-  const previous = new Set(current.assignees.map((a) => a.userId));
-  const added = assigneeIds.filter((id) => !previous.has(id));
-  if (added.length > 0) after(() => notifyTaskAssigned(taskId, added, user.id));
+  after(updated.notify);
 }
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
-  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   // I task sono condivisi: chiunque nel team li modifica e li elimina.
-  const deleted = await prisma.task.deleteMany({ where: { id: taskId } });
-  if (deleted.count === 0) return { error: "Task non trovato (forse è già stato eliminato)" };
+  try {
+    await tasksService.deleteTask(taskActor(user), taskId);
+  } catch (err) {
+    return eventServiceError(err);
+  }
   revalidatePath("/task");
 }
 
