@@ -89,6 +89,10 @@ describe("withMobileAuth e GET /me", () => {
       hasSuperAdminRole: false,
       superAdminActive: false,
       managedDepartments: [{ id: dep.id, name: "T-Reparto" }],
+      projectManager: false,
+      reportsTo: [],
+      // Responsabile di reparto: archivio task, clienti e licenze per i permessi predefiniti.
+      capabilities: { taskArchive: true, clientsView: true, clientsCreate: true, licensesView: true },
     });
   });
 

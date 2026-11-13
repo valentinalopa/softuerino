@@ -39,6 +39,7 @@ describe("superficie dell'API mobile", () => {
       "/v1/licenses/[id]",
       "/v1/licenses/[id]/reveal",
       "/v1/me",
+      "/v1/org",
       "/v1/presence",
       "/v1/presence/[date]",
       "/v1/recovery-credits",

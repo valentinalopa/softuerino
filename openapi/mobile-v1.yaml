@@ -685,6 +685,30 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/org:
+    get:
+      operationId: getOrg
+      summary: Organigramma (sola lettura)
+      description: |
+        Albero dei reparti ricostruito dai dati di Keycloak, come la vista
+        Organigramma di Persone. Basta il login; nessuna modifica dall'app.
+      responses:
+        "200":
+          description: Organigramma
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tree]
+                properties:
+                  tree:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrgNode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/licenses:
     get:
       operationId: listLicenses
@@ -1584,7 +1608,7 @@ components:
           type: string
     Me:
       type: object
-      required: [id, name, email, role, employmentType, leaveTypes, hasSuperAdminRole, superAdminActive, managedDepartments]
+      required: [id, name, email, role, employmentType, leaveTypes, hasSuperAdminRole, superAdminActive, managedDepartments, projectManager, reportsTo, capabilities]
       properties:
         id:
           type: string
@@ -1613,6 +1637,49 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Department"
+        projectManager:
+          type: boolean
+        reportsTo:
+          type: array
+          description: Nomi dei reparti a cui fa capo (claim reports_to di Keycloak)
+          items:
+            type: string
+        capabilities:
+          type: object
+          description: Cosa può usare l'app, calcolato dal server con gli stessi controlli dei service
+          required: [taskArchive, clientsView, clientsCreate, licensesView]
+          properties:
+            taskArchive:
+              type: boolean
+            clientsView:
+              type: boolean
+            clientsCreate:
+              type: boolean
+            licensesView:
+              type: boolean
+    OrgPerson:
+      type: object
+      required: [name, role, isManager, managed]
+      properties:
+        name: { type: string }
+        role: { type: string }
+        isManager: { type: boolean }
+        managed: { type: array, items: { type: string } }
+    OrgNode:
+      type: object
+      required: [id, name, managers, people, children]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        managers: { type: array, items: { type: string } }
+        people:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgPerson"
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgNode"
     TokenRequest:
       type: object
       required: [code, codeVerifier, redirectUri]
