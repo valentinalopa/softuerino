@@ -773,9 +773,14 @@ paths:
         sugli errori); l'app non lo salva né lo registra nei log. Ogni richiesta
         va nel registro degli accessi. Bisogna indicare dove si usa: un'attivazione
         esistente (`activationId`) oppure `"new"` con `label` (1-120 caratteri),
-        che crea l'attivazione entro `activationLimit` (oltre: 409). `field=account`
-        solo per il super admin con poteri attivi (altrimenti 403). Non disponibile
-        in impersonificazione (403). Licenza non accessibile: 403 senza dettagli.
+        che crea l'attivazione entro `activationLimit` (oltre: 409). Chiave, password
+        e account seguono le stesse regole del web: basta avere accesso alla licenza.
+        Non disponibile in impersonificazione (403). Licenza non accessibile: 403
+        senza dettagli. Limite giornaliero: 10 rivelazioni per utente e per giorno di
+        calendario in ora italiana (Europe/Rome), contate su tutte le righe del
+        registro (show e copy, qualsiasi licenza, app e web); il super admin
+        (ruolo effettivo) è escluso. All'11ª: 429 `rate_limited`, nessuna riga di
+        registro e nessuna attivazione creata.
       parameters:
         - name: id
           in: path
@@ -833,6 +838,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
   /v1/tasks:
@@ -1100,6 +1107,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: Limite giornaliero di 10 rivelazioni raggiunto (`rate_limited`); Cache-Control no-store come ogni risposta. Nessun nuovo tentativo automatico.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Token assente, non valido, scaduto o utente disattivato (`unauthorized`)
       content:
@@ -1119,7 +1132,7 @@ components:
       properties:
         error:
           type: string
-          description: Codice stabile (unauthorized, forbidden, not_found, invalid_request, invalid_grant, inactive, first_login_required, internal_error)
+          description: Codice stabile (unauthorized, forbidden, not_found, invalid_request, invalid_grant, inactive, first_login_required, rate_limited, internal_error)
         message:
           type: string
           description: Testo in italiano per l'utente

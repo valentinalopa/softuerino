@@ -2,7 +2,6 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto/secret-box";
 import {
-  accountForViewer,
   canAccessLicense,
   licenseScopeFor,
   licenseWhere,
@@ -12,6 +11,7 @@ import {
 import { licenseExpiry } from "@/lib/licenses/expiry";
 import { ForbiddenError } from "@/lib/task-archive";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
+import { assertRevealQuota, confirmRevealQuota } from "@/lib/licenses/reveal-limit";
 
 // Licenze per l'app: elenco e dettaglio sempre mascherati (mai campi *Encrypted),
 // reveal di chiave/password/account con registro LicenseKeyAccess, nuova attivazione
@@ -131,11 +131,6 @@ export async function revealLicenseSecret(
   if (!license || !canAccessLicense(scope, license, "vedere")) {
     throw new ForbiddenError("Non hai accesso a questa licenza");
   }
-  // L'account in chiaro è solo del super admin attivo (declassato fuori rete fidata).
-  if (field === "account" && actor.role !== "super_admin") {
-    throw new ForbiddenError("Non autorizzato");
-  }
-
   const sealed = {
     key: license.keyEncrypted,
     password: license.passwordEncrypted,
@@ -155,20 +150,18 @@ export async function revealLicenseSecret(
     if (!found) throw new NotFoundError("Attivazione non trovata");
   }
 
+  // Chiave, password e account: stesse regole della revealLicenseKey del web (accesso alla licenza
+  // + dove la usi + limite giornaliero), nessuna distinzione per l'account.
   let value: string;
-  if (field === "account") {
-    const clear = accountForViewer(actor, sealed);
-    if (clear === null) throw new ConflictError("Dato non leggibile");
-    value = clear;
-  } else {
-    try {
-      value = decryptSecret(sealed);
-    } catch {
-      throw new ConflictError("Dato non leggibile");
-    }
+  try {
+    value = decryptSecret(sealed);
+  } catch {
+    throw new ConflictError("Dato non leggibile");
   }
 
   const activationId = await prisma.$transaction(async (tx) => {
+    // Limite giornaliero (10, ora di Roma, super admin escluso): prima di creare qualsiasi cosa.
+    await assertRevealQuota(tx, actor);
     let activation: { id: string; label: string };
     if (activationRef === "new") {
       if (license.activationLimit !== null) {
@@ -210,6 +203,8 @@ export async function revealLicenseSecret(
         usedFor: activation.label,
       },
     });
+    // Ricontrollo dopo l'inserimento (richieste concorrenti): se oltre il limite annulla tutto.
+    await confirmRevealQuota(tx, actor);
     return activation.id;
   });
 

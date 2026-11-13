@@ -148,24 +148,129 @@ describe("licenze dell'app", () => {
     assert.equal(await prisma.licenseActivation.count({ where: { licenseId: lic.id } }), 0);
   });
 
-  it("account da admin → 403; da super admin in rete fidata → 200; da super admin dal percorso pubblico → 403", async () => {
+  it("account: stesse regole di chiave e password (accesso alla licenza + attivazione), riga di registro", async () => {
     await makeUser("lad3", "admin");
     await makeUser("lsa1", "super_admin");
+    await makeUser("lme3");
     const lic = await makeLicense("account");
+    // Admin con accesso → 200 e riga di registro con field=account.
     await login("lad3");
-    const denied = await reveal(lic.id, { action: "show", field: "account", activationId: "new", label: "x" });
+    const adminRes = await reveal(lic.id, { action: "show", field: "account", activationId: "new", label: "x" });
+    assert.equal(adminRes.status, 200);
+    assert.equal((await adminRes.json()).value, SECRET_ACC);
+    const row = await prisma.licenseKeyAccess.findFirstOrThrow({ where: { licenseId: lic.id, userId: "lad3" } });
+    assert.equal(row.field, "account");
+    // Senza attivazione indicata → 400 anche per l'account.
+    const noLabel = await reveal(lic.id, { action: "show", field: "account", activationId: "new" });
+    assert.equal(noLabel.status, 400);
+    // Utente senza accesso alla licenza → 403, nessun valore, nessuna riga.
+    await login("lme3");
+    const denied = await reveal(lic.id, { action: "show", field: "account", activationId: "new", label: "z" });
     assert.equal(denied.status, 403);
     assert.ok(!(await denied.text()).includes(SECRET_ACC));
-
+    // Super admin (rete fidata o percorso pubblico, dove è admin) → 200.
     await login("lsa1", { "x-real-ip": "192.168.1.5" });
-    const ok = await reveal(lic.id, { action: "show", field: "account", activationId: "new", label: "x" });
-    assert.equal(ok.status, 200);
-    assert.equal((await ok.json()).value, SECRET_ACC);
-
+    assert.equal((await reveal(lic.id, { action: "copy", field: "account", activationId: "new", label: "y" })).status, 200);
     await login("lsa1", { "x-real-ip": "8.8.8.8", "x-softuerino-network": "public" });
-    const pub = await reveal(lic.id, { action: "show", field: "account", activationId: "new", label: "y" });
-    assert.equal(pub.status, 403);
-    assert.equal(await prisma.licenseKeyAccess.count({ where: { licenseId: lic.id } }), 1);
+    assert.equal((await reveal(lic.id, { action: "copy", field: "account", activationId: "new", label: "w" })).status, 200);
+    assert.equal(await prisma.licenseKeyAccess.count({ where: { licenseId: lic.id } }), 3);
+  });
+
+  describe("limite giornaliero di 10 rivelazioni", () => {
+    const body = (extra: Record<string, unknown> = {}) => ({ action: "show", activationId: "new", label: "uso", ...extra });
+    const seed = (userId: string, licenseId: string, n: number, createdAt?: Date) =>
+      prisma.licenseKeyAccess.createMany({
+        data: Array.from({ length: n }, () => ({
+          licenseId,
+          userId,
+          action: "show",
+          field: "key",
+          ...(createdAt ? { createdAt } : {}),
+        })),
+      });
+
+    it("la 10ª passa, l'11ª → 429 no-store senza valore, 0 righe e 0 attivazioni nuove", async () => {
+      await makeUser("llm1", "admin");
+      const lic = await makeLicense("rl1");
+      await login("llm1");
+      for (let i = 0; i < 10; i++) {
+        const r = await reveal(lic.id, body({ action: i % 2 ? "copy" : "show" }));
+        assert.equal(r.status, 200, `richiesta ${i + 1}`);
+      }
+      const rows = await prisma.licenseKeyAccess.count({ where: { userId: "llm1" } });
+      const acts = await prisma.licenseActivation.count({ where: { licenseId: lic.id } });
+      const res = await reveal(lic.id, body({ label: "undicesima" }));
+      assert.equal(res.status, 429);
+      assert.match(res.headers.get("cache-control") ?? "", /no-store/);
+      const text = await res.text();
+      assert.ok(text.includes("Limite giornaliero di 10 rivelazioni raggiunto"));
+      assert.ok(!text.includes(SECRET_KEY));
+      assert.equal((JSON.parse(text) as { error: string }).error, "rate_limited");
+      assert.equal(await prisma.licenseKeyAccess.count({ where: { userId: "llm1" } }), rows);
+      assert.equal(await prisma.licenseActivation.count({ where: { licenseId: lic.id } }), acts);
+    });
+
+    it("conta tutte le licenze e anche le righe scritte dal web (show e copy)", async () => {
+      await makeUser("llm2", "admin");
+      const a = await makeLicense("rl2a");
+      const b = await makeLicense("rl2b");
+      await seed("llm2", b.id, 10);
+      await login("llm2");
+      const res = await reveal(a.id, body());
+      assert.equal(res.status, 429);
+    });
+
+    it("le righe di ieri (ora di Roma) non contano", async () => {
+      await makeUser("llm3", "admin");
+      const lic = await makeLicense("rl3");
+      const { romeDayStart } = await import("../src/lib/licenses/reveal-limit");
+      await seed("llm3", lic.id, 10, new Date(romeDayStart().getTime() - 60_000));
+      await login("llm3");
+      assert.equal((await reveal(lic.id, body())).status, 200);
+    });
+
+    it("altri utenti non contano", async () => {
+      await makeUser("llm4", "admin");
+      await makeUser("llm5", "admin");
+      const lic = await makeLicense("rl4");
+      await seed("llm5", lic.id, 10);
+      await login("llm4");
+      assert.equal((await reveal(lic.id, body())).status, 200);
+    });
+
+    it("super admin (ruolo effettivo) oltre il limite → 200; dal percorso pubblico è un admin → 429", async () => {
+      await makeUser("llsa", "super_admin");
+      const lic = await makeLicense("rl5");
+      await seed("llsa", lic.id, 12);
+      await login("llsa", { "x-real-ip": "192.168.1.5" });
+      assert.equal((await reveal(lic.id, body())).status, 200);
+      await login("llsa", { "x-real-ip": "8.8.8.8", "x-softuerino-network": "public" });
+      assert.equal((await reveal(lic.id, body({ label: "pubblico" }))).status, 429);
+    });
+
+    it("tra licenza non accessibile e limite: 403 prima del 429, nessuna riga", async () => {
+      await makeUser("llm6");
+      const lic = await makeLicense("rl6");
+      await seed("llm6", lic.id, 10);
+      await login("llm6");
+      assert.equal((await reveal(lic.id, body())).status, 403);
+    });
+
+    it("concorrenti oltre il limite: non si superano mai le 10 righe", async () => {
+      await makeUser("llm7", "admin");
+      const lic = await makeLicense("rl7");
+      await seed("llm7", lic.id, 9);
+      await login("llm7");
+      const results = await Promise.all([
+        reveal(lic.id, body({ label: "c1" })),
+        reveal(lic.id, body({ label: "c2" })),
+        reveal(lic.id, body({ label: "c3" })),
+      ]);
+      const ok = results.filter((r) => r.status === 200).length;
+      assert.ok(ok <= 1);
+      assert.equal(await prisma.licenseKeyAccess.count({ where: { userId: "llm7" } }), 9 + ok);
+      assert.equal(await prisma.licenseActivation.count({ where: { licenseId: lic.id } }), ok);
+    });
   });
 
   it("new oltre il limite → 409 e nessuna riga nuova", async () => {

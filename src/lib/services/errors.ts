@@ -19,6 +19,15 @@ export class ValidationError extends Error {
   }
 }
 
+// Troppe richieste (429 rate_limited), per esempio il limite giornaliero di rivelazioni delle licenze.
+export class RateLimitError extends Error {
+  readonly status = 429;
+  constructor(message = "Troppe richieste: riprova più tardi") {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
 // Richiesta valida ma in conflitto con lo stato dei dati (409 conflict), per
 // esempio un partecipante assente nelle date dell'evento.
 export class ConflictError extends Error {

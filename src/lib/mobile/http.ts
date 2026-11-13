@@ -2,7 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { getAuthContext } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/task-archive";
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
+import { ConflictError, NotFoundError, RateLimitError, ValidationError } from "@/lib/services/errors";
 
 // API dell'app iPhone (/api/mobile/v1). Autenticazione solo con
 // "Authorization: Bearer <token>": il cookie web non vale. I permessi restano
@@ -80,6 +80,8 @@ export function withMobileAuth<T, P extends Record<string, string> = Record<stri
       if (err instanceof NotFoundError) return apiError(404, "not_found", err.message);
       if (err instanceof ValidationError) return apiError(400, "invalid_request", err.message);
       if (err instanceof ConflictError) return apiError(409, "conflict", err.message);
+      // BASE_HEADERS (no-store) anche sul 429.
+      if (err instanceof RateLimitError) return apiError(429, "rate_limited", err.message);
       console.error("[mobile-api] errore imprevisto:", err instanceof Error ? err.message : err);
       return apiError(500, "internal_error", "Errore imprevisto. Riprova più tardi.");
     }
