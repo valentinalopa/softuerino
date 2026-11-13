@@ -43,8 +43,11 @@ model User {
   // client Keycloak softuerino "project-manager" (claim "softuerino_roles",
   // src/lib/project-manager.ts) a ogni accesso SSO.
   projectManager       Boolean   @default(false)
+  // Ore di lavoro in una giornata (dipendenti, tutti part-time): un giorno di
+  // ferie scala queste ore e un permesso non ne scala di più.
+  dailyHours           Float     @default(4)
 
-  sessions               Session[]          @relation("SessionOwner")
+  sessions              Session[]          @relation("SessionOwner")
   impersonatedIn         Session[]          @relation("SessionImpersonated")
   impersonationsDone     ImpersonationLog[] @relation("ImpersonationAdmin")
   impersonationsReceived ImpersonationLog[] @relation("ImpersonationTarget")
@@ -53,10 +56,12 @@ model User {
   createdEvents          CalendarEvent[]
   presenceEntries        PresenceEntry[]
   timeEntries            TimeEntry[]
+  daysNotWorked          DayNotWorked[]
   taskAssignments        TaskAssignee[]
   clientLogging          ClientLogger[]
   balanceAdjustments     LeaveBalanceAdjustment[]
-  recoveryCredits        RecoveryCredit[]
+  balanceStarts          LeaveBalanceStart[]
+  recoveryCredits       RecoveryCredit[]
   departments            UserDepartment[]
   licenseActivations     LicenseActivation[]
   licenseKeyAccesses     LicenseKeyAccess[]
@@ -167,11 +172,10 @@ model CompanyClosure {
   @@index([startDate, endDate])
 }
 
-// Rettifica del saldo ferie/permessi/assenze, impostata dal super admin
-// (es. per allineare i residui tenuti finora su Excel). amount si somma al
-// monte annuale dell'anno indicato. Per i dipendenti (ferie, permesso) l'anno
-// della rettifica fa da punto di partenza: da lì il residuo si riporta di anno
-// in anno. Per le partite IVA (assenze) vale solo per quell'anno.
+// Rettifica del monte assenze di una partita IVA per un anno, impostata dal
+// super admin: amount si somma ai 26 giorni di quell'anno. Le righe "ferie" e
+// "permesso" sono dei vecchi saldi dei dipendenti in giorni: non si usano più
+// (ora valgono i punti di partenza in ore, LeaveBalanceStart).
 model LeaveBalanceAdjustment {
   id        String   @id @default(cuid())
   userId    String
@@ -187,6 +191,29 @@ model LeaveBalanceAdjustment {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, year, kind])
+}
+
+// Saldi di un dipendente presi dalla busta paga: residuo di ferie e ROL in ore
+// alla fine del mese `month` (1° giorno del mese della busta) e quanto
+// maturano in un anno. Da qui, a ogni fine mese, si aggiunge 1/12 delle ore
+// annue e si tolgono le ferie e i permessi approvati dal mese dopo in poi
+// (src/lib/leave-balance.ts). Vale l'ultimo: una busta più recente (o quote
+// cambiate, es. ROL che salgono con l'anzianità) si inserisce come nuovo punto
+// di partenza.
+model LeaveBalanceStart {
+  id                String   @id @default(cuid())
+  userId            String
+  month             DateTime
+  ferieHours        Float
+  rolHours          Float
+  ferieHoursPerYear Float
+  rolHoursPerYear   Float
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
 }
 
 // Recupero da fare (es. 2 giorni dopo una trasferta), registrato dal super
@@ -300,6 +327,21 @@ model TimeEntry {
 
   @@index([userId, date])
   @@index([clientId])
+}
+
+// Giornata lavorativa in cui la persona non ha lavorato senza un'assenza
+// registrata ("oggi non ho lavorato" nel log ore): non va registrata, quindi
+// niente promemoria né avvisi di ore mancanti. Sparisce se poi si registrano
+// ore in quel giorno.
+model DayNotWorked {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
 }
 
 // Task assegnato a uno o più membri del team, opzionalmente legato a un cliente

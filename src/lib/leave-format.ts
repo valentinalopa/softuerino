@@ -2,6 +2,7 @@ import { countedLeaveDays } from "@/lib/leave-days";
 
 export type LeaveRequestRow = {
   id: string;
+  userId?: string;
   type: string;
   startDate: Date;
   endDate: Date;
@@ -13,6 +14,7 @@ export type LeaveRequestRow = {
   createdAt: Date;
   user?: { name: string };
   // Solo per i recuperi collegati a un recupero da fare.
+  recoveryCreditId?: string | null;
   recoveryCredit?: RecoveryCreditRef | null;
 };
 
@@ -118,3 +120,20 @@ export function formatToRecover(
   if (totals.ore > 0) parts.push(`${formatAmount(totals.ore)} h`);
   return parts.join(" · ");
 }
+
+// Dettaglio di un saldo in ore sotto il residuo: l'equivalente in giorni e
+// quanto matura, più le ore già approvate nei giorni che devono venire.
+export function hourBalanceDetail(
+  balance: { remaining: number; perMonth: number; planned: number },
+  dailyHours: number
+) {
+  const days = dailyHours > 0 ? Math.round((balance.remaining / dailyHours) * 10) / 10 : null;
+  const parts = [
+    ...(days !== null ? [`≈ ${formatAmount(days)} ${Math.abs(days) === 1 ? "giorno" : "giorni"}`] : []),
+    `+${formatAmount(balance.perMonth)} h a fine mese`,
+  ];
+  if (balance.planned > 0) parts.push(`${formatAmount(balance.planned)} h già approvate più avanti`);
+  return parts.join(" · ");
+}
+
+export const MISSING_BALANCE_TEXT = "Da impostare dalla busta paga (super admin)";

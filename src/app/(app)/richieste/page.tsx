@@ -2,17 +2,19 @@ import { Clock3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { startOfDay } from "@/lib/calendar-utils";
-import { getLeaveBalance, remainingByLeaveType } from "@/lib/leave-balance";
+import { getLeaveBalance } from "@/lib/leave-balance";
 import { getRecoveryCreditsForUsers, toOpenRecoveryCredits, type RecoveryCreditView } from "@/lib/recovery-credits";
-import { formatAmount, formatToRecover } from "@/lib/leave-format";
+import { MISSING_BALANCE_TEXT, formatAmount, formatToRecover, hourBalanceDetail } from "@/lib/leave-format";
 import { formatWhen } from "@/lib/leave-format";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { SegmentedLinkTabs } from "@/components/SegmentedLinkTabs";
 import { LeaveRequestsTable, StatusBadge } from "@/components/richieste/LeaveRequestsTable";
 import { NotificationCard, NotificationItem } from "@/components/richieste/NotificationCard";
-import { LEAVE_TYPE_LABELS, annualAllowance, type EmploymentType } from "@/lib/constants";
+import { PayslipComparison } from "@/components/team/PayslipComparison";
+import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LEAVE_TYPE_LABELS, PARTITA_IVA_ASSENZE_DAYS_PER_YEAR, type EmploymentType } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
-import { isAdminRole } from "@/lib/constants";
+import { isAdminRole, SENSITIVE_LEAVE_TYPES } from "@/lib/constants";
 import { peopleInScope } from "@/lib/permissions";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { AllPendingView, TeamRequestsView, type TeamParams } from "@/components/richieste/TeamRequestsViews";
@@ -38,15 +40,15 @@ export default async function RichiestePage({
   const user = await requireUser();
   const params = await searchParams;
   const isAdmin = isAdminRole(user.role);
-  // Admin: tutte (comprese le proprie); gli altri: le persone su cui hanno il
-  // permesso "Approvare", mai sé stessi.
+  // Admin: tutte tranne le proprie (le decide un altro admin); gli altri: le
+  // persone su cui hanno il permesso "Approvare", mai sé stessi.
   const approveScope = isAdmin ? "all" : await peopleInScope(user, "approvare");
   const canApprove = approveScope === "all" || approveScope.length > 0;
   const pendingCount = canApprove
     ? await prisma.leaveRequest.count({
         where: {
           status: "pending",
-          ...(isAdmin ? {} : { user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope } } }),
+          user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope } },
         },
       })
     : 0;
@@ -75,7 +77,7 @@ export default async function RichiestePage({
             scheda della persona in Persone. */}
         <NewLeaveRequestDialog
           employmentType={user.employmentType as EmploymentType}
-          remaining={remainingByLeaveType(balance)}
+          charges={balance.charges}
           recoveryCredits={toOpenRecoveryCredits(ownCredits)}
         />
       </div>
@@ -109,21 +111,23 @@ export default async function RichiestePage({
       )}
       {vista === "da-approvare" &&
         (isAdmin ? (
-          <AllPendingView canDelete={user.role === "super_admin"} />
+          <AllPendingView canDelete={user.role === "super_admin"} viewerId={user.id} />
         ) : (
           <ScopedPendingView user={user} scope={approveScope} />
         ))}
-      {vista === "team" && <TeamRequestsView params={params} canDelete={user.role === "super_admin"} />}
+      {vista === "team" && <TeamRequestsView params={params} canDelete={user.role === "super_admin"} viewerId={user.id} />}
     </div>
   );
 }
 
 // Da approvare per i responsabili: le richieste in attesa delle persone su
-// cui hanno il permesso (la malattia resta riservata, maskLeaveForViewer).
+// cui hanno il permesso, senza malattia e 104 (dati sanitari, li decide un admin).
 async function ScopedPendingView({ user, scope }: { user: Viewer; scope: string[] | "all" }) {
   const pending = await prisma.leaveRequest.findMany({
     where: {
       status: "pending",
+      // Malattia e 104 li decide solo un admin.
+      ...(isAdminRole(user.role) ? {} : { type: { notIn: [...SENSITIVE_LEAVE_TYPES] } }),
       user: scope === "all" ? { id: { not: user.id } } : { id: { in: scope } },
     },
     include: {
@@ -210,21 +214,21 @@ async function MyRequestsView({
             label="Assenze rimanenti"
             negative={balance.assenzeRemaining < 0}
             value={`${formatAmount(balance.assenzeRemaining)} giorni`}
-            detail={`su ${formatAmount(annualAllowance("assenze"))} l'anno`}
+            detail={`su ${formatAmount(PARTITA_IVA_ASSENZE_DAYS_PER_YEAR)} l'anno`}
           />
         ) : (
           <>
             <BalanceCard
               label="Ferie rimanenti"
-              negative={balance.ferieRemaining < 0}
-              value={`${formatAmount(balance.ferieRemaining)} giorni`}
-              detail={`su ${formatAmount(balance.ferieMatured)} maturate (${formatAmount(annualAllowance("ferie"))} l'anno)`}
+              negative={(balance.ferie?.remaining ?? 0) < 0}
+              value={balance.ferie ? `${formatAmount(balance.ferie.remaining)} ore` : "—"}
+              detail={balance.ferie ? hourBalanceDetail(balance.ferie, balance.dailyHours) : MISSING_BALANCE_TEXT}
             />
             <BalanceCard
-              label="Permesso rimanente"
-              negative={balance.permessoRemaining < 0}
-              value={`${formatAmount(balance.permessoRemaining)} ore`}
-              detail={`su ${formatAmount(annualAllowance("permesso"))} l'anno`}
+              label="Permessi ROL rimanenti"
+              negative={(balance.permesso?.remaining ?? 0) < 0}
+              value={balance.permesso ? `${formatAmount(balance.permesso.remaining)} ore` : "—"}
+              detail={balance.permesso ? hourBalanceDetail(balance.permesso, balance.dailyHours) : MISSING_BALANCE_TEXT}
             />
             <BalanceCard
               label="Malattia"
@@ -244,6 +248,21 @@ async function MyRequestsView({
           />
         )}
       </div>
+
+      {balance.kind === "dipendente" && balance.startMonth && balance.ferie && balance.permesso && (
+        <Card className="max-w-xl">
+          <CardHeader>
+            <CardTitle>Come nella busta paga</CardTitle>
+            <CardDescription>
+              Ore, partendo dall&apos;ultima busta inserita. Un giorno di ferie vale{" "}
+              {formatAmount(balance.dailyHours)} ore.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PayslipComparison startMonth={balance.startMonth} ferie={balance.ferie} permesso={balance.permesso} />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="space-y-4">
         <h2>Le mie richieste</h2>
@@ -268,6 +287,11 @@ async function MyRequestsView({
             <LeaveRequestsTable
               requests={range === "upcoming" ? ownUpcoming : ownPast}
               canDelete={user.role === "super_admin"}
+              own={{
+                employmentType: user.employmentType as EmploymentType,
+                charges: balance.charges,
+                recoveryCredits: toOpenRecoveryCredits(ownCredits),
+              }}
               emptyMessage={
                 range === "upcoming" ? "Nessuna richiesta in programma. Per ferie, permessi o assenze usa «Nuova richiesta»." : "Nessuna richiesta conclusa."
               }
@@ -296,7 +320,7 @@ function BalanceCard({
         <p className="text-sm text-muted-foreground">{label}</p>
         <p className={`mt-1 text-lg font-semibold ${negative ? "text-destructive" : ""}`}>{value}</p>
         {negative && <p className="mt-0.5 text-xs font-medium text-destructive">In negativo</p>}
-        {detail && <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>}
+        {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
       </CardContent>
     </Card>
   );

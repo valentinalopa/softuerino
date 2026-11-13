@@ -30,14 +30,19 @@ function round2(value: number) {
 }
 
 // Recuperi da fare per utente, dal più vecchio, con lo stato calcolato.
+// excludeRequestId: richiesta da non contare (quella che si sta modificando).
 export async function getRecoveryCreditsForUsers(
-  userIds: string[]
+  userIds: string[],
+  excludeRequestId: string | null = null
 ): Promise<Map<string, RecoveryCreditView[]>> {
   const credits = await prisma.recoveryCredit.findMany({
     where: { userId: { in: userIds } },
     include: {
       requests: {
-        where: { status: { in: ["approved", "pending"] } },
+        where: {
+          status: { in: ["approved", "pending"] },
+          ...(excludeRequestId ? { id: { not: excludeRequestId } } : {}),
+        },
         select: { status: true, startDate: true, endDate: true, hours: true },
       },
     },

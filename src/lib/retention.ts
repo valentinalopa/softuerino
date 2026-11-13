@@ -90,6 +90,7 @@ export async function applyRetention(
     await db.$transaction([
       db.leaveRequest.deleteMany({ where: { userId } }),
       db.presenceEntry.deleteMany({ where: { userId } }),
+      db.dayNotWorked.deleteMany({ where: { userId } }),
       db.leaveBalanceAdjustment.deleteMany({ where: { userId } }),
       db.recoveryCredit.deleteMany({ where: { userId } }),
       db.impersonationLog.deleteMany({ where: { OR: [{ adminId: userId }, { targetUserId: userId }] } }),

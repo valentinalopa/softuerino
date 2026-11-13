@@ -198,6 +198,8 @@ export type LeaveTotals = {
   recuperoDays: number;
   recuperoHours: number;
   assenzeExtraDays: number;
+  permesso104Days: number;
+  permesso104Hours: number;
 };
 
 // Aggregato di team: delega la classificazione a tallyLeave (leave-balance.ts),
@@ -226,5 +228,7 @@ export function buildLeaveTotals(
     recuperoDays: tally.recuperoDays,
     recuperoHours: tally.recuperoHours,
     assenzeExtraDays: tally.assenzaExtraDays,
+    permesso104Days: tally.permesso104Days,
+    permesso104Hours: tally.permesso104Hours,
   };
 }

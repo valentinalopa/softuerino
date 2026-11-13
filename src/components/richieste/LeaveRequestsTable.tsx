@@ -14,6 +14,7 @@ import type { Tone } from "@/lib/tones";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
 import { RevertToPendingAction } from "@/components/richieste/RevertToPendingAction";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
+import { OwnRequestActions, type OwnRequestContext } from "@/components/richieste/OwnRequestActions";
 import { deleteLeaveRequest } from "@/lib/actions";
 import { MobileList, MobileListItem } from "@/components/MobileList";
 import {
@@ -51,16 +52,24 @@ function typeLabel(type: string) {
 // Stato della richiesta: in attesa → Approva/Rifiuta, altrimenti la si può
 // riportare in attesa (solo admin, cioè dove showActions è attivo).
 // Il responsabile di reparto (pendingOnly) approva o rifiuta e basta.
+// Le proprie richieste in attesa non si decidono: le decide un altro admin.
 function RequestActions({
   request,
   compact = false,
   pendingOnly = false,
+  currentUserId,
 }: {
   request: LeaveRequestRow;
   compact?: boolean;
   pendingOnly?: boolean;
+  currentUserId?: string;
 }) {
-  if (request.status === "pending") return <ApproveRejectActions requestId={request.id} />;
+  if (request.status === "pending") {
+    if (currentUserId && request.userId === currentUserId) {
+      return <span className="text-xs text-muted-foreground">La decide un altro admin</span>;
+    }
+    return <ApproveRejectActions requestId={request.id} />;
+  }
   return pendingOnly ? null : <RevertToPendingAction requestId={request.id} compact={compact} />;
 }
 
@@ -95,6 +104,8 @@ export function LeaveRequestsTable({
   pendingOnly = false,
   canDelete = false,
   emptyMessage = "Nessuna richiesta ancora.",
+  currentUserId,
+  own,
 }: {
   requests: LeaveRequestRow[];
   showMember?: boolean;
@@ -104,6 +115,10 @@ export function LeaveRequestsTable({
   // Super admin: può eliminare le richieste.
   canDelete?: boolean;
   emptyMessage?: string;
+  // Chi guarda: le sue richieste in attesa non mostrano Approva/Rifiuta.
+  currentUserId?: string;
+  // Le mie richieste: modifica e ritiro di quelle in attesa.
+  own?: OwnRequestContext;
 }) {
   const colSpan = showMember ? 7 : 6;
   // Si tiene l'id, non la riga: dopo un'azione la pagina si aggiorna e il
@@ -137,9 +152,12 @@ export function LeaveRequestsTable({
             {request.note && <p className="truncate text-xs text-muted-foreground">{request.note}</p>}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Inviata il {formatDate(request.createdAt)}</span>
-              {(showActions || canDelete) && (
+              {(showActions || canDelete || own) && (
                 <div className="flex items-start gap-1">
-                  {showActions && <RequestActions request={request} compact pendingOnly={pendingOnly} />}
+                  {own && <OwnRequestActions request={request} context={own} />}
+                  {showActions && (
+                    <RequestActions request={request} compact pendingOnly={pendingOnly} currentUserId={currentUserId} />
+                  )}
                   {canDelete && <DeleteRequestButton request={request} />}
                 </div>
               )}
@@ -209,7 +227,10 @@ export function LeaveRequestsTable({
                 onKeyDown={(event) => event.stopPropagation()}
               >
                 <div className="flex items-start justify-end gap-1">
-                  {showActions && <RequestActions request={request} compact pendingOnly={pendingOnly} />}
+                  {own && <OwnRequestActions request={request} context={own} />}
+                  {showActions && (
+                    <RequestActions request={request} compact pendingOnly={pendingOnly} currentUserId={currentUserId} />
+                  )}
                   {canDelete && <DeleteRequestButton request={request} />}
                 </div>
               </TableCell>
@@ -260,10 +281,13 @@ export function LeaveRequestsTable({
                   </div>
                 </dl>
               </SheetBody>
-              {(showActions || canDelete) && (
+              {(showActions || canDelete || (own && selected.status === "pending")) && (
                 <SheetFooter>
                   {canDelete && <DeleteRequestButton request={selected} withText />}
-                  {showActions && <RequestActions request={selected} pendingOnly={pendingOnly} />}
+                  {own && <OwnRequestActions request={selected} context={own} withText />}
+                  {showActions && (
+                    <RequestActions request={selected} pendingOnly={pendingOnly} currentUserId={currentUserId} />
+                  )}
                 </SheetFooter>
               )}
             </>

@@ -11,9 +11,9 @@ import { buildAttendanceMap, dateKey, lookupAttendance } from "@/lib/attendance-
 import { isWorkingDay } from "@/lib/leave-days";
 import { cn } from "@/lib/utils";
 import { TONE_TEXT } from "@/lib/tones";
-import { formatAmount, formatHourlySlot, formatWhen } from "@/lib/leave-format";
+import { MISSING_BALANCE_TEXT, formatAmount, formatHourlySlot, formatWhen, hourBalanceDetail } from "@/lib/leave-format";
 import { eventTypeStyle } from "@/components/calendar/types";
-import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS, annualAllowance, isAdminRole } from "@/lib/constants";
+import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS, PARTITA_IVA_ASSENZE_DAYS_PER_YEAR, isAdminRole, SENSITIVE_LEAVE_TYPES } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -37,17 +37,19 @@ export default async function Home() {
   // stanno in Report.
   // Giorni lavorativi recenti (oggi escluso) da controllare nel log ore.
   const today = startOfDay(new Date());
-  // Da approvare: admin tutte (anche le proprie), gli altri quelle delle
+  // Da approvare: admin tutte tranne le proprie, gli altri quelle delle
   // persone su cui hanno il permesso.
   const isAdmin = isAdminRole(user.role);
   const approveScope = isAdmin ? "all" : await peopleInScope(user, "approvare");
   const canApprove = approveScope === "all" || approveScope.length > 0;
   const pendingWhere = {
     status: "pending",
-    ...(isAdmin ? {} : { user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope as string[] } } }),
+    // Malattia e 104 li decide solo un admin.
+    ...(isAdminRole(user.role) ? {} : { type: { notIn: [...SENSITIVE_LEAVE_TYPES] } }),
+    user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope as string[] } },
   };
   const hoursFrom = addDays(today, -HOURS_LOOKBACK_DAYS);
-  const [balance, pendingRequests, upcomingEvents, recentEntries, recentLeaves, toApprove, toApproveCount, absentToday] = await Promise.all([
+  const [balance, pendingRequests, upcomingEvents, recentEntries, recentLeaves, toApprove, toApproveCount, absentToday, notWorkedDays] = await Promise.all([
     getLeaveBalance(user.id, user.employmentType as "dipendente" | "partita_iva"),
     prisma.leaveRequest.findMany({
       where: { status: "pending", userId: user.id },
@@ -109,6 +111,11 @@ export default async function Home() {
       include: { user: { select: { name: true } } },
       orderBy: { user: { name: "asc" } },
     }),
+    // Giornate segnate "non ho lavorato" nel log ore.
+    prisma.dayNotWorked.findMany({
+      where: { userId: user.id, date: { gte: hoursFrom, lt: today } },
+      select: { date: true },
+    }),
   ]);
   const overdrafts = await getPendingOverdrafts(toApprove);
   // La malattia resta riservata (a chi non è admin arriva come assenza);
@@ -117,9 +124,9 @@ export default async function Home() {
   const closureToday = absentRows.some((leave) => leave.type === "chiusura");
   const absentPeople = absentRows.filter((leave) => leave.type !== "chiusura");
 
-  // Stesso criterio del log ore: giorni lavorativi senza ore e senza
-  // un'assenza a giornata intera.
-  const logged = new Set(recentEntries.map((e) => dateKey(e.date)));
+  // Stesso criterio del log ore: giorni lavorativi senza ore, senza
+  // un'assenza a giornata intera e non segnati "non ho lavorato".
+  const logged = new Set([...recentEntries, ...notWorkedDays].map((e) => dateKey(e.date)));
   const absences = buildAttendanceMap({ leaveRequests: recentLeaves, presenceEntries: [] });
   const missingDays = Array.from({ length: HOURS_LOOKBACK_DAYS }, (_, i) => addDays(hoursFrom, i)).filter(
     (day) =>
@@ -161,21 +168,21 @@ export default async function Home() {
           <StatCard
             label="Assenze rimanenti (giorni)"
             value={balance.assenzeRemaining}
-            sub={`su ${formatAmount(annualAllowance("assenze"))} l'anno`}
+            sub={`su ${formatAmount(PARTITA_IVA_ASSENZE_DAYS_PER_YEAR)} l'anno`}
             href="/richieste"
           />
         ) : (
           <>
             <StatCard
-              label="Ferie rimanenti (giorni)"
-              value={balance.ferieRemaining}
-              sub={`su ${formatAmount(balance.ferieMatured)} maturate (${formatAmount(annualAllowance("ferie"))} l'anno)`}
+              label="Ferie rimanenti (ore)"
+              value={balance.ferie?.remaining ?? null}
+              sub={balance.ferie ? hourBalanceDetail(balance.ferie, balance.dailyHours) : MISSING_BALANCE_TEXT}
               href="/richieste"
             />
             <StatCard
-              label="Permesso rimanente (ore)"
-              value={balance.permessoRemaining}
-              sub={`su ${formatAmount(annualAllowance("permesso"))} l'anno`}
+              label="Permessi ROL rimanenti (ore)"
+              value={balance.permesso?.remaining ?? null}
+              sub={balance.permesso ? hourBalanceDetail(balance.permesso, balance.dailyHours) : MISSING_BALANCE_TEXT}
               href="/richieste"
             />
             <StatCard
@@ -299,20 +306,22 @@ function StatCard({
   href,
 }: {
   label: string;
-  value: number;
+  // null = saldo non ancora impostato.
+  value: number | null;
   sub?: string;
   href: string;
 }) {
+  const negative = value !== null && value < 0;
   return (
     <Link href={href} className="block h-full">
       <Card className="h-full transition-colors hover:border-foreground/30">
         <CardContent>
           <p className="text-sm text-muted-foreground">{label}</p>
-          <p className={`mt-1 text-3xl font-semibold ${value < 0 ? "text-destructive" : ""}`}>
-            {formatAmount(value)}
+          <p className={`mt-1 text-3xl font-semibold ${negative ? "text-destructive" : ""}`}>
+            {value === null ? "—" : formatAmount(value)}
           </p>
           {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-          {value < 0 && <p className="text-xs font-medium text-destructive">In negativo</p>}
+          {negative && <p className="text-xs font-medium text-destructive">In negativo</p>}
         </CardContent>
       </Card>
     </Link>

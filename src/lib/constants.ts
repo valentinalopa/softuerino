@@ -37,40 +37,24 @@ export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   partita_iva: "Partita IVA",
 };
 
-// Monte annuale per tipo di rapporto: i dipendenti hanno ferie (giorni) e
-// permessi (ore) separati, le partite IVA un unico monte di assenze (giorni).
-// Dipendenti: il residuo non goduto passa all'anno dopo. Partite IVA: il
-// monte si azzera ogni 1° gennaio. Il saldo può andare in negativo (nessun
-// blocco sulle richieste): l'app lo segnala.
-// Le ferie dei dipendenti non arrivano tutte a gennaio: maturano a fine mese
-// (FERIE_ACCRUAL), per un totale di 26 giorni l'anno.
-export const LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE = {
-  dipendente: { ferieDaysPerYear: 26, permessoHoursPerYear: 36 },
-  partita_iva: { assenzeDaysPerYear: 26 },
-} as const;
+// Saldi per tipo di rapporto.
+// - Dipendenti: ferie e permessi (ROL) in ore, come nella busta paga. Ogni
+//   persona ha le sue quote (part-time, anzianità): il super admin le copia
+//   dalla busta insieme al residuo (LeaveBalanceStart). Maturano 1/12 a fine
+//   mese; il residuo, anche negativo, passa all'anno dopo.
+// - Partite IVA: un monte di assenze in giorni, tutto disponibile dal 1°
+//   gennaio, che si azzera ogni anno.
+// Il saldo può andare in negativo (nessun blocco sulle richieste): l'app lo
+// segnala.
+export const PARTITA_IVA_ASSENZE_DAYS_PER_YEAR = 26;
 
-// Ferie maturate a fine di ogni mese: 2 giorni, 4 a dicembre (tredicesima).
-// 11 × 2 + 4 = ferieDaysPerYear.
-export const FERIE_ACCRUAL = { daysPerMonth: 2, decemberDays: 4 } as const;
+// Ore di una giornata di lavoro se non impostate (siamo tutti part-time).
+export const DEFAULT_DAILY_HOURS = 4;
 
-export function ferieAccruedInMonth(month: number): number {
-  return month === 11 ? FERIE_ACCRUAL.decemberDays : FERIE_ACCRUAL.daysPerMonth;
-}
-
-// Saldi rettificabili dal super admin (LeaveBalanceAdjustment.kind).
+// Tipi di saldo: ferie e permesso (ore) per i dipendenti, assenze (giorni)
+// per le partite IVA.
 export const BALANCE_KINDS = ["ferie", "permesso", "assenze"] as const;
 export type BalanceKind = (typeof BALANCE_KINDS)[number];
-
-// Monte annuale di un saldo: è il riferimento mostrato accanto al residuo
-// ("5 / 36 ore"; per le ferie invece il maturato nell'anno). Non il
-// disponibile (monte + riporto o rettifica), che dopo una rettifica coincide
-// col residuo e non dice nulla.
-export function annualAllowance(kind: BalanceKind): number {
-  const { dipendente, partita_iva } = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE;
-  if (kind === "ferie") return dipendente.ferieDaysPerYear;
-  if (kind === "permesso") return dipendente.permessoHoursPerYear;
-  return partita_iva.assenzeDaysPerYear;
-}
 
 // Recuperi da fare (es. dopo una trasferta): si misurano a giorni o a ore,
 // come la richiesta di recupero che li smaltisce.
@@ -100,6 +84,7 @@ export const LEAVE_TYPES = [
   "malattia",
   "assenza",
   "assenza_extra",
+  "permesso_104",
   "chiusura",
 ] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
@@ -109,11 +94,41 @@ export type LeaveType = (typeof LEAVE_TYPES)[number];
 // fuori monte di una partita IVA, senza lavoro da compensare) solo per le
 // partite IVA. Nessuno dei due consuma il monte annuale. "chiusura" non si
 // richiede: nasce da una chiusura aziendale inserita da un admin.
-export const DIPENDENTE_LEAVE_TYPES = ["ferie", "permesso", "recupero", "malattia"] as const;
+// "permesso_104" (legge 104) solo per i dipendenti: non scala ferie né ROL.
+export const DIPENDENTE_LEAVE_TYPES = [
+  "ferie",
+  "permesso",
+  "recupero",
+  "permesso_104",
+  "malattia",
+] as const;
 export const PARTITA_IVA_LEAVE_TYPES = ["assenza", "recupero", "assenza_extra"] as const;
+
+// Tipi che toccano la salute (GDPR art. 9): li vedono solo l'interessato e
+// gli admin, agli altri arrivano come una generica "assenza".
+export const SENSITIVE_LEAVE_TYPES: readonly string[] = ["malattia", "permesso_104"];
+
+export function isSensitiveLeave(type: string) {
+  return SENSITIVE_LEAVE_TYPES.includes(type);
+}
 
 export function leaveTypesFor(employmentType: string): readonly LeaveType[] {
   return employmentType === "partita_iva" ? PARTITA_IVA_LEAVE_TYPES : DIPENDENTE_LEAVE_TYPES;
+}
+
+// A ore = un solo giorno con una fascia oraria: il permesso sempre; recupero,
+// assenza (partite IVA) e permesso 104 quando si sceglie "A ore".
+export const OPTIONAL_HOURLY_LEAVE_TYPES: readonly LeaveType[] = [
+  "recupero",
+  "assenza",
+  "permesso_104",
+];
+
+export function isHourlyLeave(request: { type: string; hours: number | null }) {
+  return (
+    request.type === "permesso" ||
+    (OPTIONAL_HOURLY_LEAVE_TYPES.includes(request.type as LeaveType) && request.hours !== null)
+  );
 }
 
 // Il recupero va motivato (es. "trasferta Milano 12/10"): senza una banca ore
@@ -122,8 +137,10 @@ export const NOTE_REQUIRED_LEAVE_TYPES: readonly LeaveType[] = ["recupero"];
 
 // Spiegazione sotto il tipo nel form di richiesta, dove serve distinguere.
 export const LEAVE_TYPE_HINTS: Partial<Record<LeaveType, string>> = {
-  recupero: "Compensa lavoro in più (es. una trasferta): non scala dal monte annuale.",
+  recupero:
+    "Compensa ore lavorate in più, prima (es. una trasferta) o dopo (manchi e recuperi): non scala dal monte annuale.",
   assenza_extra: "Giorno fuori monte, senza lavoro da compensare: non scala dal monte annuale.",
+  permesso_104: "Permesso della legge 104: non scala ferie né ROL. Lo vedono solo gli admin.",
 };
 
 export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
@@ -133,6 +150,7 @@ export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   malattia: "Malattia",
   assenza: "Assenza",
   assenza_extra: "Assenza extra",
+  permesso_104: "Permesso 104",
   chiusura: "Chiusura aziendale",
 };
 

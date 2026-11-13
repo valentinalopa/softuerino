@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Mail, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { ChevronRight, Mail, RefreshCw, SlidersHorizontal, Upload } from "lucide-react";
 import { requireUser } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -13,6 +13,7 @@ const ADMIN_SETTINGS = [
   { href: "/ruoli", label: "Ruoli e permessi", hint: "Chi vede e fa cosa, per ruolo e per reparto", icon: SlidersHorizontal },
   { href: "/impostazioni/aggiornamenti", label: "Aggiornamenti", hint: "Versione installata e nuove versioni", icon: RefreshCw },
   { href: "/impostazioni/email", label: "Email", hint: "Server SMTP e notifiche", icon: Mail },
+  { href: "/impostazioni/importa", label: "Importa dati", hint: "Saldi e assenze da un file", icon: Upload },
 ];
 
 export default async function ImpostazioniPage() {

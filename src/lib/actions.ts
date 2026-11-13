@@ -11,8 +11,11 @@ import {
   revokeSessions,
 } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
+import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
+import { countedLeaveDays, isWorkingDay, slotsClash } from "@/lib/leave-days";
 import { addUpcomingClosuresFor } from "@/lib/closures";
-import { hoursBetween } from "@/lib/leave-format";
+import { applyImport, parseImportFile, planImport, type ImportReport } from "@/lib/import-saldi";
+import { formatAmount, hoursBetween } from "@/lib/leave-format";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { nextDeactivatedAt } from "@/lib/retention";
 import { purgeTaskArchive } from "@/lib/task-archive";
@@ -23,8 +26,10 @@ import { absenceConflict } from "@/lib/absence-conflicts";
 import { can, canOnPerson } from "@/lib/permissions";
 import { loggableClientsWhere } from "@/lib/clients";
 import {
+  LEAVE_SNAPSHOT_SELECT,
   notifyEventInvite,
   notifyLeaveDecision,
+  notifyLeaveWithdrawn,
   notifyNewLeaveRequest,
   notifyTaskAssigned,
 } from "@/lib/email/notifications";
@@ -32,18 +37,19 @@ import {
   EVENT_TYPES,
   leaveTypesFor,
   NOTE_REQUIRED_LEAVE_TYPES,
+  OPTIONAL_HOURLY_LEAVE_TYPES,
   type LeaveType,
   PRESENCE_SLOTS,
   PRESENCE_MODES,
   ROLES,
   assignableRoles,
   isAdminRole,
+  isSensitiveLeave,
   EMPLOYMENT_TYPES,
   TASK_STATUSES,
   TASK_PRIORITIES,
   CLIENT_CATEGORIES,
-  LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE,
-  balanceKindsFor,
+  PARTITA_IVA_ASSENZE_DAYS_PER_YEAR,
   type BalanceKind,
   type EmploymentType,
   RECOVERY_UNITS,
@@ -326,10 +332,25 @@ export async function changeOwnPassword(formData: FormData) {
 
 // --- Ferie / permesso / malattia ---
 
-export async function createLeaveRequest(formData: FormData) {
-  const user = await requireWritableUser();
-  if (!user) return READ_ONLY_ERROR;
+type ParsedLeave = {
+  type: LeaveType;
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  note: string | null;
+  recoveryCreditId: string | null;
+};
 
+// Legge e controlla i campi del form di richiesta (nuova o modificata) per la
+// persona `targetUserId`. `excludeRequestId`: la richiesta che si sta
+// modificando, da non contare né nelle sovrapposizioni né nei recuperi.
+async function parseLeaveForm(
+  formData: FormData,
+  target: { id: string; employmentType: string },
+  excludeRequestId: string | null
+): Promise<{ error: string } | ParsedLeave> {
   const type = String(formData.get("type") ?? "");
   const startDateRaw = String(formData.get("startDate") ?? "");
   const endDateRaw = String(formData.get("endDate") ?? startDateRaw) || startDateRaw;
@@ -337,29 +358,9 @@ export async function createLeaveRequest(formData: FormData) {
   const endTimeRaw = String(formData.get("endTime") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim() || null;
 
-  // Un admin può registrare ferie/permesso/malattia per conto di un altro
-  // membro (es. malattia comunicata a voce): in quel caso la richiesta nasce già
-  // approvata/registrata, senza passare dal flusso di approvazione.
-  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
-  const targetUserId = targetUserIdRaw || user.id;
-  const onBehalfOfOther = targetUserId !== user.id;
-  if (onBehalfOfOther && !isAdminRole(user.role)) {
-    return { error: "Non autorizzato" };
-  }
-
-  const targetUser = onBehalfOfOther
-    ? await prisma.user.findUnique({
-        where: { id: targetUserId },
-        select: { employmentType: true },
-      })
-    : user;
-  if (!targetUser) {
-    return { error: "Membro non trovato" };
-  }
-
   // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
   // (monte unico), recupero e assenza extra (fuori monte).
-  if (!leaveTypesFor(targetUser.employmentType).includes(type as LeaveType)) {
+  if (!leaveTypesFor(target.employmentType).includes(type as LeaveType)) {
     return { error: "Tipo di richiesta non valido" };
   }
   if (!startDateRaw) {
@@ -371,7 +372,7 @@ export async function createLeaveRequest(formData: FormData) {
     type === "recupero" ? String(formData.get("recoveryCreditId") ?? "").trim() : "";
   const recoveryCredit = recoveryCreditIdRaw
     ? await prisma.recoveryCredit.findFirst({
-        where: { id: recoveryCreditIdRaw, userId: targetUserId },
+        where: { id: recoveryCreditIdRaw, userId: target.id },
         select: { id: true, unit: true },
       })
     : null;
@@ -381,19 +382,20 @@ export async function createLeaveRequest(formData: FormData) {
   if (NOTE_REQUIRED_LEAVE_TYPES.includes(type as LeaveType) && !note && !recoveryCredit) {
     return { error: "Per il recupero la nota è obbligatoria: indica il motivo (es. la trasferta)" };
   }
-  // A ore = un solo giorno con un numero di ore: il permesso sempre, il
-  // recupero quando si sceglie "A ore" (o quando il recupero da fare è in ore).
+  // A ore = un solo giorno con una fascia oraria: il permesso sempre,
+  // recupero e assenza quando si sceglie "A ore" (o quando il recupero da
+  // fare è in ore).
   const isHourly =
     type === "permesso" ||
-    (type === "recupero" &&
+    (OPTIONAL_HOURLY_LEAVE_TYPES.includes(type as LeaveType) &&
       (recoveryCredit ? recoveryCredit.unit === "ore" : String(formData.get("unit") ?? "") === "ore"));
   const effectiveEndDateRaw = isHourly ? startDateRaw : endDateRaw;
   if (effectiveEndDateRaw < startDateRaw) {
     return { error: "La data di fine non può precedere quella di inizio" };
   }
 
-  // A ore si indica la fascia (dalle/alle): le ore, che scalano il saldo, ne
-  // sono la durata.
+  // A ore si indica la fascia (dalle/alle): le ore ne sono la durata. Dal
+  // saldo un permesso scala al massimo le ore di una giornata (leave-balance.ts).
   let hours: number | null = null;
   let startTime: string | null = null;
   let endTime: string | null = null;
@@ -411,54 +413,179 @@ export async function createLeaveRequest(formData: FormData) {
 
   const startDate = localDate(startDateRaw);
   const endDate = localDate(effectiveEndDateRaw);
-
-  const overlapping = await prisma.leaveRequest.findFirst({
-    where: {
-      userId: targetUserId,
-      status: { not: "rejected" },
-      startDate: { lte: endDate },
-      endDate: { gte: startDate },
-    },
-  });
-  if (overlapping) {
+  // Festivi e weekend non si chiedono: non pesano su ferie, permessi o assenze.
+  if (isHourly ? !isWorkingDay(startDate) : countedLeaveDays(startDate, endDate) === 0) {
     return {
-      error: onBehalfOfOther
-        ? "Questo membro ha già una richiesta che copre (in parte) queste date"
-        : "Hai già una richiesta che copre (in parte) queste date",
+      error: isHourly
+        ? "È un giorno festivo o nel weekend: non serve chiedere il permesso"
+        : "Nel periodo non ci sono giorni lavorativi (solo weekend o festivi)",
     };
+  }
+
+  const conflict = await findLeaveConflict(target.id, { startDate, endDate, startTime, endTime }, excludeRequestId);
+  if (conflict) return { error: conflict };
+
+  // Il recupero non può superare quanto resta del recupero da fare (le
+  // richieste già approvate o in attesa collegate lo hanno già in parte coperto).
+  if (recoveryCredit) {
+    const open = (await getRecoveryCreditsForUsers([target.id], excludeRequestId))
+      .get(target.id)
+      ?.find((c) => c.id === recoveryCredit.id);
+    const left = open ? Math.max(open.amount - open.used - open.pending, 0) : 0;
+    const requested = recoveryCredit.unit === "ore" ? (hours ?? 0) : countedLeaveDays(startDate, endDate);
+    if (requested > left + 1e-9) {
+      const unit = recoveryCredit.unit === "ore" ? "ore" : "giorni";
+      return {
+        error:
+          left > 0
+            ? `Di questo recupero restano ${formatAmount(left)} ${unit}: riduci la richiesta`
+            : "Questo recupero è già coperto da altre richieste",
+      };
+    }
+  }
+
+  return {
+    type: type as LeaveType,
+    startDate,
+    endDate,
+    hours,
+    startTime,
+    endTime,
+    note,
+    recoveryCreditId: recoveryCredit?.id ?? null,
+  };
+}
+
+// Una richiesta si sovrappone a un'altra (non rifiutata) della stessa persona
+// se tocca uno stesso giorno, salvo quando sono entrambe a ore con fasce che
+// non si toccano (es. permesso 9–11 e permesso 15–17 dello stesso giorno).
+async function findLeaveConflict(
+  userId: string,
+  request: { startDate: Date; endDate: Date; startTime: string | null; endTime: string | null },
+  excludeRequestId: string | null
+): Promise<string | null> {
+  const overlapping = await prisma.leaveRequest.findMany({
+    where: {
+      userId,
+      status: { not: "rejected" },
+      startDate: { lte: request.endDate },
+      endDate: { gte: request.startDate },
+      ...(excludeRequestId ? { id: { not: excludeRequestId } } : {}),
+    },
+    select: { startTime: true, endTime: true },
+  });
+  const clash = overlapping.find((other) => slotsClash(request, other));
+  if (!clash) return null;
+  return clash.startTime && clash.endTime && request.startTime
+    ? `C'è già una richiesta a ore in questo giorno (${clash.startTime}–${clash.endTime}) che si sovrappone alla fascia`
+    : "C'è già una richiesta che copre (in parte) queste date";
+}
+
+export async function createLeaveRequest(formData: FormData) {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+
+  // Un admin può registrare ferie/permesso/malattia per conto di un altro
+  // membro (es. malattia comunicata a voce): in quel caso la richiesta nasce già
+  // approvata/registrata, senza passare dal flusso di approvazione.
+  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
+  const targetUserId = targetUserIdRaw || user.id;
+  const onBehalfOfOther = targetUserId !== user.id;
+  if (onBehalfOfOther && !isAdminRole(user.role)) {
+    return { error: "Non autorizzato" };
+  }
+
+  const targetUser = onBehalfOfOther
+    ? await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, employmentType: true },
+      })
+    : user;
+  if (!targetUser) {
+    return { error: "Membro non trovato" };
+  }
+
+  const parsed = await parseLeaveForm(formData, targetUser, null);
+  if ("error" in parsed) {
+    return onBehalfOfOther ? { error: parsed.error.replace("C'è già una richiesta", "Questo membro ha già una richiesta") } : parsed;
   }
 
   // La malattia si registra e basta, non richiede approvazione. Le richieste
   // inserite dall'admin per conto di altri nascono già approvate.
   const status =
-    type === "malattia"
+    parsed.type === "malattia"
       ? "registrata"
       : onBehalfOfOther
         ? "approved"
         : "pending";
 
   const created = await prisma.leaveRequest.create({
-    data: {
-      userId: targetUserId,
-      type,
-      startDate,
-      endDate,
-      hours,
-      startTime,
-      endTime,
-      note,
-      status,
-      recoveryCreditId: recoveryCredit?.id ?? null,
-    },
+    data: { userId: targetUserId, status, ...parsed },
   });
 
-  revalidatePath("/richieste");
-  revalidatePath("/panoramica");
-  revalidatePath("/team");
-  revalidatePath("/");
+  revalidateLeavePaths(targetUserId);
   // Avviso ai responsabili ferie (e ai responsabili del reparto che possono
   // approvare): solo per le richieste fatte dalla persona stessa.
   if (!onBehalfOfOther) after(() => notifyNewLeaveRequest(created.id, user.id));
+}
+
+// Chi ha fatto una richiesta può cambiarla finché è in attesa: torna in attesa
+// con i nuovi dati e chi deve approvarla viene avvisato.
+export async function updateOwnLeaveRequest(requestId: string, formData: FormData): Promise<ActionResult> {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: { userId: true, status: true },
+  });
+  if (!request || request.userId !== user.id) {
+    return { error: "Richiesta non trovata" };
+  }
+  if (request.status !== "pending") {
+    return { error: "La richiesta è già stata decisa: per cambiarla chiedi a un admin" };
+  }
+
+  const parsed = await parseLeaveForm(formData, user, requestId);
+  if ("error" in parsed) return parsed;
+  if (parsed.type === "malattia") {
+    return { error: "La malattia non passa dall'approvazione: registrala come nuova richiesta" };
+  }
+
+  // Solo se è ancora in attesa (nel frattempo qualcuno potrebbe averla decisa).
+  const updated = await prisma.leaveRequest.updateMany({
+    where: { id: requestId, userId: user.id, status: "pending" },
+    data: parsed,
+  });
+  if (updated.count === 0) {
+    return { error: "La richiesta è già stata decisa: per cambiarla chiedi a un admin" };
+  }
+  revalidateLeavePaths(user.id);
+  after(() => notifyNewLeaveRequest(requestId, user.id, "modificata"));
+}
+
+// Chi ha fatto una richiesta può ritirarla finché è in attesa: sparisce, e
+// chi doveva approvarla viene avvisato. Una malattia registrata per errore la
+// toglie un admin (riporta in attesa e rifiuta) o il super admin.
+export async function withdrawOwnLeaveRequest(requestId: string): Promise<ActionResult> {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: LEAVE_SNAPSHOT_SELECT,
+  });
+  if (!request || request.userId !== user.id) {
+    return { error: "Richiesta non trovata" };
+  }
+  const deleted = await prisma.leaveRequest.deleteMany({
+    where: { id: requestId, userId: user.id, status: "pending" },
+  });
+  if (deleted.count === 0) {
+    return { error: "La richiesta è già stata decisa: per annullarla chiedi a un admin" };
+  }
+  revalidateLeavePaths(user.id);
+  after(() => notifyLeaveWithdrawn(request, user.id));
 }
 
 export async function updateLeaveStatus(
@@ -466,7 +593,8 @@ export async function updateLeaveStatus(
   status: "approved" | "rejected"
 ): Promise<ActionResult> {
   // Admin e super admin; oppure chi ha il permesso "Approvare le richieste"
-  // sulla persona (es. il responsabile del suo reparto), mai sulle proprie.
+  // sulla persona (es. il responsabile del suo reparto). Mai le proprie,
+  // nemmeno per gli admin: le decide un altro admin.
   const currentUser = await requireWritableUser();
   if (!currentUser) return READ_ONLY_ERROR;
 
@@ -477,9 +605,13 @@ export async function updateLeaveStatus(
   if (!request) {
     return { error: "Richiesta non trovata" };
   }
+  if (request.userId === currentUser.id) {
+    return { error: "Non puoi decidere le tue richieste: le approva un altro admin" };
+  }
   if (!isAdminRole(currentUser.role)) {
-    // Il responsabile non vede le malattie (dato sanitario): non le gestisce.
-    if (request.type === "malattia" || !(await canOnPerson(currentUser, "approvare", request.userId))) {
+    // Il responsabile non vede malattie e permessi 104 (dati sanitari): non
+    // li gestisce, li decide un admin.
+    if (isSensitiveLeave(request.type) || !(await canOnPerson(currentUser, "approvare", request.userId))) {
       return { error: "Non autorizzato" };
     }
   }
@@ -567,10 +699,9 @@ export async function deleteLeaveRequest(requestId: string): Promise<ActionResul
   revalidateLeavePaths(request.userId);
 }
 
-// Saldi residui impostati dal super admin (es. ricopiati dall'Excel). Per
-// ogni valore si salva la rettifica che, nell'anno corrente, porta il residuo
-// esattamente al numero inserito; da lì in poi le richieste approvate lo
-// scalano normalmente.
+// Monte assenze di una partita IVA, impostato dal super admin: si salva la
+// rettifica che, nell'anno corrente, porta il residuo esattamente al numero
+// inserito; da lì le richieste approvate lo scalano normalmente.
 export async function setLeaveBalances(
   entries: { userId: string; kind: BalanceKind; remaining: number }[]
 ): Promise<ActionResult> {
@@ -587,7 +718,7 @@ export async function setLeaveBalances(
   for (const entry of entries) {
     const user = userById.get(entry.userId);
     if (!user) return { error: "Membro non trovato" };
-    if (!balanceKindsFor(user.employmentType).includes(entry.kind)) {
+    if (user.employmentType !== "partita_iva" || entry.kind !== "assenze") {
       return { error: "Tipo di saldo non valido per questo membro" };
     }
     if (!Number.isFinite(entry.remaining) || Math.abs(entry.remaining) > 9999) {
@@ -599,31 +730,77 @@ export async function setLeaveBalances(
     users.map((u) => ({ id: u.id, employmentType: u.employmentType as EmploymentType })),
     year
   );
-  const monte = LEAVE_ALLOWANCE_BY_EMPLOYMENT_TYPE;
-
-  const setAt = new Date();
 
   await prisma.$transaction(
     entries.map((entry) => {
       const balance = balances.get(entry.userId)!;
+      const used = balance.kind === "assenze" ? balance.assenzeUsed : 0;
       // Rettifica = residuo voluto − monte annuale + già goduto quest'anno.
-      // Le ferie non hanno monte: il residuo comprende quelle maturate fino a
-      // oggi, da qui maturano i mesi che finiscono dopo setAt.
-      const amount =
-        balance.kind === "assenze"
-          ? entry.remaining - monte.partita_iva.assenzeDaysPerYear + balance.assenzeUsed
-          : entry.kind === "ferie"
-            ? entry.remaining + balance.ferieUsed
-            : entry.remaining - monte.dipendente.permessoHoursPerYear + balance.permessoUsed;
+      const amount = entry.remaining - PARTITA_IVA_ASSENZE_DAYS_PER_YEAR + used;
       return prisma.leaveBalanceAdjustment.upsert({
         where: { userId_year_kind: { userId: entry.userId, year, kind: entry.kind } },
-        create: { userId: entry.userId, year, kind: entry.kind, amount, setAt },
-        update: { amount, setAt },
+        create: { userId: entry.userId, year, kind: entry.kind, amount },
+        update: { amount, setAt: new Date() },
       });
     })
   );
 
   for (const userId of userById.keys()) revalidateLeavePaths(userId);
+}
+
+// Numero scritto come nella busta paga ("22,42", anche negativo).
+function parseHours(raw: FormDataEntryValue | null) {
+  const normalized = String(raw ?? "").trim().replace(",", ".");
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) return null;
+  const value = Number(normalized);
+  return Math.abs(value) <= 9999 ? value : null;
+}
+
+// Saldi di un dipendente presi dalla busta paga (solo super admin): residuo di
+// ferie e ROL alla fine del mese della busta, quote annue e ore al giorno.
+// Da qui maturano 1/12 a fine mese e scalano le richieste approvate dal mese
+// dopo. La stessa busta reinserita sovrascrive quella salvata.
+export async function setBalanceStart(userId: string, formData: FormData): Promise<ActionResult> {
+  await requireSuperAdmin();
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { employmentType: true },
+  });
+  if (!user) return { error: "Membro non trovato" };
+  if (user.employmentType === "partita_iva") {
+    return { error: "Le partite IVA non hanno ferie e ROL in busta paga" };
+  }
+
+  const monthRaw = String(formData.get("month") ?? "");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthRaw)) return { error: "Indica il mese della busta paga" };
+  const [y, m] = monthRaw.split("-").map(Number);
+  const month = new Date(y, m - 1, 1);
+  const now = new Date();
+  if (month > new Date(now.getFullYear(), now.getMonth(), 1)) {
+    return { error: "Il mese della busta paga non può essere nel futuro" };
+  }
+
+  const ferieHours = parseHours(formData.get("ferieHours"));
+  const rolHours = parseHours(formData.get("rolHours"));
+  const ferieHoursPerYear = parseHours(formData.get("ferieHoursPerYear"));
+  const rolHoursPerYear = parseHours(formData.get("rolHoursPerYear"));
+  const dailyHours = parseHours(formData.get("dailyHours"));
+  if (ferieHours === null) return { error: "Residuo ferie: inserisci un numero (es. 22,42)" };
+  if (rolHours === null) return { error: "Residuo ROL: inserisci un numero (es. -8,97)" };
+  if (ferieHoursPerYear === null || ferieHoursPerYear < 0) return { error: "Ferie l'anno: inserisci le ore (es. 86,67)" };
+  if (rolHoursPerYear === null || rolHoursPerYear < 0) return { error: "ROL l'anno: inserisci le ore (es. 14)" };
+  if (dailyHours === null || dailyHours <= 0 || dailyHours > 12) return { error: "Ore al giorno: inserisci un numero tra 1 e 12" };
+
+  const data = { ferieHours, rolHours, ferieHoursPerYear, rolHoursPerYear };
+  await prisma.$transaction([
+    prisma.leaveBalanceStart.upsert({
+      where: { userId_month: { userId, month } },
+      create: { userId, month, ...data },
+      update: data,
+    }),
+    prisma.user.update({ where: { id: userId }, data: { dailyHours } }),
+  ]);
+  revalidateLeavePaths(userId);
 }
 
 // --- Recuperi da fare (solo super admin) ---
@@ -758,7 +935,7 @@ function revalidateLeavePaths(userId: string) {
   revalidatePath("/richieste");
   revalidatePath("/panoramica");
   revalidatePath(`/team/${userId}`);
-  revalidatePath("/team");
+  revalidatePath("/calendario");
   revalidatePath("/");
 }
 
@@ -1308,6 +1485,10 @@ export async function saveDailyTimeEntries(formData: FormData) {
     prisma.timeEntry.deleteMany({
       where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
     }),
+    // Ore registrate: il giorno non è più "non lavorato".
+    ...(entries.length > 0
+      ? [prisma.dayNotWorked.deleteMany({ where: { userId: targetUserId, date: { gte: day, lt: nextDay } } })]
+      : []),
     ...entries.map((e) =>
       prisma.timeEntry.create({
         data: {
@@ -1324,6 +1505,76 @@ export async function saveDailyTimeEntries(formData: FormData) {
   revalidatePath("/ore");
   revalidatePath(`/team/${targetUserId}`);
   revalidatePath("/");
+}
+
+// "Oggi non ho lavorato" nel log ore: segna (o toglie) una giornata da non
+// registrare, senza promemoria né avvisi di ore mancanti. Non vale per una
+// giornata che ha già ore. Un admin può farlo anche per un altro membro.
+export async function setDayNotWorked(formData: FormData): Promise<ActionResult> {
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
+
+  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
+  const targetUserId = targetUserIdRaw || user.id;
+  if (targetUserId !== user.id && !isAdminRole(user.role)) {
+    return { error: "Non autorizzato" };
+  }
+  const dateRaw = String(formData.get("date") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+    return { error: "Data non valida" };
+  }
+  const notWorked = formData.get("notWorked") === "1";
+  const day = localDate(dateRaw);
+  const nextDay = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+
+  if (notWorked) {
+    if (!isWorkingDay(day)) {
+      return { error: "È già un giorno non lavorativo (weekend o festivo)" };
+    }
+    const logged = await prisma.timeEntry.count({
+      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
+    });
+    if (logged > 0) {
+      return { error: "In questa giornata ci sono già ore registrate" };
+    }
+    await prisma.dayNotWorked.upsert({
+      where: { userId_date: { userId: targetUserId, date: day } },
+      create: { userId: targetUserId, date: day },
+      update: {},
+    });
+  } else {
+    await prisma.dayNotWorked.deleteMany({ where: { userId: targetUserId, date: { gte: day, lt: nextDay } } });
+  }
+
+  revalidatePath("/ore");
+  revalidatePath(`/team/${targetUserId}`);
+  revalidatePath("/");
+}
+
+// --- Import saldi e assenze (Impostazioni → Importa dati) ---
+
+// Anteprima: cosa cambierebbe il file, senza scrivere niente.
+export async function previewSaldiImport(
+  text: string
+): Promise<{ error: string } | { report: ImportReport }> {
+  await requireSuperAdmin();
+  const parsed = parseImportFile(text);
+  if ("error" in parsed) return parsed;
+  return { report: (await planImport(parsed.data)).report };
+}
+
+// Applica il file. Il piano si ricalcola qui, sul database di adesso: non si
+// fida dell'anteprima mandata dal browser.
+export async function applySaldiImport(
+  text: string
+): Promise<{ error: string } | { report: ImportReport }> {
+  await requireSuperAdmin();
+  const parsed = parseImportFile(text);
+  if ("error" in parsed) return parsed;
+  const plan = await planImport(parsed.data);
+  await applyImport(plan);
+  revalidatePath("/", "layout");
+  return { report: plan.report };
 }
 
 // --- Task ---

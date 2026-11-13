@@ -7,8 +7,9 @@ import { isWorkingDay } from "@/lib/leave-days";
 // Promemoria serale (timer della VM alle 19, lun-ven): email a chi non ha
 // registrato ore oggi. Niente nei giorni non lavorativi (weekend, feste) né a
 // chi oggi è assente tutto il giorno (ferie, malattia, chiusura aziendale,
-// assenza; anche se ancora in attesa di approvazione): un permesso a ore non
-// esclude. Al massimo un'email al giorno a persona (hoursReminderSentFor).
+// assenza; anche se ancora in attesa di approvazione) né a chi ha segnato
+// "oggi non ho lavorato": un permesso a ore non esclude. Al massimo un'email
+// al giorno a persona (hoursReminderSentFor).
 export async function sendHoursReminders(now = new Date()) {
   const settings = await getEmailSettings();
   if (!settings?.enabled) return { skipped: "notifiche email disattivate", sent: [] as string[] };
@@ -17,7 +18,7 @@ export async function sendHoursReminders(now = new Date()) {
   const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
   if (!isWorkingDay(today)) return { skipped: "giorno non lavorativo", sent: [] as string[] };
 
-  const [candidates, logged, away] = await Promise.all([
+  const [candidates, logged, away, notWorked] = await Promise.all([
     prisma.user.findMany({
       where: {
         active: true,
@@ -40,8 +41,14 @@ export async function sendHoursReminders(now = new Date()) {
       },
       select: { userId: true },
     }),
+    prisma.dayNotWorked.findMany({
+      where: { date: { gte: today, lt: tomorrow } },
+      select: { userId: true },
+    }),
   ]);
-  const skip = new Set([...logged.map((t) => t.userId), ...away.map((l) => l.userId)]);
+  const skip = new Set(
+    [...logged, ...away, ...notWorked].map((row) => row.userId)
+  );
 
   const sent: string[] = [];
   for (const user of candidates.filter((u) => !skip.has(u.id))) {

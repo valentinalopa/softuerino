@@ -9,7 +9,6 @@ import {
   balanceFigures,
   getLeaveBalance,
   outsideAllowance,
-  remainingByLeaveType,
 } from "@/lib/leave-balance";
 import { formatToRecover } from "@/lib/leave-format";
 import {
@@ -276,6 +275,16 @@ async function SaldiTab({
       userId={memberId}
       year={year}
       balances={balanceFigures(balance)}
+      hours={
+        balance.kind === "dipendente"
+          ? {
+              dailyHours: balance.dailyHours,
+              startMonth: balance.startMonth,
+              ferie: balance.ferie,
+              permesso: balance.permesso,
+            }
+          : undefined
+      }
       toRecover={formatToRecover(credits)}
       recoveryCredits={credits}
       outsideAllowance={outsideAllowance(balance)}
@@ -310,7 +319,7 @@ async function RichiesteTab({
         <NewLeaveRequestDialog
           employmentType={employmentType}
           targetUserId={memberId}
-          remaining={remainingByLeaveType(balance)}
+          charges={balance.charges}
           recoveryCredits={recoveryCredits}
         />
       </div>

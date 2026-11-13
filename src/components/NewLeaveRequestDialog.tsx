@@ -1,19 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, TriangleAlert } from "lucide-react";
-import { createLeaveRequest } from "@/lib/actions";
+import { format } from "date-fns";
+import { Info, Plus, TriangleAlert } from "lucide-react";
+import { createLeaveRequest, updateOwnLeaveRequest } from "@/lib/actions";
 import {
   LEAVE_TYPE_HINTS,
   LEAVE_TYPE_LABELS,
   NOTE_REQUIRED_LEAVE_TYPES,
+  OPTIONAL_HOURLY_LEAVE_TYPES,
+  isSensitiveLeave,
   leaveTypesFor,
   type EmploymentType,
   type LeaveType,
 } from "@/lib/constants";
 import type { OpenRecoveryCredit } from "@/lib/recovery-credits";
-import type { RemainingByLeaveType } from "@/lib/leave-balance";
-import { countedLeaveDays } from "@/lib/leave-days";
+import { availableAt, chargeAmount, chargeFor, type LeaveCharges } from "@/lib/leave-accrual";
+import { countedLeaveDays, isWorkingDay } from "@/lib/leave-days";
 import { formatAmount, hoursBetween } from "@/lib/leave-format";
 import { SegmentedButtonTabs } from "@/components/SegmentedLinkTabs";
 import { Label } from "@/components/ui/label";
@@ -36,11 +39,26 @@ import { unexpectedErrorMessage } from "@/lib/action-error";
 import { toast } from "@/lib/toast";
 import { TONE_SOFT } from "@/lib/tones";
 
+// Richiesta in attesa che chi l'ha fatta sta modificando.
+export type EditableLeaveRequest = {
+  id: string;
+  type: string;
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  note?: string | null;
+  recoveryCreditId?: string | null;
+};
+
 export function NewLeaveRequestDialog({
   employmentType,
   targetUserId,
   recoveryCredits = [],
-  remaining = {},
+  charges = {},
+  editing,
+  trigger,
 }: {
   // Tipo di rapporto della persona per cui si registra la richiesta.
   employmentType: EmploymentType;
@@ -49,57 +67,80 @@ export function NewLeaveRequestDialog({
   targetUserId?: string;
   // Recuperi da fare ancora aperti, tra cui scegliere per una richiesta di recupero.
   recoveryCredits?: OpenRecoveryCredit[];
-  // Residuo dei monti, per avvisare se la richiesta manda il saldo in negativo.
-  remaining?: RemainingByLeaveType;
+  // Saldi che i tipi di richiesta scalano (leave-accrual.ts), per dire quanto
+  // scala la richiesta e avvisare se manda il saldo in negativo.
+  charges?: LeaveCharges;
+  // Modifica di una propria richiesta in attesa (al posto di una nuova).
+  editing?: EditableLeaveRequest;
+  // Pulsante che apre il pannello (default: "Nuova richiesta").
+  trigger?: React.ReactElement;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
-  // (scala il monte unico), recupero e assenza extra (fuori monte).
-  const types = leaveTypesFor(employmentType);
-  const [type, setType] = useState<LeaveType>(types[0]);
-  // Solo per il recupero: a giorni (periodo) o a ore (un giorno).
-  const [unit, setUnit] = useState<"giorni" | "ore">("giorni");
+  // (scala il monte unico), recupero e assenza extra (fuori monte). La
+  // malattia non passa dall'approvazione: non si modifica da qui.
+  const types = leaveTypesFor(employmentType).filter((t) => !editing || t !== "malattia");
+  const initialType = (editing && types.includes(editing.type as LeaveType) ? editing.type : types[0]) as LeaveType;
+  const initialCreditId = editing ? (editing.recoveryCreditId ?? "") : (recoveryCredits[0]?.id ?? "");
+  const initialUnit: "giorni" | "ore" =
+    editing && OPTIONAL_HOURLY_LEAVE_TYPES.includes(editing.type as LeaveType) && editing.hours !== null
+      ? "ore"
+      : "giorni";
+  const [type, setType] = useState<LeaveType>(initialType);
+  // Recupero e assenza: a giorni (periodo) o a ore (un giorno).
+  const [unit, setUnit] = useState<"giorni" | "ore">(initialUnit);
   // Recupero da fare che si sta smaltendo ("" = altro, motivo nella nota).
-  const [creditId, setCreditId] = useState(recoveryCredits[0]?.id ?? "");
+  const [creditId, setCreditId] = useState(initialCreditId);
   const credit =
     type === "recupero" ? recoveryCredits.find((c) => c.id === creditId) ?? null : null;
   const effectiveUnit = credit ? credit.unit : unit;
 
-  const isHourly = type === "permesso" || (type === "recupero" && effectiveUnit === "ore");
+  const canBeHourly = OPTIONAL_HOURLY_LEAVE_TYPES.includes(type);
+  const isHourly = type === "permesso" || (canBeHourly && effectiveUnit === "ore");
   const noteRequired = NOTE_REQUIRED_LEAVE_TYPES.includes(type) && !credit;
 
   // Saldo dopo questa richiesta, se il tipo scala un monte: andare in
   // negativo è permesso, ma va detto prima di inviare.
-  const [startDate, setStartDate] = useState<Date | undefined>();
-  const [endDate, setEndDate] = useState<Date | undefined>();
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
+  const [startDate, setStartDate] = useState<Date | undefined>(editing?.startDate);
+  const [endDate, setEndDate] = useState<Date | undefined>(editing?.endDate);
+  const [startTime, setStartTime] = useState(editing?.startTime ?? "");
+  const [endTime, setEndTime] = useState(editing?.endTime ?? "");
   // Durata della fascia (null finché non è completa e valida).
   const slotHours = startTime && endTime ? hoursBetween(startTime, endTime) : null;
-  const typeRemaining = remaining[type as keyof RemainingByLeaveType];
-  const requested = isHourly
-    ? (slotHours ?? 0)
-    : startDate && endDate && endDate >= startDate
-      ? countedLeaveDays(startDate, endDate)
-      : 0;
+  const info = chargeFor(charges, type);
+  const days =
+    !isHourly && startDate && endDate && endDate >= startDate ? countedLeaveDays(startDate, endDate) : 0;
+  // A ore in un giorno festivo o nel weekend: non scala niente (e il server
+  // non la accetta).
+  const dayOff = isHourly && startDate !== undefined && !isWorkingDay(startDate);
+  const requested = info
+    ? chargeAmount(info, { days, hours: isHourly ? (dayOff ? 0 : (slotHours ?? 0)) : null })
+    : 0;
+  // Disponibile alla fine della richiesta, con quanto sarà maturato fino ad allora.
+  const lastDay = isHourly ? startDate : endDate;
   const after =
-    typeRemaining !== undefined && requested > 0
-      ? Math.round((typeRemaining - requested) * 100) / 100
+    info && lastDay && requested > 0
+      ? Math.round((availableAt(info, lastDay) - requested) * 100) / 100
       : null;
+  // Un permesso più lungo di una giornata scala comunque una giornata.
+  const overDailyCap =
+    info?.maxPerDay != null && slotHours !== null && slotHours > info.maxPerDay ? info.maxPerDay : null;
 
   async function handleSubmit(formData: FormData) {
     setError(null);
     setPending(true);
     try {
-      const result = await createLeaveRequest(formData);
+      const result = editing
+        ? await updateOwnLeaveRequest(editing.id, formData)
+        : await createLeaveRequest(formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
       setOpen(false);
-      toast("Richiesta inviata");
+      toast(editing ? "Richiesta modificata" : "Richiesta inviata");
     } catch (error) {
       setError(unexpectedErrorMessage(error));
     } finally {
@@ -114,23 +155,27 @@ export function NewLeaveRequestDialog({
         setOpen(next);
         if (next) {
           setError(null);
-          setType(types[0]);
-          setUnit("giorni");
-          setCreditId(recoveryCredits[0]?.id ?? "");
-          setStartDate(undefined);
-          setEndDate(undefined);
-          setStartTime("");
-          setEndTime("");
+          setType(initialType);
+          setUnit(initialUnit);
+          setCreditId(initialCreditId);
+          setStartDate(editing?.startDate);
+          setEndDate(editing?.endDate);
+          setStartTime(editing?.startTime ?? "");
+          setEndTime(editing?.endTime ?? "");
         }
       }}
     >
-      <SheetTrigger render={<Button type="button" />}>
-        <Plus className="size-4" />
-        Nuova richiesta
-      </SheetTrigger>
+      {trigger ? (
+        <SheetTrigger render={trigger} />
+      ) : (
+        <SheetTrigger render={<Button type="button" />}>
+          <Plus className="size-4" />
+          Nuova richiesta
+        </SheetTrigger>
+      )}
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Nuova richiesta</SheetTitle>
+          <SheetTitle>{editing ? "Modifica richiesta" : "Nuova richiesta"}</SheetTitle>
         </SheetHeader>
         <form onSubmit={submitKeepingValues(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
           <SheetBody className="space-y-3">
@@ -148,7 +193,7 @@ export function NewLeaveRequestDialog({
               <NativeSelectField
                 fullWidth
                 name="type"
-                defaultValue={types[0]}
+                defaultValue={initialType}
                 onValueChange={(value) => setType(value as LeaveType)}
                 items={types.map((leaveType) => ({
                   value: leaveType,
@@ -166,7 +211,7 @@ export function NewLeaveRequestDialog({
                 <NativeSelectField
                   fullWidth
                   name="recoveryCreditId"
-                  defaultValue={creditId}
+                  defaultValue={initialCreditId}
                   onValueChange={setCreditId}
                   items={[
                     ...recoveryCredits.map((c) => ({
@@ -179,7 +224,7 @@ export function NewLeaveRequestDialog({
               </div>
             )}
 
-            {type === "recupero" && !credit && (
+            {canBeHourly && !credit && (
               <div className="flex flex-col gap-1.5">
                 <input type="hidden" name="unit" value={unit} />
                 <SegmentedButtonTabs
@@ -199,6 +244,7 @@ export function NewLeaveRequestDialog({
                 id="new-request-startDate"
                 name="startDate"
                 className="w-full"
+                defaultValue={editing ? format(editing.startDate, "yyyy-MM-dd") : undefined}
                 onValueChange={setStartDate}
               />
             </div>
@@ -244,6 +290,7 @@ export function NewLeaveRequestDialog({
                   id="new-request-endDate"
                   name="endDate"
                   className="w-full"
+                  defaultValue={editing ? format(editing.endDate, "yyyy-MM-dd") : undefined}
                   onValueChange={setEndDate}
                 />
               </div>
@@ -256,6 +303,7 @@ export function NewLeaveRequestDialog({
               <Input
                 id="new-request-note"
                 name="note"
+                defaultValue={editing?.note ?? undefined}
                 required={noteRequired}
                 placeholder={noteRequired ? "Es. trasferta Milano 12/10" : undefined}
               />
@@ -263,7 +311,7 @@ export function NewLeaveRequestDialog({
               <p
                 data-testid="leave-note-health-warning"
                 className={
-                  type === "malattia"
+                  isSensitiveLeave(type)
                     ? `rounded-lg px-3 py-2 text-sm font-medium ${TONE_SOFT.warning}`
                     : "text-xs text-muted-foreground"
                 }
@@ -272,11 +320,42 @@ export function NewLeaveRequestDialog({
               </p>
             </div>
 
+            {(dayOff || (!isHourly && startDate && endDate && endDate >= startDate && days === 0)) && (
+              <p className="text-xs text-destructive">
+                Solo weekend o festivi: non serve chiederli, non pesano su ferie, permessi o assenze.
+              </p>
+            )}
+
+            {info && requested > 0 && (
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  Scala {formatAmount(requested)} {info.unit === "h" ? "ore" : requested === 1 ? "giorno" : "giorni"}
+                  {info.perDay !== null && days > 0
+                    ? ` (${formatAmount(days)} ${days === 1 ? "giorno" : "giorni"} × ${formatAmount(info.perDay)} h)`
+                    : ""}
+                  {info.dayHours !== null && isHourly && slotHours !== null
+                    ? ` (${formatAmount(Math.min(slotHours, info.dayHours))} h su ${formatAmount(info.dayHours)} h di una giornata)`
+                    : ""}
+                  {after !== null && after >= 0
+                    ? `: ne restano ${formatAmount(after)}.`
+                    : "."}
+                </span>
+              </p>
+            )}
+
+            {overDailyCap !== null && (
+              <p className="text-xs text-muted-foreground">
+                Un permesso scala al massimo {formatAmount(overDailyCap)} ore, una giornata di
+                lavoro: per la giornata intera conviene chiedere ferie.
+              </p>
+            )}
+
             {after !== null && after < 0 && (
               <p className="flex items-start gap-1.5 text-sm text-destructive">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" />
                 Con questa richiesta il saldo va in negativo: {formatAmount(after)}{" "}
-                {type === "permesso" ? "h" : "gg"}. Puoi comunque inviarla.
+                {info?.unit === "h" ? "h" : "gg"}. Puoi comunque inviarla.
               </p>
             )}
 
@@ -284,7 +363,7 @@ export function NewLeaveRequestDialog({
           </SheetBody>
           <SheetFooter>
             <Button type="submit" disabled={pending}>
-              {pending ? "Invio..." : "Invia richiesta"}
+              {pending ? "Invio..." : editing ? "Salva modifiche" : "Invia richiesta"}
             </Button>
           </SheetFooter>
         </form>

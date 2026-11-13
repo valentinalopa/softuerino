@@ -62,7 +62,7 @@ export const CAPABILITIES: Record<Capability, CapabilityDef> = {
   },
   richieste: {
     label: "Richieste e saldi",
-    hint: "Vedere richieste, assenze e saldi delle altre persone (la malattia solo agli admin).",
+    hint: "Vedere richieste, assenze e saldi delle altre persone (malattia e permessi 104 solo agli admin).",
     options: { membro: ANY, responsabile: ANY, admin: ["tutti"] },
     defaults: { membro: "no", responsabile: "no", admin: "tutti" },
   },
