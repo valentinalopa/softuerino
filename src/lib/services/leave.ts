@@ -2,7 +2,14 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { formatAmount, hoursBetween } from "@/lib/leave-format";
 import { getLeaveBalance, balanceFigures, type HourBalance } from "@/lib/leave-balance";
-import type { ChargeInfo, LeaveCharges } from "@/lib/leave-accrual";
+import {
+  availableAt,
+  chargeAmount,
+  chargeFor,
+  chargeKind,
+  type ChargeInfo,
+  type LeaveCharges,
+} from "@/lib/leave-accrual";
 import { getRecoveryCreditsForUsers, toOpenRecoveryCredits } from "@/lib/recovery-credits";
 import { countedLeaveDays, isWorkingDay, slotsClash } from "@/lib/leave-days";
 import {
@@ -445,6 +452,48 @@ export async function getOwnBalance(actor: LeaveActor) {
     startMonth: balance.startMonth ? ymd(balance.startMonth).slice(0, 7) : null,
     ferie: hourView(balance.ferie),
     permesso: hourView(balance.permesso),
+  };
+}
+
+// Saldo dopo una richiesta (non salvata): lo stesso calcolo del form web
+// (NewLeaveRequestDialog): disponibile alla fine della richiesta, con quanto
+// sarà maturato fino ad allora, meno quanto la richiesta scala. `after` null se
+// il tipo non scala un monte (fuori monte, o saldi non ancora impostati) o se
+// la richiesta non scala niente. Andare in negativo è permesso: l'app lo avvisa.
+// Non valida la richiesta: le regole restano quelle di create/update.
+export async function previewOwnLeaveRequest(actor: LeaveActor, input: LeaveRequestInput) {
+  const type = str(input.type);
+  if (!leaveTypesFor(actor.employmentType).includes(type as LeaveType)) {
+    throw new ValidationError("Tipo di richiesta non valido");
+  }
+  const startDateRaw = str(input.startDate);
+  if (!isRealDay(startDateRaw)) throw new ValidationError("Data non valida");
+  const isHourly =
+    type === "permesso" || (OPTIONAL_HOURLY_LEAVE_TYPES.includes(type as LeaveType) && str(input.unit) === "ore");
+  const endDateRaw = isHourly ? startDateRaw : str(input.endDate) || startDateRaw;
+  if (!isRealDay(endDateRaw)) throw new ValidationError("Data non valida");
+  const startDate = localDate(startDateRaw);
+  const endDate = localDate(endDateRaw);
+  const slotHours = isHourly ? hoursBetween(str(input.startTime).trim(), str(input.endTime).trim()) : null;
+
+  const balance = await getLeaveBalance(actor.id, actor.employmentType as EmploymentType, new Date().getFullYear());
+  const kind = chargeKind(balance.charges, type);
+  const info = chargeFor(balance.charges, type);
+  const days = !isHourly && endDate >= startDate ? countedLeaveDays(startDate, endDate) : 0;
+  const dayOff = isHourly && !isWorkingDay(startDate);
+  const requested = info ? chargeAmount(info, { days, hours: isHourly ? (dayOff ? 0 : (slotHours ?? 0)) : null }) : 0;
+  const available = info ? availableAt(info, endDate) : null;
+  const after = info && available !== null && requested > 0 ? Math.round((available - requested) * 100) / 100 : null;
+  const overDailyCap =
+    info?.maxPerDay != null && slotHours !== null && slotHours > info.maxPerDay ? info.maxPerDay : null;
+  return {
+    charged: kind,
+    unit: info?.unit ?? null,
+    requested,
+    available,
+    after,
+    negative: after !== null && after < 0,
+    overDailyCap,
   };
 }
 

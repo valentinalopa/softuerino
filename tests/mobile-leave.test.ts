@@ -11,7 +11,9 @@ import { issueSessionToken } from "../src/lib/auth/session";
 import { getLeaveBalance, balanceFigures } from "../src/lib/leave-balance";
 import { getRecoveryCreditsForUsers, toOpenRecoveryCredits } from "../src/lib/recovery-credits";
 import { GET as getRequests, POST as postRequest } from "../src/app/api/mobile/v1/leave-requests/route";
-import { GET as getRequest } from "../src/app/api/mobile/v1/leave-requests/[id]/route";
+import { GET as getRequest, PATCH as patchRequest, DELETE as deleteRequest } from "../src/app/api/mobile/v1/leave-requests/[id]/route";
+import { POST as postPreview } from "../src/app/api/mobile/v1/leave-requests/preview/route";
+import { availableAt, chargeAmount } from "../src/lib/leave-accrual";
 import { GET as getBalance } from "../src/app/api/mobile/v1/balance/route";
 import { GET as getCredits } from "../src/app/api/mobile/v1/recovery-credits/route";
 import { GET as getMe } from "../src/app/api/mobile/v1/me/route";
@@ -45,6 +47,60 @@ describe("richieste dell'app", () => {
     await prisma.user.deleteMany({ where: { email: { endsWith: "@leave.test" } } });
     setRequest();
     resetCacheCalls();
+  });
+
+  it("modifica e ritiro di una richiesta in attesa: 200/204 con avviso; già decisa → 409; di altri → 404", async () => {
+    await makeUser("w1");
+    await makeUser("w2");
+    await login("w1");
+    let res = await postRequest(send("POST", "/leave-requests", { type: "ferie", startDate: "2026-12-01", endDate: "2026-12-02" }));
+    const { request } = await res.json();
+    resetCacheCalls();
+    res = await patchRequest(send("PATCH", `/leave-requests/${request.id}`, { type: "ferie", startDate: "2026-12-01", endDate: "2026-12-04" }), idCtx(request.id));
+    assert.equal(res.status, 200);
+    const patched = (await res.json()).request;
+    assert.equal(patched.endDate, "2026-12-04");
+    assert.equal(patched.status, "pending");
+    assert.equal(cacheCalls.after, 1);
+    // Malattia non ammessa in modifica (come sul web).
+    assert.equal((await patchRequest(send("PATCH", `/leave-requests/${request.id}`, { type: "malattia", startDate: "2026-12-01" }), idCtx(request.id))).status, 400);
+
+    resetCacheCalls();
+    res = await deleteRequest(send("DELETE", `/leave-requests/${request.id}`), idCtx(request.id));
+    assert.equal(res.status, 204);
+    assert.equal(cacheCalls.after, 1);
+    assert.equal(await countRequests("w1"), 0);
+
+    const decided = await prisma.leaveRequest.create({ data: { userId: "w1", type: "ferie", startDate: new Date("2026-12-10T00:00:00"), endDate: new Date("2026-12-10T00:00:00"), status: "approved" } });
+    assert.equal((await deleteRequest(send("DELETE", `/leave-requests/${decided.id}`), idCtx(decided.id))).status, 409);
+    assert.equal((await patchRequest(send("PATCH", `/leave-requests/${decided.id}`, { type: "ferie", startDate: "2026-12-11" }), idCtx(decided.id))).status, 409);
+
+    const other = await prisma.leaveRequest.create({ data: { userId: "w2", type: "ferie", startDate: new Date("2026-12-10T00:00:00"), endDate: new Date("2026-12-10T00:00:00"), status: "pending" } });
+    assert.equal((await deleteRequest(send("DELETE", `/leave-requests/${other.id}`), idCtx(other.id))).status, 404);
+    assert.equal(await countRequests("w2"), 1);
+  });
+
+  it("anteprima del saldo: stesso calcolo del form web; fuori monte o senza saldi → after null; non scrive nulla", async () => {
+    await makeUser("p1", { employmentType: "partita_iva" });
+    await login("p1");
+    let res = await postPreview(send("POST", "/leave-requests/preview", { type: "assenza", startDate: "2026-12-01", endDate: "2026-12-03" }));
+    assert.equal(res.status, 200);
+    const { preview } = await res.json();
+    const info = (await getLeaveBalance("p1", "partita_iva")).charges.assenza!;
+    const requested = chargeAmount(info, { days: 3, hours: null });
+    assert.equal(preview.charged, "assenza");
+    assert.equal(preview.requested, requested);
+    assert.equal(preview.after, Math.round((availableAt(info, new Date("2026-12-03T00:00:00")) - requested) * 100) / 100);
+    assert.equal(await countRequests("p1"), 0);
+    res = await postPreview(send("POST", "/leave-requests/preview", { type: "assenza_extra", startDate: "2026-12-01" }));
+    assert.equal((await res.json()).preview.after, null);
+    assert.equal((await postPreview(send("POST", "/leave-requests/preview", { type: "ferie", startDate: "2026-12-01" }))).status, 400);
+    assert.equal((await postPreview(send("POST", "/leave-requests/preview", { type: "assenza", startDate: "2026-13-01" }))).status, 400);
+
+    await makeUser("p2");
+    await login("p2");
+    res = await postPreview(send("POST", "/leave-requests/preview", { type: "ferie", startDate: "2026-12-01" }));
+    assert.equal((await res.json()).preview.after, null);
   });
 
   it("senza Bearer tutte le route rispondono 401 JSON", async () => {

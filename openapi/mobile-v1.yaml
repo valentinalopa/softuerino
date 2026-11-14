@@ -476,6 +476,85 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateLeaveRequest
+      summary: Modifica una propria richiesta in attesa
+      description: Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa o sovrapposta; 404 non propria.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaveRequestInput"
+      responses:
+        "200":
+          description: Richiesta aggiornata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/LeaveRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: withdrawLeaveRequest
+      summary: Ritira una propria richiesta in attesa
+      description: Come sul web la richiesta viene tolta e i responsabili avvisati. 409 se già decisa (la annulla un admin); 404 non propria.
+      responses:
+        "204":
+          description: Ritirata
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/preview:
+    post:
+      operationId: previewLeaveRequest
+      summary: Saldo dopo una richiesta non ancora inviata
+      description: Stesso calcolo del form web (disponibile alla fine della richiesta, con il maturato, meno quanto scala). Non valida la richiesta e non scrive nulla. `after` null se il tipo è fuori monte o i saldi non sono impostati.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaveRequestInput"
+      responses:
+        "200":
+          description: Anteprima
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [preview]
+                properties:
+                  preview:
+                    type: object
+                    required: [charged, unit, requested, available, after, negative, overDailyCap]
+                    properties:
+                      charged: { type: [string, "null"], enum: [ferie, permesso, assenza, null] }
+                      unit: { type: [string, "null"], enum: [h, gg, null] }
+                      requested: { type: number }
+                      available: { type: [number, "null"] }
+                      after: { type: [number, "null"] }
+                      negative: { type: boolean }
+                      overDailyCap: { type: [number, "null"], description: "Ore massime che un permesso scala in una giornata, se la fascia le supera" }
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/balance:
     get:
       operationId: getBalance
@@ -1480,10 +1559,10 @@ components:
         unit: { type: string, enum: [h, gg] }
         base: { type: number }
         perMonth: { type: number }
-        from: { type: string, format: date, nullable: true }
-        perDay: { type: number, nullable: true }
-        maxPerDay: { type: number, nullable: true }
-        dayHours: { type: number, nullable: true }
+        from: { type: [string, "null"], format: date }
+        perDay: { type: [number, "null"] }
+        maxPerDay: { type: [number, "null"] }
+        dayHours: { type: [number, "null"] }
     Balance:
       type: object
       required: [year, kind, figures, charges]
@@ -1513,15 +1592,12 @@ components:
         dailyHours:
           type: number
         startMonth:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: yyyy-MM della busta paga di partenza
         ferie:
-          allOf: [{ $ref: "#/components/schemas/HourBalance" }]
-          nullable: true
+          oneOf: [{ $ref: "#/components/schemas/HourBalance" }, { type: "null" }]
         permesso:
-          allOf: [{ $ref: "#/components/schemas/HourBalance" }]
-          nullable: true
+          oneOf: [{ $ref: "#/components/schemas/HourBalance" }, { type: "null" }]
         assenze:
           type: object
           properties:
