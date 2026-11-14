@@ -1059,36 +1059,16 @@ export async function setDayNotWorked(formData: FormData): Promise<ActionResult>
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
-  const targetUserId = targetUserIdRaw || user.id;
-  if (targetUserId !== user.id && !isAdminRole(user.role)) {
-    return { error: "Non autorizzato" };
-  }
-  const dateRaw = String(formData.get("date") ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-    return { error: "Data non valida" };
-  }
-  const notWorked = formData.get("notWorked") === "1";
-  const day = localDate(dateRaw);
-  const nextDay = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
-
-  if (notWorked) {
-    if (!isWorkingDay(day)) {
-      return { error: "È già un giorno non lavorativo (weekend o festivo)" };
-    }
-    const logged = await prisma.timeEntry.count({
-      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
-    });
-    if (logged > 0) {
-      return { error: "In questa giornata ci sono già ore registrate" };
-    }
-    await prisma.dayNotWorked.upsert({
-      where: { userId_date: { userId: targetUserId, date: day } },
-      create: { userId: targetUserId, date: day },
-      update: {},
-    });
-  } else {
-    await prisma.dayNotWorked.deleteMany({ where: { userId: targetUserId, date: { gte: day, lt: nextDay } } });
+  const targetUserId = String(formData.get("userId") ?? "").trim() || user.id;
+  try {
+    await timeService.setDayNotWorkedFor(
+      { id: user.id, role: user.role },
+      targetUserId,
+      String(formData.get("date") ?? ""),
+      formData.get("notWorked") === "1"
+    );
+  } catch (err) {
+    return eventServiceError(err);
   }
 
   revalidatePath("/ore");

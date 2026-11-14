@@ -50,6 +50,7 @@ describe("superficie dell'API mobile", () => {
       "/v1/team-calendar",
       "/v1/time",
       "/v1/time/[date]",
+      "/v1/time/[date]/not-worked",
       "/v1/time/clients",
     ]);
   });

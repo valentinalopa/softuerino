@@ -11,7 +11,8 @@ import { issueSessionToken } from "../src/lib/auth/session";
 import { GET as getMonthRoute } from "../src/app/api/mobile/v1/time/route";
 import { GET as getDayRoute, PUT as putDay } from "../src/app/api/mobile/v1/time/[date]/route";
 import { GET as getClients } from "../src/app/api/mobile/v1/time/clients/route";
-import { replaceDayFor } from "../src/lib/services/time";
+import { PUT as putNotWorked, DELETE as deleteNotWorked } from "../src/app/api/mobile/v1/time/[date]/not-worked/route";
+import { replaceDayFor, setDayNotWorkedFor } from "../src/lib/services/time";
 
 const URL_BASE = "https://time.test/api/mobile/v1";
 const send = (method: string, path: string, body?: unknown) =>
@@ -48,6 +49,7 @@ describe("ore dell'app", () => {
   beforeEach(async () => {
     await prisma.session.deleteMany();
     await prisma.user.deleteMany({ where: { email: { endsWith: "@time.test" } } });
+    await prisma.client.deleteMany({ where: { name: { startsWith: "TT-" }, parentId: { not: null } } });
     await prisma.client.deleteMany({ where: { name: { startsWith: "TT-" } } });
     open = await makeClient("TT-Aperto");
     setRequest();
@@ -186,5 +188,40 @@ describe("ore dell'app", () => {
     const ids = mine.map((c: { id: string }) => c.id).sort();
     assert.deepEqual(ids, [open.id, parent.id, child.id].sort());
     assert.equal(mine.find((c: { id: string }) => c.id === child.id).label.includes("TT-Padre"), true);
+  });
+
+  it("non lavorato: PUT segna, GET lo mostra, DELETE toglie; weekend → 400; giorno con ore → 409; salvare ore toglie il segno", async () => {
+    await makeUser("nw1");
+    await login("nw1");
+    const nwCtx = (date: string) => ({ params: Promise.resolve({ date }) });
+    const mark = (date: string) => putNotWorked(send("PUT", `/time/${date}/not-worked`), nwCtx(date));
+    const unmark = (date: string) => deleteNotWorked(send("DELETE", `/time/${date}/not-worked`), nwCtx(date));
+
+    let res = await mark("2026-11-10");
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).notWorked, true);
+    assert.equal((await (await getDayRoute(send("GET", "/time/2026-11-10"), ctx("2026-11-10"))).json()).notWorked, true);
+    res = await unmark("2026-11-10");
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).notWorked, false);
+    assert.equal(await prisma.dayNotWorked.count({ where: { userId: "nw1" } }), 0);
+
+    assert.equal((await mark("2026-11-14")).status, 400);
+    assert.equal((await mark("2026-02-30")).status, 400);
+
+    assert.equal((await put("2026-11-11", [{ clientId: open.id, hours: 3 }])).status, 200);
+    assert.equal((await mark("2026-11-11")).status, 409);
+
+    assert.equal((await mark("2026-11-12")).status, 200);
+    await replaceDayFor({ id: "nw1", role: "membro" }, "nw1", "2026-11-12", [{ clientId: open.id, hours: 2 }]);
+    assert.equal(await prisma.dayNotWorked.count({ where: { userId: "nw1" } }), 0);
+  });
+
+  it("non lavorato: un membro non segna per altri (403); impersonificazione → 403", async () => {
+    await makeUser("nw2");
+    await makeUser("nw3");
+    await assert.rejects(setDayNotWorkedFor({ id: "nw2", role: "membro" }, "nw3", "2026-11-10", true), /Non autorizzato/);
+    await assert.rejects(setDayNotWorkedFor({ id: "nw2", role: "membro", impersonating: true }, "nw2", "2026-11-10", true), /non puoi modificare/);
+    assert.equal(await prisma.dayNotWorked.count(), 0);
   });
 });

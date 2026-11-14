@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { clientLabel, loggableClientsWhere, sortClientsByParent } from "@/lib/clients";
 import { buildMonthlySummary } from "@/lib/ore-utils";
 import { isAdminRole } from "@/lib/constants";
+import { isWorkingDay } from "@/lib/leave-days";
 import { ConflictError, ValidationError } from "@/lib/services/errors";
 import { ForbiddenError } from "@/lib/task-archive";
 
@@ -89,6 +90,39 @@ export async function replaceDayFor(actor: TimeActor, targetUserId: string, date
 
 // Le ore di un giorno della persona stessa. `editable`: un membro non modifica
 // una giornata già registrata (lo fa un admin).
+// "Oggi non ho lavorato" (PR #50): segna (o toglie) una giornata da non
+// registrare, senza promemoria né avvisi di ore mancanti. Non vale per una
+// giornata che ha già ore né per weekend e festivi. Per conto di altri solo un admin.
+export async function setDayNotWorkedFor(actor: TimeActor, targetUserId: string, dateRaw: string, notWorked: boolean) {
+  if (actor.impersonating) throw new ForbiddenError(READ_ONLY_MESSAGE);
+  if (targetUserId !== actor.id && !isAdminRole(actor.role)) throw new ForbiddenError("Non autorizzato");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) throw new ValidationError("Data non valida");
+  const day = localDate(dateRaw);
+  const nextDay = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+
+  if (notWorked) {
+    if (!isWorkingDay(day)) throw new ValidationError("È già un giorno non lavorativo (weekend o festivo)");
+    const logged = await prisma.timeEntry.count({
+      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
+    });
+    if (logged > 0) throw new ConflictError("In questa giornata ci sono già ore registrate");
+    await prisma.dayNotWorked.upsert({
+      where: { userId_date: { userId: targetUserId, date: day } },
+      create: { userId: targetUserId, date: day },
+      update: {},
+    });
+  } else {
+    await prisma.dayNotWorked.deleteMany({ where: { userId: targetUserId, date: { gte: day, lt: nextDay } } });
+  }
+}
+
+// L'app: solo per sé stessi. Restituisce il giorno aggiornato.
+export async function setOwnDayNotWorked(actor: TimeActor, date: unknown, notWorked: boolean) {
+  const day = parseRealDay(date);
+  await setDayNotWorkedFor(actor, actor.id, day, notWorked);
+  return getDay(actor, day);
+}
+
 export async function getDay(actor: TimeActor, date: unknown) {
   const day = parseRealDay(date);
   const start = localDate(day);
@@ -99,7 +133,10 @@ export async function getDay(actor: TimeActor, date: unknown) {
     include: { client: { select: { id: true, name: true, parent: { select: { name: true } } } } },
     orderBy: { createdAt: "asc" },
   });
+  const notWorked = (await prisma.dayNotWorked.count({ where: { userId: actor.id, date: { gte: start, lt: end } } })) > 0;
   return {
+    notWorked,
+    workingDay: isWorkingDay(start),
     date: day,
     entries: rows.map((r) => ({
       clientId: r.clientId,

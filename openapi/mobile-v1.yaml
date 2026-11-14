@@ -561,6 +561,47 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/time/{date}/not-worked:
+    parameters:
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+    put:
+      operationId: markDayNotWorked
+      summary: Segna "Oggi non ho lavorato" per sé stessi
+      description: Stesse regole del web. 400 weekend/festivo o data non valida; 409 il giorno ha già ore; 403 sola lettura in impersonificazione. Salvare ore toglie il segno.
+      responses:
+        "200":
+          description: Giorno aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: unmarkDayNotWorked
+      summary: Toglie il segno "non lavorato" (per sé stessi)
+      responses:
+        "200":
+          description: Giorno aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/time/{date}:
     parameters:
       - name: date
@@ -1539,6 +1580,12 @@ components:
         editable:
           type: boolean
           description: false per un membro se la giornata è già registrata
+        notWorked:
+          type: boolean
+          description: Segnata "Oggi non ho lavorato" (PR #50)
+        workingDay:
+          type: boolean
+          description: false per weekend e festivi (non si può segnare "non lavorato")
     MonthlySummary:
       type: object
       required: [month, totalHours, days]
