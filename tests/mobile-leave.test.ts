@@ -129,6 +129,58 @@ describe("richieste dell'app", () => {
     assert.deepEqual(await previewOf("15:00"), before6);
   });
 
+  it("punto 3: modifiche in contemporanea — passa solo la prima, l'altra riceve 409 «La richiesta è cambiata, ricarica»", async () => {
+    await makeUser("c1");
+    await login("c1");
+    const body = (endDate: string, version?: string) => ({ type: "ferie", startDate: "2026-12-01", endDate, ...(version ? { version } : {}) });
+    let res = await postRequest(send("POST", "/leave-requests", body("2026-12-02")));
+    const created = (await res.json()).request;
+    assert.equal(typeof created.version, "string");
+    // Due dispositivi hanno la stessa versione: la prima modifica passa, la seconda no.
+    res = await patchRequest(send("PATCH", `/leave-requests/${created.id}`, body("2026-12-03", created.version)), idCtx(created.id));
+    assert.equal(res.status, 200);
+    const edited = (await res.json()).request;
+    assert.notEqual(edited.version, created.version);
+    res = await patchRequest(send("PATCH", `/leave-requests/${created.id}`, body("2026-12-04", created.version)), idCtx(created.id));
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).message, "La richiesta è cambiata, ricarica");
+    assert.equal((await prisma.leaveRequest.findUniqueOrThrow({ where: { id: created.id } })).endDate.getDate(), 3);
+    // Ritiro con una versione vecchia: 409 e la richiesta resta.
+    res = await deleteRequest(send("DELETE", `/leave-requests/${created.id}?version=${encodeURIComponent(created.version)}`), idCtx(created.id));
+    assert.equal(res.status, 409);
+    assert.equal(await countRequests("c1"), 1);
+    // Senza versione (client che non la manda) e con quella giusta: come prima.
+    res = await patchRequest(send("PATCH", `/leave-requests/${created.id}`, body("2026-12-04")), idCtx(created.id));
+    assert.equal(res.status, 200);
+    const now = (await res.json()).request;
+    res = await deleteRequest(send("DELETE", `/leave-requests/${created.id}?version=${encodeURIComponent(now.version)}`), idCtx(created.id));
+    assert.equal(res.status, 204);
+    assert.equal(await countRequests("c1"), 0);
+  });
+
+  it("punto 3: due PATCH davvero simultanee con la stessa versione → una sola passa", async () => {
+    await makeUser("c2");
+    await login("c2");
+    const send2 = (endDate: string, version: string, id: string) =>
+      patchRequest(send("PATCH", `/leave-requests/${id}`, { type: "ferie", startDate: "2026-12-01", endDate, version }), idCtx(id));
+    const created = (await (await postRequest(send("POST", "/leave-requests", { type: "ferie", startDate: "2026-12-01", endDate: "2026-12-02" }))).json()).request;
+    const results = await Promise.all([send2("2026-12-03", created.version, created.id), send2("2026-12-04", created.version, created.id)]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  });
+
+  it("punto 3: la decisione del responsabile non passa se la richiesta è stata modificata dopo che l'ha vista", async () => {
+    await makeUser("c3");
+    await login("c3");
+    const created = (await (await postRequest(send("POST", "/leave-requests", { type: "ferie", startDate: "2026-12-01", endDate: "2026-12-02" }))).json()).request;
+    const seen = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: created.id } });
+    await patchRequest(send("PATCH", `/leave-requests/${created.id}`, { type: "ferie", startDate: "2026-12-01", endDate: "2026-12-10" }), idCtx(created.id));
+    // Stessa condizione di updateLeaveStatus (versionWhere sui campi letti prima della modifica).
+    const { versionWhere } = await import("../src/lib/services/leave");
+    const approved = await prisma.leaveRequest.updateMany({ where: { id: created.id, ...versionWhere(seen) }, data: { status: "approved" } });
+    assert.equal(approved.count, 0);
+    assert.equal((await prisma.leaveRequest.findUniqueOrThrow({ where: { id: created.id } })).status, "pending");
+  });
+
   it("senza Bearer tutte le route rispondono 401 JSON", async () => {
     const responses = [
       await getRequests(send("GET", "/leave-requests")),

@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { formatAmount, hoursBetween } from "@/lib/leave-format";
+import { formatAmount, hoursBetween, leaveVersion } from "@/lib/leave-format";
 import { getLeaveBalance, balanceFigures, type HourBalance } from "@/lib/leave-balance";
 import {
   availableAt,
@@ -55,6 +55,8 @@ export type LeaveRequestInput = {
   // "ore" | "giorni": per i tipi a ore facoltativi (recupero senza recupero da
   // fare collegato, assenza, permesso 104).
   unit?: unknown;
+  // Solo in modifica: `version` della richiesta come l'ha vista chi la modifica.
+  version?: unknown;
   // Solo web, solo admin: registra per conto di un altro membro. L'app non lo passa mai.
   userId?: unknown;
 };
@@ -70,6 +72,8 @@ export type LeaveRequestView = {
   status: string;
   note: string | null;
   createdAt: string;
+  // Versione della richiesta: da rimandare nel PATCH/DELETE per accorgersi di modifiche in contemporanea.
+  version: string;
   recoveryCredit: { id: string; reason: string; amount: number; unit: string } | null;
 };
 
@@ -82,6 +86,48 @@ const realDeps: Deps = { notifyNewLeaveRequest, notifyLeaveWithdrawn };
 const READ_ONLY_MESSAGE =
   "Stai vedendo l'app come un altro membro: in questa modalità non puoi modificare nulla";
 const ALREADY_DECIDED = "La richiesta è già stata decisa: per cambiarla chiedi a un admin";
+export const REQUEST_CHANGED = "La richiesta è cambiata, ricarica";
+
+// Campi che una modifica può cambiare: la richiesta in attesa non ha un
+// updatedAt, la sua "versione" (leaveVersion) è fatta da questi.
+const VERSION_SELECT = {
+  type: true,
+  startDate: true,
+  endDate: true,
+  hours: true,
+  startTime: true,
+  endTime: true,
+  note: true,
+  recoveryCreditId: true,
+} as const;
+
+// Condizione dell'aggiornamento: la richiesta è ancora in attesa e coi campi letti.
+export function versionWhere(row: {
+  type: string;
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  note: string | null;
+  recoveryCreditId: string | null;
+}) {
+  return { status: "pending", ...Object.fromEntries(Object.keys(VERSION_SELECT).map((k) => [k, row[k as keyof typeof row]])) };
+}
+
+// Versione vista da chi agisce (testo di leaveVersion) o niente: senza, resta il
+// solo controllo tra lettura e scrittura.
+export function seenVersion(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+// Esito di un aggiornamento condizionato andato a vuoto: se la richiesta è
+// ancora in attesa è stata modificata da un altro, altrimenti è stata decisa.
+export async function staleRequestError(requestId: string, decidedMessage: string) {
+  const now = await prisma.leaveRequest.findUnique({ where: { id: requestId }, select: { status: true } });
+  return new ConflictError(now && now.status === "pending" ? REQUEST_CHANGED : decidedMessage);
+}
+export { VERSION_SELECT };
 
 function str(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -119,6 +165,7 @@ function toView(row: RequestRow): LeaveRequestView {
     status: row.status,
     note: row.note,
     createdAt: row.createdAt.toISOString(),
+    version: leaveVersion(row),
     recoveryCredit: row.recoveryCredit,
   };
 }
@@ -343,22 +390,26 @@ export async function updateOwnLeaveRequest(
   if (actor.impersonating) throw new ForbiddenError(READ_ONLY_MESSAGE);
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
-    select: { userId: true, status: true },
+    select: { userId: true, status: true, ...VERSION_SELECT },
   });
   if (!request || request.userId !== actor.id) throw new NotFoundError("Richiesta non trovata");
   if (request.status !== "pending") throw new ConflictError(ALREADY_DECIDED);
+  // Chi modifica ha davanti una versione: se non è più quella, passa solo la prima modifica.
+  const seen = seenVersion(input.version);
+  if (seen && seen !== leaveVersion(request)) throw new ConflictError(REQUEST_CHANGED);
 
   const parsed = await parseLeaveInput(input, actor, requestId);
   if (parsed.type === "malattia") {
     throw new ValidationError("La malattia non passa dall'approvazione: registrala come nuova richiesta");
   }
 
-  // Solo se è ancora in attesa (nel frattempo qualcuno potrebbe averla decisa).
+  // Solo se è ancora in attesa e identica a quella letta (nel frattempo qualcuno
+  // potrebbe averla decisa, modificata o ritirata): la seconda modifica non passa.
   const updated = await prisma.leaveRequest.updateMany({
-    where: { id: requestId, userId: actor.id, status: "pending" },
+    where: { id: requestId, userId: actor.id, ...versionWhere(request) },
     data: parsed,
   });
-  if (updated.count === 0) throw new ConflictError(ALREADY_DECIDED);
+  if (updated.count === 0) throw await staleRequestError(requestId, ALREADY_DECIDED);
   return {
     notify: async () => {
       await deps.notifyNewLeaveRequest(requestId, actor.id, "modificata");
@@ -372,19 +423,24 @@ export async function updateOwnLeaveRequest(
 export async function withdrawOwnLeaveRequest(
   actor: LeaveActor,
   requestId: string,
-  deps: Deps = realDeps
+  deps: Deps = realDeps,
+  seenVersionRaw?: unknown
 ): Promise<{ notify: () => Promise<void> }> {
   if (actor.impersonating) throw new ForbiddenError(READ_ONLY_MESSAGE);
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
-    select: LEAVE_SNAPSHOT_SELECT,
+    select: { ...LEAVE_SNAPSHOT_SELECT, recoveryCreditId: true },
   });
   if (!request || request.userId !== actor.id) throw new NotFoundError("Richiesta non trovata");
+  const seen = seenVersion(seenVersionRaw);
+  if (request.status === "pending" && seen && seen !== leaveVersion(request)) {
+    throw new ConflictError(REQUEST_CHANGED);
+  }
   const deleted = await prisma.leaveRequest.deleteMany({
-    where: { id: requestId, userId: actor.id, status: "pending" },
+    where: { id: requestId, userId: actor.id, ...versionWhere(request) },
   });
   if (deleted.count === 0) {
-    throw new ConflictError("La richiesta è già stata decisa: per annullarla chiedi a un admin");
+    throw await staleRequestError(requestId, "La richiesta è già stata decisa: per annullarla chiedi a un admin");
   }
   return {
     notify: async () => {

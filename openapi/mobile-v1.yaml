@@ -479,7 +479,7 @@ paths:
     patch:
       operationId: updateLeaveRequest
       summary: Modifica una propria richiesta in attesa
-      description: Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa o sovrapposta; 404 non propria.
+      description: Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa, sovrapposta o cambiata nel frattempo («La richiesta è cambiata, ricarica»: rimanda `version` letta dalla richiesta per accorgersene; senza `version` resta solo la protezione tra lettura e scrittura); 404 non propria.
       requestBody:
         required: true
         content:
@@ -503,12 +503,21 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
     delete:
       operationId: withdrawLeaveRequest
       summary: Ritira una propria richiesta in attesa
-      description: Come sul web la richiesta viene tolta e i responsabili avvisati. 409 se già decisa (la annulla un admin); 404 non propria.
+      description: Come sul web la richiesta viene tolta e i responsabili avvisati. 409 se già decisa (la annulla un admin) o cambiata nel frattempo («La richiesta è cambiata, ricarica»); 404 non propria.
+      parameters:
+        - name: version
+          in: query
+          required: false
+          description: "`version` della richiesta come l'app l'ha vista; se è cambiata il ritiro non passa (409)"
+          schema:
+            type: string
       responses:
         "204":
           description: Ritirata
@@ -516,6 +525,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
   /v1/leave-requests/preview:
@@ -1449,7 +1460,7 @@ components:
     LeaveRequest:
       type: object
       description: Richiesta propria
-      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, createdAt, recoveryCredit]
+      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, createdAt, version, recoveryCredit]
       properties:
         id:
           type: string
@@ -1476,6 +1487,9 @@ components:
         createdAt:
           type: string
           format: date-time
+        version:
+          type: string
+          description: Versione della richiesta (cambia a ogni modifica dei suoi dati). Da rimandare tale e quale in `version` nel PATCH e nel DELETE (?version=) per non sovrascrivere una modifica fatta altrove.
         recoveryCredit:
           oneOf:
             - type: "null"
@@ -1522,6 +1536,9 @@ components:
           type: string
           enum: [giorni, ore]
           description: "\"A ore\" o \"a giorni\" per recupero (senza `recoveryCreditId`), assenza e permesso_104; il permesso è sempre a ore"
+        version:
+          type: string
+          description: Solo nel PATCH; la `version` della richiesta come l'ha vista l'app. Se è cambiata, 409 «La richiesta è cambiata, ricarica»
     BalanceFigures:
       type: object
       required: [remaining, used, reference]

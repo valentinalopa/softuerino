@@ -19,6 +19,7 @@ import { ForbiddenError, purgeTaskArchive } from "@/lib/task-archive";
 import * as eventsService from "@/lib/services/events";
 import * as presenceService from "@/lib/services/presence";
 import * as leaveService from "@/lib/services/leave";
+import { leaveVersion } from "@/lib/leave-format";
 import * as timeService from "@/lib/services/time";
 import * as tasksService from "@/lib/services/tasks";
 import * as clientsService from "@/lib/services/clients";
@@ -333,6 +334,7 @@ function leaveInputFromForm(formData: FormData): leaveService.LeaveRequestInput 
     note: formData.get("note"),
     recoveryCreditId: formData.get("recoveryCreditId"),
     unit: formData.get("unit"),
+    version: formData.get("version"),
     userId: formData.get("userId"),
   };
 }
@@ -368,11 +370,11 @@ export async function updateOwnLeaveRequest(requestId: string, formData: FormDat
 // Chi ha fatto una richiesta può ritirarla finché è in attesa: sparisce, e
 // chi doveva approvarla viene avvisato. Una malattia registrata per errore la
 // toglie un admin (riporta in attesa e rifiuta) o il super admin.
-export async function withdrawOwnLeaveRequest(requestId: string): Promise<ActionResult> {
+export async function withdrawOwnLeaveRequest(requestId: string, seenVersion?: string): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
   try {
-    const { notify } = await leaveService.withdrawOwnLeaveRequest(user, requestId);
+    const { notify } = await leaveService.withdrawOwnLeaveRequest(user, requestId, undefined, seenVersion);
     revalidateLeavePaths(user.id);
     after(notify);
   } catch (err) {
@@ -382,7 +384,8 @@ export async function withdrawOwnLeaveRequest(requestId: string): Promise<Action
 
 export async function updateLeaveStatus(
   requestId: string,
-  status: "approved" | "rejected"
+  status: "approved" | "rejected",
+  seenVersion?: string
 ): Promise<ActionResult> {
   // Admin e super admin; oppure chi ha il permesso "Approvare le richieste"
   // sulla persona (es. il responsabile del suo reparto). Mai le proprie,
@@ -392,7 +395,7 @@ export async function updateLeaveStatus(
 
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
-    select: { type: true, userId: true },
+    select: { userId: true, status: true, ...leaveService.VERSION_SELECT },
   });
   if (!request) {
     return { error: "Richiesta non trovata" };
@@ -415,12 +418,19 @@ export async function updateLeaveStatus(
 
   // updateMany invece di update: se la richiesta non è più pending (es. già
   // gestita da un altro admin) non deve esplodere con P2025, solo non fare nulla.
+  // Condizionato anche sulla versione vista: se chi l'ha fatta la modifica mentre il
+  // responsabile decide, la decisione non passa su dati che non ha visto.
+  const seen = leaveService.seenVersion(seenVersion);
+  if (request.status === "pending" && seen && seen !== leaveVersion(request)) {
+    return { error: leaveService.REQUEST_CHANGED };
+  }
   const updated = await prisma.leaveRequest.updateMany({
-    where: { id: requestId, status: "pending" },
+    where: { id: requestId, ...leaveService.versionWhere(request) },
     data: { status: nextStatus },
   });
   if (updated.count === 0) {
-    return { error: "Richiesta già gestita o non più in attesa" };
+    const stale = await leaveService.staleRequestError(requestId, "Richiesta già gestita o non più in attesa");
+    return { error: stale.message };
   }
   revalidateLeavePaths(request.userId);
   after(() => notifyLeaveDecision(requestId, currentUser.id));

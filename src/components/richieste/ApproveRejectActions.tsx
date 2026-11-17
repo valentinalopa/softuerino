@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { unexpectedErrorMessage } from "@/lib/action-error";
 import { toast } from "@/lib/toast";
 
-export function ApproveRejectActions({ requestId }: { requestId: string }) {
+export function ApproveRejectActions({ requestId, version }: { requestId: string; version?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -15,7 +15,7 @@ export function ApproveRejectActions({ requestId }: { requestId: string }) {
     setError(null);
     startTransition(async () => {
       try {
-        const result = await updateLeaveStatus(requestId, status);
+        const result = await updateLeaveStatus(requestId, status, version);
         if (result?.error) {
           setError(result.error);
         } else {
