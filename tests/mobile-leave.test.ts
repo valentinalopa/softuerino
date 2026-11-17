@@ -103,6 +103,32 @@ describe("richieste dell'app", () => {
     assert.equal((await res.json()).preview.after, null);
   });
 
+  it("punto 2: anteprima in modifica come il form web — la richiesta in attesa non è nel saldo, 8h modificata a 6h scala 6h", async () => {
+    await makeUser("p3");
+    await prisma.user.update({ where: { id: "p3" }, data: { dailyHours: 8 } });
+    await prisma.leaveBalanceStart.create({
+      data: { userId: "p3", month: new Date(2026, 8, 1), ferieHours: 22.42, rolHours: 40, ferieHoursPerYear: 86.67, rolHoursPerYear: 14.12 },
+    });
+    await login("p3");
+    const slot = (endTime: string) => ({ type: "permesso", startDate: "2026-12-01", startTime: "09:00", endTime });
+    const previewOf = async (endTime: string) => (await (await postPreview(send("POST", "/leave-requests/preview", slot(endTime)))).json()).preview;
+    const before6 = await previewOf("15:00");
+    assert.equal(before6.requested, 6);
+    // Richiesta in attesa di 8h (09–17), poi modificata a 6h (09–15).
+    let res = await postRequest(send("POST", "/leave-requests", slot("17:00")));
+    assert.equal(res.status, 201);
+    const { request } = await res.json();
+    // Con la richiesta in attesa l'anteprima di 6h è identica a quella senza: le richieste
+    // in attesa non entrano nel saldo (come nel form web), quindi non si conta due volte.
+    const with6 = await previewOf("15:00");
+    assert.equal(with6.requested, 6);
+    assert.deepEqual(with6, before6);
+    assert.equal(with6.after, Math.round((with6.available - 6) * 100) / 100);
+    res = await patchRequest(send("PATCH", `/leave-requests/${request.id}`, slot("15:00")), idCtx(request.id));
+    assert.equal(res.status, 200);
+    assert.deepEqual(await previewOf("15:00"), before6);
+  });
+
   it("senza Bearer tutte le route rispondono 401 JSON", async () => {
     const responses = [
       await getRequests(send("GET", "/leave-requests")),
