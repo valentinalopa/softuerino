@@ -237,14 +237,27 @@ describe("richieste dell'app", () => {
     await login("a8");
     for (const body of [
       { type: "ferie" },
-      { type: "ferie", startDate: "2027-02-30" },
       { type: "ferie", startDate: "01/03/2027" },
+      { type: "ferie", startDate: "2027-13-01" },
+      { type: "ferie", startDate: "2027-03-01", endDate: "abc" },
       { type: "ferie", startDate: "2027-03-05", endDate: "2027-03-01" },
     ]) {
       assert.equal((await postRequest(send("POST", "/leave-requests", body))).status, 400, JSON.stringify(body));
     }
     const nonJson = await postRequest(new Request(`${URL_BASE}/leave-requests`, { method: "POST", body: "no" }));
     assert.equal(nonJson.status, 400);
+  });
+
+  it("punto 1 (come il web): nessun controllo calendario sul giorno, solo date leggibili; la fine è ignorata per i permessi a ore", async () => {
+    await makeUser("a9");
+    await login("a9");
+    // Il web (parseLeaveForm, PR #50) non controlla che il giorno esista: new Date lo normalizza.
+    const odd = await postRequest(send("POST", "/leave-requests", { type: "ferie", startDate: "2027-02-30" }));
+    assert.equal(odd.status, 201);
+    assert.equal((await odd.json()).request.startDate, "2027-03-02");
+    // A ore la data di fine è ignorata, anche se non è una data.
+    const hourly = await postRequest(send("POST", "/leave-requests", { type: "permesso", startDate: "2027-04-06", endDate: "abc", startTime: "09:00", endTime: "11:00" }));
+    assert.equal(hourly.status, 201);
   });
 
   it("userId nel corpo viene ignorato: la richiesta è sempre per sé, anche per un admin", async () => {

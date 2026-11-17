@@ -165,7 +165,6 @@ export async function parseLeaveInput(
     throw new ValidationError("Tipo di richiesta non valido");
   }
   if (!startDateRaw) throw new ValidationError("La data è obbligatoria");
-  if (!isRealDay(startDateRaw)) throw new ValidationError("Data non valida");
 
   // Un recupero può smaltire un recupero da fare registrato dal super admin:
   // in quel caso il motivo è già lì e la nota diventa facoltativa.
@@ -190,7 +189,6 @@ export async function parseLeaveInput(
       (recoveryCredit ? recoveryCredit.unit === "ore" : str(input.unit) === "ore"));
   const effectiveEndDateRaw = isHourly ? startDateRaw : endDateRaw;
   // La fine conta solo per le richieste a giorni (a ore è ignorata, come sul web).
-  if (!isRealDay(effectiveEndDateRaw)) throw new ValidationError("Data non valida");
   if (effectiveEndDateRaw < startDateRaw) {
     throw new ValidationError("La data di fine non può precedere quella di inizio");
   }
@@ -212,6 +210,11 @@ export async function parseLeaveInput(
 
   const startDate = localDate(startDateRaw);
   const endDate = localDate(effectiveEndDateRaw);
+  // Come il web non si controlla che il giorno esista nel calendario; resta solo
+  // la rete di sicurezza per un testo che non è una data (altrimenti Prisma darebbe 500).
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new ValidationError("Data non valida");
+  }
   // Festivi e weekend non si chiedono: non pesano su ferie, permessi o assenze.
   if (isHourly ? !isWorkingDay(startDate) : countedLeaveDays(startDate, endDate) === 0) {
     throw new ValidationError(
