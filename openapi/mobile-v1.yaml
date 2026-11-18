@@ -529,6 +529,72 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/pending-approval:
+    get:
+      operationId: listPendingApprovals
+      summary: Richieste in attesa che l'utente può decidere
+      description: Come la vista web "Da approvare". Admin tutte tranne le proprie; responsabili quelle delle persone su cui hanno il permesso "Approvare" (tutti i loro reparti), senza malattia e permesso 104. `version` va rimandata nella decisione.
+      responses:
+        "200":
+          description: Elenco (vuoto se l'utente non può approvare)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ApprovalRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/{id}/decision:
+    post:
+      operationId: decideLeaveRequest
+      summary: Approva o rifiuta una richiesta di un'altra persona
+      description: Stesse regole del web. Mai le proprie (nemmeno admin); malattia e 104 solo admin; malattia approvata → `registrata`. Versione obbligatoria. Mail di esito a chi ha fatto la richiesta.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, version]
+              properties:
+                status: { type: string, enum: [approved, rejected] }
+                version: { type: string, description: "`version` della richiesta come l'app l'ha vista" }
+      responses:
+        "200":
+          description: Richiesta aggiornata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/ApprovalRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/leave-requests/preview:
     post:
       operationId: previewLeaveRequest
@@ -1505,6 +1571,19 @@ components:
                 unit:
                   type: string
                   enum: [giorni, ore]
+    ApprovalRequest:
+      description: Richiesta di un'altra persona vista da chi la decide (malattia e 104 solo per gli admin)
+      allOf:
+        - $ref: "#/components/schemas/LeaveRequest"
+        - type: object
+          required: [user]
+          properties:
+            user:
+              type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
     LeaveRequestInput:
       type: object
       required: [type, startDate]

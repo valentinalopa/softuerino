@@ -14,11 +14,15 @@ import { getRecoveryCreditsForUsers, toOpenRecoveryCredits } from "@/lib/recover
 import { countedLeaveDays, isWorkingDay, slotsClash } from "@/lib/leave-days";
 import {
   LEAVE_SNAPSHOT_SELECT,
+  notifyLeaveDecision,
   notifyLeaveWithdrawn,
   notifyNewLeaveRequest,
 } from "@/lib/email/notifications";
+import { canOnPerson, peopleInScope } from "@/lib/permissions";
 import {
   isAdminRole,
+  isSensitiveLeave,
+  SENSITIVE_LEAVE_TYPES,
   leaveTypesFor,
   NOTE_REQUIRED_LEAVE_TYPES,
   OPTIONAL_HOURLY_LEAVE_TYPES,
@@ -445,6 +449,106 @@ export async function withdrawOwnLeaveRequest(
   return {
     notify: async () => {
       await deps.notifyLeaveWithdrawn(request, actor.id);
+    },
+  };
+}
+
+// --- Decisione: approvare o rifiutare (web "Da approvare" e app) ---
+
+export type LeaveDecision = "approved" | "rejected";
+type DecisionDeps = { notifyLeaveDecision: (requestId: string, actorId: string) => Promise<unknown> };
+const realDecisionDeps: DecisionDeps = { notifyLeaveDecision };
+
+// Richiesta di un'altra persona vista da chi la decide. Niente mascheramento:
+// malattia e 104 li vedono e li decidono solo gli admin (per gli altri sono
+// esclusi dall'elenco e la decisione risponde 403).
+export type ApprovalRequestView = LeaveRequestView & { user: { id: string; name: string } };
+
+const APPROVAL_INCLUDE = { ...REQUEST_INCLUDE, user: { select: { id: true, name: true } } } as const;
+
+function toApprovalView(row: RequestRow & { user: { id: string; name: string } }): ApprovalRequestView {
+  return { ...toView(row), user: row.user };
+}
+
+// Le richieste in attesa che chi agisce può decidere, come la vista web "Da
+// approvare" (app/(app)/richieste/page.tsx): admin tutte tranne le proprie;
+// gli altri le persone su cui hanno il permesso "Approvare" (mai sé stessi),
+// senza malattia e 104.
+export async function listPendingApprovals(actor: LeaveActor): Promise<ApprovalRequestView[]> {
+  const isAdmin = isAdminRole(actor.role);
+  const scope = isAdmin ? "all" : await peopleInScope(actor, "approvare");
+  if (scope !== "all" && scope.length === 0) return [];
+  const rows = await prisma.leaveRequest.findMany({
+    where: {
+      status: "pending",
+      ...(isAdmin ? {} : { type: { notIn: [...SENSITIVE_LEAVE_TYPES] } }),
+      user: scope === "all" ? { id: { not: actor.id } } : { id: { in: scope } },
+    },
+    include: APPROVAL_INCLUDE,
+    orderBy: { startDate: "asc" },
+  });
+  return rows.map(toApprovalView);
+}
+
+// Approva o rifiuta una richiesta in attesa (era updateLeaveStatus in
+// lib/actions.ts). Admin e super admin; oppure chi ha il permesso "Approvare
+// le richieste" sulla persona (es. il responsabile del suo reparto). Mai le
+// proprie, nemmeno per gli admin: le decide un altro admin. `seenVersionRaw`:
+// versione vista da chi decide; se la richiesta è cambiata nel frattempo → 409.
+// `requireVersion` (app): senza versione → 409 come se fosse cambiata; il web
+// la passa sempre ma resta facoltativa come prima.
+export async function decideLeaveRequest(
+  actor: LeaveActor,
+  requestId: string,
+  status: unknown,
+  seenVersionRaw?: unknown,
+  opts: { requireVersion?: boolean; deps?: DecisionDeps } = {}
+): Promise<{ userId: string; request: ApprovalRequestView; notify: () => Promise<void> }> {
+  const deps = opts.deps ?? realDecisionDeps;
+  if (actor.impersonating) throw new ForbiddenError(READ_ONLY_MESSAGE);
+  if (status !== "approved" && status !== "rejected") {
+    throw new ValidationError("Esito non valido: approved o rejected");
+  }
+  const request = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    select: { userId: true, status: true, ...VERSION_SELECT },
+  });
+  if (!request) throw new NotFoundError("Richiesta non trovata");
+  if (request.userId === actor.id) {
+    throw new ForbiddenError("Non puoi decidere le tue richieste: le approva un altro admin");
+  }
+  if (!isAdminRole(actor.role)) {
+    // Il responsabile non vede malattie e permessi 104 (dati sanitari): non
+    // li gestisce, li decide un admin.
+    if (isSensitiveLeave(request.type) || !(await canOnPerson(actor, "approvare", request.userId))) {
+      throw new ForbiddenError("Non autorizzato");
+    }
+  }
+
+  // La malattia non si "approva": una malattia riportata in attesa e poi
+  // confermata torna "registrata", come quando nasce.
+  const nextStatus = status === "approved" && request.type === "malattia" ? "registrata" : status;
+
+  // updateMany condizionato: se la richiesta non è più pending (es. già gestita
+  // da un altro admin) o è stata modificata dopo che chi decide l'ha vista, non
+  // passa.
+  const seen = seenVersion(seenVersionRaw);
+  if (request.status === "pending" && ((seen && seen !== leaveVersion(request)) || (!seen && opts.requireVersion))) {
+    throw new ConflictError(REQUEST_CHANGED);
+  }
+  const updated = await prisma.leaveRequest.updateMany({
+    where: { id: requestId, ...versionWhere(request) },
+    data: { status: nextStatus },
+  });
+  if (updated.count === 0) {
+    throw await staleRequestError(requestId, "Richiesta già gestita o non più in attesa");
+  }
+  const row = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: requestId }, include: APPROVAL_INCLUDE });
+  return {
+    userId: request.userId,
+    request: toApprovalView(row),
+    notify: async () => {
+      await deps.notifyLeaveDecision(requestId, actor.id);
     },
   };
 }

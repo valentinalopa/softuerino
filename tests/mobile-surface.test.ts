@@ -35,6 +35,8 @@ describe("superficie dell'API mobile", () => {
       "/v1/events/[id]",
       "/v1/leave-requests",
       "/v1/leave-requests/[id]",
+      "/v1/leave-requests/[id]/decision",
+      "/v1/leave-requests/pending-approval",
       "/v1/leave-requests/preview",
       "/v1/licenses",
       "/v1/licenses/[id]",

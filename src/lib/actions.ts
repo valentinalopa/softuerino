@@ -19,7 +19,6 @@ import { ForbiddenError, purgeTaskArchive } from "@/lib/task-archive";
 import * as eventsService from "@/lib/services/events";
 import * as presenceService from "@/lib/services/presence";
 import * as leaveService from "@/lib/services/leave";
-import { leaveVersion } from "@/lib/leave-format";
 import * as timeService from "@/lib/services/time";
 import * as tasksService from "@/lib/services/tasks";
 import * as clientsService from "@/lib/services/clients";
@@ -27,16 +26,11 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/er
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
-import { canOnPerson } from "@/lib/permissions";
-import {
-  notifyEventInvite,
-  notifyLeaveDecision,
-} from "@/lib/email/notifications";
+import { notifyEventInvite } from "@/lib/email/notifications";
 import {
   ROLES,
   assignableRoles,
   isAdminRole,
-  isSensitiveLeave,
   EMPLOYMENT_TYPES,
   CLIENT_CATEGORIES,
   PARTITA_IVA_ASSENZE_DAYS_PER_YEAR,
@@ -387,53 +381,18 @@ export async function updateLeaveStatus(
   status: "approved" | "rejected",
   seenVersion?: string
 ): Promise<ActionResult> {
-  // Admin e super admin; oppure chi ha il permesso "Approvare le richieste"
-  // sulla persona (es. il responsabile del suo reparto). Mai le proprie,
-  // nemmeno per gli admin: le decide un altro admin.
+  // Regole nel service (decideLeaveRequest), condivise con l'app: admin e
+  // responsabili col permesso "Approvare", mai le proprie, malattia e 104 solo
+  // admin, versione vista → 409 se la richiesta è cambiata.
   const currentUser = await requireWritableUser();
   if (!currentUser) return READ_ONLY_ERROR;
-
-  const request = await prisma.leaveRequest.findUnique({
-    where: { id: requestId },
-    select: { userId: true, status: true, ...leaveService.VERSION_SELECT },
-  });
-  if (!request) {
-    return { error: "Richiesta non trovata" };
+  try {
+    const { userId, notify } = await leaveService.decideLeaveRequest(currentUser, requestId, status, seenVersion);
+    revalidateLeavePaths(userId);
+    after(notify);
+  } catch (err) {
+    return eventServiceError(err);
   }
-  if (request.userId === currentUser.id) {
-    return { error: "Non puoi decidere le tue richieste: le approva un altro admin" };
-  }
-  if (!isAdminRole(currentUser.role)) {
-    // Il responsabile non vede malattie e permessi 104 (dati sanitari): non
-    // li gestisce, li decide un admin.
-    if (isSensitiveLeave(request.type) || !(await canOnPerson(currentUser, "approvare", request.userId))) {
-      return { error: "Non autorizzato" };
-    }
-  }
-
-  // La malattia non si "approva": una malattia riportata in attesa e poi
-  // confermata torna "registrata", come quando nasce.
-  const nextStatus =
-    status === "approved" && request.type === "malattia" ? "registrata" : status;
-
-  // updateMany invece di update: se la richiesta non è più pending (es. già
-  // gestita da un altro admin) non deve esplodere con P2025, solo non fare nulla.
-  // Condizionato anche sulla versione vista: se chi l'ha fatta la modifica mentre il
-  // responsabile decide, la decisione non passa su dati che non ha visto.
-  const seen = leaveService.seenVersion(seenVersion);
-  if (request.status === "pending" && seen && seen !== leaveVersion(request)) {
-    return { error: leaveService.REQUEST_CHANGED };
-  }
-  const updated = await prisma.leaveRequest.updateMany({
-    where: { id: requestId, ...leaveService.versionWhere(request) },
-    data: { status: nextStatus },
-  });
-  if (updated.count === 0) {
-    const stale = await leaveService.staleRequestError(requestId, "Richiesta già gestita o non più in attesa");
-    return { error: stale.message };
-  }
-  revalidateLeavePaths(request.userId);
-  after(() => notifyLeaveDecision(requestId, currentUser.id));
 }
 
 // Un admin può sempre riportare in attesa una richiesta già decisa
