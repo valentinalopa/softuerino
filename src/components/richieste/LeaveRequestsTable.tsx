@@ -8,6 +8,7 @@ import {
   formatDuration,
   formatRecoveryCredit,
   type LeaveRequestRow,
+  leaveVersion,
 } from "@/lib/leave-format";
 import { Badge } from "@/components/ui/badge";
 import type { Tone } from "@/lib/tones";
@@ -68,7 +69,7 @@ function RequestActions({
     if (currentUserId && request.userId === currentUserId) {
       return <span className="text-xs text-muted-foreground">La decide un altro admin</span>;
     }
-    return <ApproveRejectActions requestId={request.id} />;
+    return <ApproveRejectActions requestId={request.id} version={leaveVersion(request)} />;
   }
   return pendingOnly ? null : <RevertToPendingAction requestId={request.id} compact={compact} />;
 }

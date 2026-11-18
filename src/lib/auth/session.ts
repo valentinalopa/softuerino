@@ -1,10 +1,10 @@
 import "server-only";
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { MOBILE_REQUEST_HEADER, SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 import { refreshOidcSession, type OidcTokens } from "@/lib/auth/oidc";
 import { syncUserOrg } from "@/lib/departments";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/crypto/secret-box";
@@ -15,6 +15,8 @@ const SESSION_DURATION_DAYS = 30; // durata massima, anche con uso continuo
 // Senza attività per questi giorni la sessione scade (dispositivo dimenticato
 // acceso, cookie rubato e non usato subito...).
 const SESSION_IDLE_DAYS = 3;
+// App iPhone (client "ios"): inattività massima 30 giorni, rinnovata a ogni uso.
+const MOBILE_IDLE_DAYS = 30;
 // lastSeenAt si aggiorna al massimo una volta ogni tanto, non a ogni richiesta.
 const LAST_SEEN_REFRESH_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -42,9 +44,37 @@ function openToken(value: string | null) {
   }
 }
 
-export async function createSession(
+// "ios-dev": app in sviluppo (Simulatore), nata dal client Keycloak di sviluppo.
+// Per Bearer, durata e logout vale come "ios"; cambia solo il client per il refresh.
+export type SessionClient = "web" | "ios" | "ios-dev";
+
+function isMobileClient(client: string) {
+  return client === "ios" || client === "ios-dev";
+}
+
+// Giorni senza attività dopo i quali la sessione scade, per client.
+function idleDays(client: string) {
+  return isMobileClient(client) ? MOBILE_IDLE_DAYS : SESSION_IDLE_DAYS;
+}
+
+// Crea la riga di sessione e restituisce il token in chiaro (nel DB va solo
+// l'hash), senza impostare cookie: lo usa l'app iPhone, che il token lo tiene
+// nel Keychain e lo manda come "Authorization: Bearer".
+export async function issueSessionToken(
   userId: string,
-  { authMethod, tokens }: { authMethod: AuthMethod; tokens?: OidcTokens }
+  {
+    authMethod,
+    client = "web",
+    oidcSid,
+    idToken,
+    refreshToken,
+  }: {
+    authMethod: AuthMethod;
+    client?: SessionClient;
+    oidcSid?: string | null;
+    idToken?: string | null;
+    refreshToken?: string | null;
+  }
 ) {
   const token = randomBytes(32).toString("hex");
   const now = new Date();
@@ -52,11 +82,19 @@ export async function createSession(
 
   // Pulizia delle sessioni scadute o inattive (di chiunque) a ogni login:
   // nessun cron necessario. Le impersonificazioni ancora aperte si chiudono.
+  // La soglia di inattività dipende dal client (web 3 giorni, ios 30).
   const expired = await prisma.session.findMany({
     where: {
       OR: [
         { expiresAt: { lt: now } },
-        { lastSeenAt: { lt: new Date(now.getTime() - SESSION_IDLE_DAYS * DAY_MS) } },
+        {
+          client: "web",
+          lastSeenAt: { lt: new Date(now.getTime() - SESSION_IDLE_DAYS * DAY_MS) },
+        },
+        {
+          client: "ios",
+          lastSeenAt: { lt: new Date(now.getTime() - MOBILE_IDLE_DAYS * DAY_MS) },
+        },
       ],
     },
     select: { id: true },
@@ -76,13 +114,29 @@ export async function createSession(
         expiresAt,
         lastSeenAt: now,
         authMethod,
-        idToken: sealToken(tokens?.idToken),
-        refreshToken: sealToken(tokens?.refreshToken),
+        client,
+        idToken: sealToken(idToken),
+        refreshToken: sealToken(refreshToken),
         ssoCheckedAt: authMethod === "oidc" ? now : null,
-        oidcSid: tokens?.sid ?? null,
+        oidcSid: oidcSid ?? null,
       },
     }),
   ]);
+
+  return { token, expiresAt };
+}
+
+export async function createSession(
+  userId: string,
+  { authMethod, tokens }: { authMethod: AuthMethod; tokens?: OidcTokens }
+) {
+  const { token, expiresAt } = await issueSessionToken(userId, {
+    authMethod,
+    client: "web",
+    oidcSid: tokens?.sid,
+    idToken: tokens?.idToken,
+    refreshToken: tokens?.refreshToken,
+  });
 
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
@@ -107,6 +161,7 @@ const SSO_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 async function verifySsoSession(session: {
   id: string;
   userId: string;
+  client: string;
   authMethod: string | null;
   refreshToken: string | null;
   ssoCheckedAt: Date | null;
@@ -126,7 +181,12 @@ async function verifySsoSession(session: {
   const refreshToken = openToken(session.refreshToken);
   if (!refreshToken) return true;
 
-  const result = await refreshOidcSession(refreshToken);
+  // Il refresh_token appartiene al client che ha fatto il login: web
+  // (confidenziale) o ios (pubblico).
+  const result = await refreshOidcSession(
+    refreshToken,
+    session.client === "ios" || session.client === "ios-dev" ? session.client : "web"
+  );
   if (result.status === "ended") {
     await prisma.$transaction([
       closeImpersonationLogs(session.id),
@@ -150,9 +210,31 @@ async function verifySsoSession(session: {
   return true;
 }
 
+// Token dall'header "Authorization: Bearer <token>" (app iPhone), se presente.
+function bearerFrom(header: string | null) {
+  const match = header?.match(/^Bearer\s+(\S+)\s*$/i);
+  return match ? match[1] : null;
+}
+
+// Il Bearer vale SOLO sulle richieste sotto /api/mobile/, riconosciute
+// dall'header interno impostato da src/proxy.ts (mai dal client). Lì, se c'è un
+// header Authorization, vale solo quello (Bearer valido = sessione "ios",
+// altrimenti nessuna sessione) e il cookie web viene ignorato. Ovunque altrove
+// il Bearer è ignorato e si usa il cookie, che vale solo per le sessioni "web".
 export const getSession = cache(async () => {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const requestHeaders = await headers();
+  const authorization = requestHeaders.get("authorization");
+  const isMobileRequest = requestHeaders.get(MOBILE_REQUEST_HEADER) === "1";
+  let token: string | null | undefined;
+  let expectedClient: SessionClient;
+  if (isMobileRequest && authorization !== null) {
+    token = bearerFrom(authorization);
+    expectedClient = "ios";
+  } else {
+    const cookieStore = await cookies();
+    token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    expectedClient = "web";
+  }
   if (!token) return null;
 
   const session = await prisma.session.findUnique({
@@ -163,18 +245,27 @@ export const getSession = cache(async () => {
   const now = Date.now();
   if (
     !session ||
+    (expectedClient === "ios" ? !isMobileClient(session.client) : session.client !== expectedClient) ||
     session.expiresAt.getTime() < now ||
-    session.lastSeenAt.getTime() < now - SESSION_IDLE_DAYS * DAY_MS
+    session.lastSeenAt.getTime() < now - idleDays(session.client) * DAY_MS
   ) {
     return null;
   }
+  // Anche le sessioni dell'app iPhone si verificano con Keycloak (ogni 5 minuti
+  // al massimo), con il client mobile: vedi verifySsoSession.
   if (!(await verifySsoSession(session))) {
     return null;
   }
   if (session.lastSeenAt.getTime() < now - LAST_SEEN_REFRESH_MS) {
     await prisma.session.updateMany({
       where: { id: session.id },
-      data: { lastSeenAt: new Date(now) },
+      data: {
+        lastSeenAt: new Date(now),
+        // ios: la scadenza scorre con l'uso (30 giorni dall'ultimo utilizzo).
+        ...(isMobileClient(session.client)
+          ? { expiresAt: new Date(now + SESSION_DURATION_DAYS * DAY_MS) }
+          : {}),
+      },
     });
   }
 
@@ -358,6 +449,25 @@ export async function destroySession(): Promise<{ sso: boolean; idToken: string 
 
   cookieStore.delete(SESSION_COOKIE_NAME);
   return { sso, idToken };
+}
+
+// Logout dell'app iPhone: revoca la sessione del token Bearer della richiesta.
+// Restituisce false se non c'era (già scaduta o revocata).
+export async function revokeBearerSession() {
+  const requestHeaders = await headers();
+  if (requestHeaders.get(MOBILE_REQUEST_HEADER) !== "1") return false;
+  const token = bearerFrom(requestHeaders.get("authorization"));
+  if (!token) return false;
+  const session = await prisma.session.findUnique({
+    where: { token: hashToken(token) },
+    select: { id: true, client: true },
+  });
+  if (!session || !isMobileClient(session.client)) return false;
+  await prisma.$transaction([
+    closeImpersonationLogs(session.id),
+    prisma.session.delete({ where: { id: session.id } }),
+  ]);
+  return true;
 }
 
 // Back-channel logout: chiude tutte le sessioni Softuerino della sessione

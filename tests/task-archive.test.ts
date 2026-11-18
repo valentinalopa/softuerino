@@ -2,6 +2,7 @@
 // e diverso da quello di retention.test.ts: i file di test girano in parallelo):
 //   DATABASE_URL=file:/tmp/softuerino-test/archivio.db npx prisma migrate deploy
 //   DATABASE_URL=file:/tmp/softuerino-test/archivio.db npx tsx --test tests/task-archive.test.ts
+import "./helpers/db-guard";
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { prisma } from "../src/lib/prisma";

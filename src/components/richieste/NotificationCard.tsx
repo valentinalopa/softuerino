@@ -1,7 +1,7 @@
 import { TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LEAVE_TYPE_LABELS } from "@/lib/constants";
-import { formatRecoveryCredit, formatWhen, type RecoveryCreditRef } from "@/lib/leave-format";
+import { formatRecoveryCredit, formatWhen, leaveVersion, type RecoveryCreditRef } from "@/lib/leave-format";
 import { ApproveRejectActions } from "@/components/richieste/ApproveRejectActions";
 import { DeleteRequestButton } from "@/components/richieste/LeaveRequestsTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,7 +105,7 @@ export function TeamPendingItem({
         )}
       </div>
       <div className="flex items-start gap-1">
-        <ApproveRejectActions requestId={request.id} />
+        <ApproveRejectActions requestId={request.id} version={leaveVersion(request)} />
         {/* Staccato da "Rifiuta": eliminare non è un modo di decidere. */}
         {canDelete && (
           <>

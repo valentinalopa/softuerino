@@ -7,6 +7,8 @@ import { decryptSecret, encryptSecret, isEncryptionConfigured } from "@/lib/cryp
 import { canAccessDepartment, canAccessLicense, licenseScopeFor, type LicenseMode } from "@/lib/licenses/access";
 import { LICENSE_KINDS, type LicenseKind } from "@/lib/constants";
 import { RENEWAL_PERIODS } from "@/lib/licenses/expiry";
+import { assertRevealQuota, confirmRevealQuota } from "@/lib/licenses/reveal-limit";
+import { RateLimitError } from "@/lib/services/errors";
 
 type ActionResult = { error: string } | undefined;
 
@@ -303,13 +305,22 @@ export async function revealLicenseKey(
   } catch {
     return { error: "Dato non leggibile (chiave di cifratura del server cambiata?)" };
   }
-  await prisma.$transaction(async (tx) => {
-    const activation =
-      existing ?? (await tx.licenseActivation.create({ data: { licenseId, label, note, createdById: found.user.id } }));
-    await tx.licenseKeyAccess.create({
-      data: { licenseId, userId: found.user.id, action, field, activationId: activation.id, usedFor: activation.label },
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Limite giornaliero (10, ora di Roma, super admin escluso), dentro la transazione:
+      // oltre il limite non si scrive né la riga di registro né una nuova attivazione.
+      await assertRevealQuota(tx, found.user);
+      const activation =
+        existing ?? (await tx.licenseActivation.create({ data: { licenseId, label, note, createdById: found.user.id } }));
+      await tx.licenseKeyAccess.create({
+        data: { licenseId, userId: found.user.id, action, field, activationId: activation.id, usedFor: activation.label },
+      });
+      await confirmRevealQuota(tx, found.user);
     });
-  });
+  } catch (err) {
+    if (err instanceof RateLimitError) return { error: err.message };
+    throw err;
+  }
   revalidatePath("/utilita/licenze");
   revalidatePath(`/utilita/licenze/${licenseId}`);
   return { key };

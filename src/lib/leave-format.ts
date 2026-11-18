@@ -137,3 +137,28 @@ export function hourBalanceDetail(
 }
 
 export const MISSING_BALANCE_TEXT = "Da impostare dalla busta paga (super admin)";
+
+// "Versione" di una richiesta in attesa: cambia se cambia uno dei campi che
+// chi la modifica può toccare. Serve a non far passare due modifiche (o una
+// decisione) fatte su dati diversi da quelli che chi agisce ha visto.
+export function leaveVersion(r: {
+  type: string;
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  note?: string | null;
+  recoveryCreditId?: string | null;
+}) {
+  return JSON.stringify([
+    r.type,
+    r.startDate.getTime(),
+    r.endDate.getTime(),
+    r.hours,
+    r.startTime ?? null,
+    r.endTime ?? null,
+    r.note ?? null,
+    r.recoveryCreditId ?? null,
+  ]);
+}

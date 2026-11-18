@@ -50,6 +50,8 @@ export type EditableLeaveRequest = {
   endTime?: string | null;
   note?: string | null;
   recoveryCreditId?: string | null;
+  // Versione vista (leaveVersion), rimandata al salvataggio.
+  version?: string;
 };
 
 export function NewLeaveRequestDialog({
@@ -132,6 +134,7 @@ export function NewLeaveRequestDialog({
     setError(null);
     setPending(true);
     try {
+      if (editing?.version) formData.set("version", editing.version);
       const result = editing
         ? await updateOwnLeaveRequest(editing.id, formData)
         : await createLeaveRequest(formData);

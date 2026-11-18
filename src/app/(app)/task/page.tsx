@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { managedDepartmentIds } from "@/lib/departments";
 import { isAdminRole } from "@/lib/constants";
-import { archiveScope, canViewTaskArchive, listArchivedTasks, recentDoneTaskWhere } from "@/lib/task-archive";
+import { taskListQuery } from "@/lib/services/tasks";
+import { archiveScope, canViewTaskArchive, listArchivedTasks } from "@/lib/task-archive";
 import { EmptyArchiveButton } from "@/components/task/EmptyArchiveButton";
 import { NewTaskDialog } from "@/components/task/NewTaskDialog";
 import { TaskFilters } from "@/components/task/TaskFilters";
@@ -39,20 +40,9 @@ export default async function TaskPage({
   const [tasks, users, clients] = await Promise.all([
     view === "archivio"
       ? listArchivedTasks(currentUser, managedIds, { userId: userFilter, clientId: clientParam })
-      : prisma.task.findMany({
-          where: {
-            ...(userFilter ? { assignees: { some: { userId: userFilter } } } : {}),
-            ...(clientParam ? { clientId: clientParam } : {}),
-            ...(view === "attivi" ? { status: { not: "done" } } : recentDoneTaskWhere(new Date())),
-          },
-          include: {
-            client: { select: { id: true, name: true } },
-            assignees: {
-              include: { user: { select: { id: true, name: true } } },
-            },
-          },
-          orderBy: { createdAt: "desc" },
-        }),
+      : prisma.task.findMany(
+          taskListQuery(view === "attivi" ? "active" : "done", { userId: userFilter, clientId: clientParam })
+        ),
     prisma.user.findMany({
       where: { active: true },
       orderBy: { name: "asc" },

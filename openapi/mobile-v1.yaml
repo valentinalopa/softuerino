@@ -1,0 +1,1988 @@
+openapi: 3.1.0
+info:
+  title: Softuerino - API mobile v1
+  version: 1.0.0
+  description: |
+    API dell'app iPhone di Softuerino. Autenticazione con token di sessione
+    `Authorization: Bearer <token>` (il cookie web non vale). Tutte le risposte
+    hanno `Cache-Control: private, no-store`.
+
+    ## Scelta automatica del percorso (locale o pubblico)
+    L'app prova `https://time.local.colibrivision.it` all'avvio, quando torna in
+    primo piano e quando cambia la rete, senza azioni dell'utente. Se risponde usa
+    quello, altrimenti usa `https://time.colibrivision.it`. Il server decide sempre
+    in base alla rete reale della richiesta, mai in base a ciò che dichiara l'app.
+
+    ## Super admin
+    Da una rete interna fidata (LAN 192.168.1.0/24, VPN di controllo
+    192.168.11.0/24, VPN 192.168.5.0/24) il super admin ha i suoi poteri
+    (`role = super_admin`, `superAdminActive = true`). Dal percorso pubblico il
+    ruolo effettivo diventa `admin` (non è un errore e non diventa membro):
+    `superAdminActive = false`. Le funzioni di super admin non esistono
+    nell'API mobile. L'app usa `superAdminActive` per l'indicatore
+    "super admin capabilities ok".
+servers:
+  - url: https://time.colibrivision.it/api/mobile
+    description: Percorso pubblico (SSO)
+  - url: https://time.local.colibrivision.it/api/mobile
+    description: Percorso locale (LAN e VPN)
+security:
+  - bearerAuth: []
+paths:
+  /v1/me:
+    get:
+      operationId: getMe
+      summary: Profilo di chi ha fatto il login
+      description: |
+        `role` è il ruolo effettivo per la rete di questa richiesta (un super admin
+        dal pubblico risulta `admin`). `hasSuperAdminRole` dice se nel database è
+        super admin; `superAdminActive` se in questa richiesta i suoi poteri sono
+        attivi (true solo da rete interna fidata).
+      responses:
+        "200":
+          description: Profilo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/auth/token:
+    post:
+      operationId: createToken
+      summary: Scambia il codice PKCE di Keycloak con un token di sessione
+      description: |
+        Pubblica (è il login): niente Bearer. L'app fa il login su Keycloak nel
+        browser di sistema (PKCE) e porta qui il codice. La sessione cade quando
+        scade la sessione Keycloak.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: Token di sessione
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Richiesta incompleta o redirectUri non ammesso (`invalid_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Codice non valido o scaduto (`invalid_grant`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Utente disattivato (`inactive`), primo accesso da fare dal sito (`first_login_required`) o accesso non consentito (`not_allowed`, per esempio utente non ammesso al gruppo SSO)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoca la sessione del token usato
+      responses:
+        "204":
+          description: Sessione revocata
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/calendar:
+    get:
+      operationId: getCalendar
+      summary: Calendario dell'app (eventi e proprie assenze/presenze)
+      description: |
+        Eventi del periodo (visibili a tutti gli utenti attivi) e SOLO le assenze
+        e le presenze della persona stessa. Periodo `[from, to]` con estremi
+        inclusi, al massimo 62 giorni; nel passato non c'è limite. Le date a
+        giornata sono `AAAA-MM-GG`, gli eventi ISO 8601 UTC. Le note delle
+        assenze non sono mai esposte.
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: Calendario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Calendar"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/team-calendar:
+    get:
+      operationId: getTeamCalendar
+      summary: Chi c'è e chi è assente (tutti i colleghi)
+      description: |
+        Assenze e presenze di tutti gli utenti attivi. Il motivo dell'assenza
+        (`type`) lo vedono solo gli admin, i responsabili delle persone
+        interessate e l'interessato; per gli altri è `assenza`. La malattia è
+        sempre mascherata per chi non è l'interessato o admin. Nessun 403 al
+        membro. Mai note né identificativi delle richieste.
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: Calendario del team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamCalendar"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/calendar/upcoming:
+    get:
+      operationId: getUpcomingEvents
+      summary: Prossimi eventi per il widget
+      description: |
+        Eventi dei prossimi 7 giorni (compreso quello in corso) di cui la persona
+        è partecipante o creatrice, al massimo 20. Solo i campi minimi: mai
+        luogo, descrizione, partecipanti, assenze o presenze.
+      responses:
+        "200":
+          description: Prossimi eventi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UpcomingEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/events:
+    post:
+      operationId: createEvent
+      summary: Crea un evento
+      description: |
+        Chi crea l'evento lo può poi modificare. I nuovi partecipanti ricevono
+        l'invito per email. Con una sessione in impersonificazione la scrittura
+        è rifiutata (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "201":
+          description: Evento creato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/events/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getEvent
+      summary: Dettaglio di un evento
+      responses:
+        "200":
+          description: Evento
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateEvent
+      summary: Modifica un evento (tutti i campi, partecipanti compresi)
+      description: Solo admin, creatore o partecipante. Gli inviti partono solo per chi viene aggiunto.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "200":
+          description: Evento aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: deleteEvent
+      summary: Elimina un evento
+      description: Solo admin, creatore o partecipante.
+      responses:
+        "204":
+          description: Evento eliminato
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/presence:
+    put:
+      operationId: setPresence
+      summary: Imposta la propria presenza su uno o più giorni
+      description: |
+        Solo per sé stessi (nessun userId). Stessa regola del web: "giornata_intera"
+        sostituisce mattina e pomeriggio dello stesso giorno, e viceversa; una fascia
+        già presente cambia modalità. Al massimo 62 giorni per volta. Non blocca i
+        giorni con un'assenza. Sola lettura se si guarda l'app come un altro membro (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresenceInput"
+      responses:
+        "200":
+          description: Presenze di quei giorni dopo il salvataggio
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [presences]
+                properties:
+                  presences:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Presence"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: deletePresences
+      summary: Toglie le proprie presenze di più giorni
+      description: Senza `slot` toglie tutte le fasce dei giorni indicati. Un giorno senza presenze non è un errore.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dates]
+              properties:
+                dates:
+                  type: array
+                  minItems: 1
+                  maxItems: 62
+                  items:
+                    type: string
+                    format: date
+                slot:
+                  $ref: "#/components/schemas/PresenceSlot"
+      responses:
+        "204":
+          description: Presenze eliminate
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/presence/{date}:
+    parameters:
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: slot
+        in: query
+        required: false
+        schema:
+          $ref: "#/components/schemas/PresenceSlot"
+    delete:
+      operationId: deletePresenceDay
+      summary: Toglie le proprie presenze di un giorno
+      description: Tutte le fasce, oppure solo `slot`.
+      responses:
+        "204":
+          description: Presenze eliminate
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests:
+    get:
+      operationId: listLeaveRequests
+      summary: Le proprie richieste di assenza
+      description: |
+        Solo le richieste della persona stessa (anche malattia: dato sanitario, mai
+        quelle di altri). `year` limita a quelle che toccano quell'anno.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 2000
+            maximum: 2100
+      responses:
+        "200":
+          description: Richieste, dalla più recente
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LeaveRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createLeaveRequest
+      summary: Nuova richiesta di assenza per sé
+      description: |
+        Stesse regole del web. Nasce `pending` (la malattia `registrata`); parte la
+        mail ai responsabili, una volta sola e mai in caso di errore. Nessun `userId`
+        (l'app non registra per conto di altri) e nessun annullamento da parte del
+        richiedente. 400: dati non validi, tipo non ammesso per il rapporto di
+        lavoro (`Me.leaveTypes`), fascia oraria non valida (formato o fine non dopo
+        l'inizio), recupero senza nota né recupero da fare. 409: le date si
+        sovrappongono a una richiesta approvata o in attesa. 404: recupero da fare
+        inesistente. Sola lettura se si guarda l'app come un altro membro (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaveRequestInput"
+      responses:
+        "201":
+          description: Richiesta creata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/LeaveRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getLeaveRequest
+      summary: Una propria richiesta
+      description: Le richieste di altri rispondono 404.
+      responses:
+        "200":
+          description: Richiesta
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/LeaveRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateLeaveRequest
+      summary: Modifica una propria richiesta in attesa
+      description: Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa, sovrapposta o cambiata nel frattempo («La richiesta è cambiata, ricarica»: rimanda `version` letta dalla richiesta per accorgersene; senza `version` resta solo la protezione tra lettura e scrittura); 404 non propria.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaveRequestInput"
+      responses:
+        "200":
+          description: Richiesta aggiornata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/LeaveRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: withdrawLeaveRequest
+      summary: Ritira una propria richiesta in attesa
+      description: Come sul web la richiesta viene tolta e i responsabili avvisati. 409 se già decisa (la annulla un admin) o cambiata nel frattempo («La richiesta è cambiata, ricarica»); 404 non propria.
+      parameters:
+        - name: version
+          in: query
+          required: false
+          description: "`version` della richiesta come l'app l'ha vista; se è cambiata il ritiro non passa (409)"
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Ritirata
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/preview:
+    post:
+      operationId: previewLeaveRequest
+      summary: Saldo dopo una richiesta non ancora inviata
+      description: Stesso calcolo del form web (disponibile alla fine della richiesta, con il maturato, meno quanto scala). Non valida la richiesta e non scrive nulla. `after` null se il tipo è fuori monte o i saldi non sono impostati.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaveRequestInput"
+      responses:
+        "200":
+          description: Anteprima
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [preview]
+                properties:
+                  preview:
+                    type: object
+                    required: [charged, unit, requested, available, after, negative, overDailyCap]
+                    properties:
+                      charged: { type: [string, "null"], enum: [ferie, permesso, assenza, null] }
+                      unit: { type: [string, "null"], enum: [h, gg, null] }
+                      requested: { type: number }
+                      available: { type: [number, "null"] }
+                      after: { type: [number, "null"] }
+                      negative: { type: boolean }
+                      overDailyCap: { type: [number, "null"], description: "Ore massime che un permesso scala in una giornata, se la fascia le supera" }
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/balance:
+    get:
+      operationId: getBalance
+      summary: Saldi dell'anno corrente
+      description: Gli stessi numeri della pagina Richieste del web.
+      responses:
+        "200":
+          description: Saldi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Balance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/recovery-credits:
+    get:
+      operationId: listRecoveryCredits
+      summary: Recuperi da fare ancora da smaltire
+      description: Sola lettura (li registra solo il super admin dal web).
+      responses:
+        "200":
+          description: Recuperi aperti
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recoveryCredits]
+                properties:
+                  recoveryCredits:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecoveryCredit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/time:
+    get:
+      operationId: getTimeMonth
+      summary: Le proprie ore in un mese
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}-(0[1-9]|1[0-2])$"
+            example: "2026-11"
+      responses:
+        "200":
+          description: Totale del mese e ore per giorno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlySummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/time/clients:
+    get:
+      operationId: listTimeClients
+      summary: Clienti su cui si possono registrare ore
+      description: Attivi e aperti a tutti, oppure riservati a chi è indicato.
+      responses:
+        "200":
+          description: Clienti, ogni voce subito sotto il suo cliente padre
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clients]
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Client"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/time/{date}/not-worked:
+    parameters:
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+    put:
+      operationId: markDayNotWorked
+      summary: Segna "Oggi non ho lavorato" per sé stessi
+      description: Stesse regole del web. 400 weekend/festivo o data non valida; 409 il giorno ha già ore; 403 sola lettura in impersonificazione. Salvare ore toglie il segno.
+      responses:
+        "200":
+          description: Giorno aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: unmarkDayNotWorked
+      summary: Toglie il segno "non lavorato" (per sé stessi)
+      responses:
+        "200":
+          description: Giorno aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/time/{date}:
+    parameters:
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+    get:
+      operationId: getTimeDay
+      summary: Le proprie ore di un giorno
+      responses:
+        "200":
+          description: Ore del giorno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      operationId: saveTimeDay
+      summary: Registra le proprie ore di un giorno
+      description: |
+        Sostituisce tutte le righe del giorno (elenco vuoto = giornata svuotata; righe a 0
+        ignorate). Solo per sé stessi. 400: ore non numeriche, negative, oltre 24 per riga
+        o per giorno, cliente ripetuto. 403: cliente non ammesso (non attivo o riservato ad
+        altri), oppure sola lettura in impersonificazione. 409: un membro modifica una
+        giornata già registrata (la corregge un admin).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entries]
+              properties:
+                entries:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/TimeEntryInput"
+      responses:
+        "200":
+          description: Ore del giorno dopo il salvataggio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyHours"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/clients:
+    get:
+      operationId: listClients
+      summary: Clienti (elenco completo)
+      description: |
+        Per admin, super admin e chi ha il permesso "Aggiungere clienti"; per gli
+        altri 403. Comprende i clienti non attivi; ogni voce sta subito sotto il
+        suo cliente padre. I clienti su cui registrare ore sono in `/v1/time/clients`.
+      responses:
+        "200":
+          description: Clienti
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clients]
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ClientDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createClient
+      summary: Nuovo cliente
+      description: |
+        Admin e super admin possono indicare `parentId` (cliente padre, un solo
+        livello) e `loggerIds` (persone che possono registrare ore; nessuna = tutti).
+        Chi ha solo il permesso "Aggiungere clienti" crea clienti semplici: con
+        `parentId` o `loggerIds` risponde 403. Nome già esistente: 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientInput"
+      responses:
+        "201":
+          description: Cliente creato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [client]
+                properties:
+                  client:
+                    $ref: "#/components/schemas/ClientDetail"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/org:
+    get:
+      operationId: getOrg
+      summary: Organigramma (sola lettura)
+      description: |
+        Albero dei reparti ricostruito dai dati di Keycloak, come la vista
+        Organigramma di Persone. Basta il login; nessuna modifica dall'app.
+      responses:
+        "200":
+          description: Organigramma
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tree]
+                properties:
+                  tree:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrgNode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/licenses:
+    get:
+      operationId: listLicenses
+      summary: Licenze e abbonamenti (mascherati)
+      description: |
+        Licenze nell'ambito del permesso "Vedere le licenze" più quelle visibili a
+        tutti; senza nessuna delle due 403. Chiave e account sono solo mascherati;
+        non compare mai alcun campo cifrato.
+      responses:
+        "200":
+          description: Licenze
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [licenses]
+                properties:
+                  licenses:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/License"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/licenses/{id}:
+    get:
+      operationId: getLicense
+      summary: Dettaglio licenza (mascherato)
+      description: Con note e attivazioni. Licenza inesistente o non visibile: 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Licenza
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [license]
+                properties:
+                  license:
+                    $ref: "#/components/schemas/LicenseDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/licenses/{id}/reveal:
+    post:
+      operationId: revealLicenseSecret
+      summary: Mostra o copia chiave, password o account
+      description: |
+        Valore in chiaro, mai in cache (`Cache-Control: no-store, private`, anche
+        sugli errori); l'app non lo salva né lo registra nei log. Ogni richiesta
+        va nel registro degli accessi. Bisogna indicare dove si usa: un'attivazione
+        esistente (`activationId`) oppure `"new"` con `label` (1-120 caratteri),
+        che crea l'attivazione entro `activationLimit` (oltre: 409). Chiave, password
+        e account seguono le stesse regole del web: basta avere accesso alla licenza.
+        Non disponibile in impersonificazione (403). Licenza non accessibile: 403
+        senza dettagli. Limite giornaliero: 10 rivelazioni per utente e per giorno di
+        calendario in ora italiana (Europe/Rome), contate su tutte le righe del
+        registro (show e copy, qualsiasi licenza, app e web); il super admin
+        (ruolo effettivo) è escluso. All'11ª: 429 `rate_limited`, nessuna riga di
+        registro e nessuna attivazione creata.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [show, copy]
+                field:
+                  type: string
+                  enum: [key, password, account]
+                  default: key
+                activationId:
+                  type: string
+                  description: Id di un'attivazione della licenza, oppure "new" (predefinito)
+                label:
+                  type: string
+                  maxLength: 120
+                  description: Obbligatoria con activationId "new"
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Valore in chiaro
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [value, field, activationId]
+                properties:
+                  value:
+                    type: string
+                  field:
+                    type: string
+                    enum: [key, password, account]
+                  activationId:
+                    type: string
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tasks:
+    get:
+      operationId: listTasks
+      summary: Task
+      description: |
+        Stesse viste della pagina Task del web. Senza `user`: i membri partono dai
+        propri task, gli admin da tutti, l'archivio da tutti. L'archivio (task
+        completati da più di 30 giorni) è solo per admin, project manager e
+        responsabili di reparto (questi ultimi vedono i task con assegnatari nei
+        propri reparti); per gli altri risponde 403. Lo svuotamento dell'archivio
+        non è disponibile nell'app.
+      parameters:
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [active, done, archive]
+            default: active
+        - name: user
+          in: query
+          description: "`me`, `all` o l'id di una persona"
+          schema:
+            type: string
+        - name: clientId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks]
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createTask
+      summary: Nuovo task
+      description: I task sono condivisi nel team (come sul web). La mail agli assegnatari parte dopo il successo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Task creato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tasks/options:
+    get:
+      operationId: getTaskOptions
+      summary: Scelte del form task
+      description: Clienti attivi e persone attive, e se l'archivio è visibile a chi chiede.
+      responses:
+        "200":
+          description: Scelte
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clients, users, canViewArchive]
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TaskRef"
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TaskRef"
+                  canViewArchive:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getTask
+      summary: Un task
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      operationId: updateTask
+      summary: Modifica completa di un task (assegnatari compresi)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "200":
+          description: Task aggiornato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: deleteTask
+      summary: Elimina un task
+      responses:
+        "204":
+          description: Eliminato
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tasks/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: setTaskStatus
+      summary: Cambia lo stato di un task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [not_started, in_progress, in_pausa, done]
+      responses:
+        "200":
+          description: Task aggiornato (passando a `done` si valorizza `completedAt`, uscendone si azzera)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [task]
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    From:
+      name: from
+      in: query
+      required: true
+      description: Primo giorno del periodo (AAAA-MM-GG)
+      schema:
+        type: string
+        format: date
+    To:
+      name: to
+      in: query
+      required: true
+      description: Ultimo giorno del periodo, incluso (AAAA-MM-GG, al massimo 62 giorni da `from`)
+      schema:
+        type: string
+        format: date
+  responses:
+    InvalidRequest:
+      description: Parametri o dati non validi, periodo oltre 62 giorni (`invalid_request`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Non autorizzato, o sessione in impersonificazione (`forbidden`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Evento inesistente (`not_found`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Un partecipante è assente nelle date dell'evento (`conflict`); la malattia è mascherata
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: Limite giornaliero di 10 rivelazioni raggiunto (`rate_limited`); Cache-Control no-store come ogni risposta. Nessun nuovo tentativo automatico.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Token assente, non valido, scaduto o utente disattivato (`unauthorized`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Errore imprevisto (`internal_error`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Codice stabile (unauthorized, forbidden, not_found, invalid_request, invalid_grant, inactive, first_login_required, rate_limited, internal_error)
+        message:
+          type: string
+          description: Testo in italiano per l'utente
+    EventType:
+      type: string
+      enum: [riunione, riunione_cliente, shooting, trasferta, altro]
+    LeaveType:
+      type: string
+      description: Per chi non è l'interessato, un admin o un responsabile può essere solo `assenza` (malattia sempre mascherata)
+      enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra, permesso_104, chiusura]
+    LeaveStatus:
+      type: string
+      enum: [pending, approved, rejected, registrata]
+    PresenceSlot:
+      type: string
+      enum: [mattina, pomeriggio, giornata_intera]
+    PresenceMode:
+      type: string
+      enum: [ufficio, smartworking]
+    Event:
+      type: object
+      required: [id, title, type, startAt, endAt, location, description, participants, canEdit]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        startAt:
+          type: string
+          format: date-time
+          description: ISO 8601 UTC
+        endAt:
+          type: string
+          format: date-time
+        location:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonRef"
+        canEdit:
+          type: boolean
+          description: Vero per admin, creatore o partecipante
+    PersonRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    EventInput:
+      type: object
+      required: [title, type, startAt, endAt]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        type:
+          $ref: "#/components/schemas/EventType"
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        location:
+          type: [string, "null"]
+          maxLength: 200
+        description:
+          type: [string, "null"]
+          maxLength: 5000
+        participantIds:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+    Absence:
+      type: object
+      description: Assenza della persona stessa (senza nota né id)
+      required: [type, status, startDate, endDate, hours, startTime, endTime]
+      properties:
+        type:
+          $ref: "#/components/schemas/LeaveType"
+        status:
+          $ref: "#/components/schemas/LeaveStatus"
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        hours:
+          type: [number, "null"]
+        startTime:
+          type: [string, "null"]
+        endTime:
+          type: [string, "null"]
+    Presence:
+      type: object
+      required: [date, slot, mode]
+      properties:
+        date:
+          type: string
+          format: date
+        slot:
+          $ref: "#/components/schemas/PresenceSlot"
+        mode:
+          $ref: "#/components/schemas/PresenceMode"
+    PresenceInput:
+      type: object
+      required: [dates, slot, mode]
+      properties:
+        dates:
+          type: array
+          minItems: 1
+          maxItems: 62
+          items:
+            type: string
+            format: date
+        slot:
+          $ref: "#/components/schemas/PresenceSlot"
+        mode:
+          $ref: "#/components/schemas/PresenceMode"
+    Calendar:
+      type: object
+      required: [events, absences, presences]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        absences:
+          type: array
+          items:
+            $ref: "#/components/schemas/Absence"
+        presences:
+          type: array
+          items:
+            $ref: "#/components/schemas/Presence"
+    TeamAbsence:
+      allOf:
+        - $ref: "#/components/schemas/Absence"
+        - type: object
+          required: [userId, userName]
+          properties:
+            userId:
+              type: string
+            userName:
+              type: string
+    TeamPresence:
+      allOf:
+        - $ref: "#/components/schemas/Presence"
+        - type: object
+          required: [userId, userName]
+          properties:
+            userId:
+              type: string
+            userName:
+              type: string
+    TeamCalendar:
+      type: object
+      required: [absences, presences]
+      properties:
+        absences:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamAbsence"
+        presences:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamPresence"
+    UpcomingEvent:
+      type: object
+      description: Solo i campi minimi per il widget
+      required: [id, title, type, startAt, endAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+    LeaveRequest:
+      type: object
+      description: Richiesta propria
+      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, createdAt, version, recoveryCredit]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/LeaveType"
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        hours:
+          type: [number, "null"]
+        startTime:
+          type: [string, "null"]
+          description: HH:MM
+        endTime:
+          type: [string, "null"]
+          description: HH:MM
+        status:
+          $ref: "#/components/schemas/LeaveStatus"
+        note:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        version:
+          type: string
+          description: Versione della richiesta (cambia a ogni modifica dei suoi dati). Da rimandare tale e quale in `version` nel PATCH e nel DELETE (?version=) per non sovrascrivere una modifica fatta altrove.
+        recoveryCredit:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [id, reason, amount, unit]
+              properties:
+                id:
+                  type: string
+                reason:
+                  type: string
+                amount:
+                  type: number
+                unit:
+                  type: string
+                  enum: [giorni, ore]
+    LeaveRequestInput:
+      type: object
+      required: [type, startDate]
+      properties:
+        type:
+          type: string
+          enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra, permesso_104]
+          description: Quelli ammessi sono in `Me.leaveTypes`
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          description: Omessa = come startDate. Ignorata per le richieste a ore.
+        startTime:
+          type: string
+          description: HH:MM, obbligatoria per permesso e recupero a ore
+        endTime:
+          type: string
+          description: HH:MM, dopo startTime
+        note:
+          type: string
+          description: Obbligatoria per il recupero senza `recoveryCreditId`
+        recoveryCreditId:
+          type: string
+          description: Solo per il recupero
+        unit:
+          type: string
+          enum: [giorni, ore]
+          description: "\"A ore\" o \"a giorni\" per recupero (senza `recoveryCreditId`), assenza e permesso_104; il permesso è sempre a ore"
+        version:
+          type: string
+          description: Solo nel PATCH; la `version` della richiesta come l'ha vista l'app. Se è cambiata, 409 «La richiesta è cambiata, ricarica»
+    BalanceFigures:
+      type: object
+      required: [remaining, used, reference]
+      properties:
+        remaining:
+          type: number
+        used:
+          type: number
+        reference:
+          type: number
+        referenceNote:
+          type: string
+        planned:
+          type: number
+          description: Già approvato nei giorni futuri
+        missing:
+          type: boolean
+          description: Saldo della busta paga non ancora inserito dal super admin
+    HourBalance:
+      type: object
+      description: Saldo in ore dalla busta paga (PR #50)
+      required: [start, perYear, perMonth, accrued, used, remaining, planned, afterPlanned]
+      properties:
+        start: { type: number }
+        perYear: { type: number }
+        perMonth: { type: number }
+        accrued: { type: number }
+        used: { type: number }
+        remaining: { type: number }
+        planned: { type: number }
+        afterPlanned: { type: number }
+    ChargeInfo:
+      type: object
+      properties:
+        unit: { type: string, enum: [h, gg] }
+        base: { type: number }
+        perMonth: { type: number }
+        from: { type: [string, "null"], format: date }
+        perDay: { type: [number, "null"] }
+        maxPerDay: { type: [number, "null"] }
+        dayHours: { type: [number, "null"] }
+    Balance:
+      type: object
+      required: [year, kind, figures, charges]
+      description: "Dipendenti (kind=dipendente): ferie e permesso ROL in ore (null finché manca la busta paga), dailyHours, startMonth. Partite IVA (kind=assenze): assenze in giorni."
+      properties:
+        year:
+          type: integer
+        kind:
+          type: string
+          enum: [dipendente, assenze]
+        figures:
+          type: object
+          description: Una voce per saldo del contratto (ferie e permesso, oppure assenze), come le barrette del web
+          properties:
+            ferie:
+              $ref: "#/components/schemas/BalanceFigures"
+            permesso:
+              $ref: "#/components/schemas/BalanceFigures"
+            assenze:
+              $ref: "#/components/schemas/BalanceFigures"
+        charges:
+          type: object
+          properties:
+            ferie: { $ref: "#/components/schemas/ChargeInfo" }
+            permesso: { $ref: "#/components/schemas/ChargeInfo" }
+            assenza: { $ref: "#/components/schemas/ChargeInfo" }
+        dailyHours:
+          type: number
+        startMonth:
+          type: [string, "null"]
+          description: yyyy-MM della busta paga di partenza
+        ferie:
+          oneOf: [{ $ref: "#/components/schemas/HourBalance" }, { type: "null" }]
+        permesso:
+          oneOf: [{ $ref: "#/components/schemas/HourBalance" }, { type: "null" }]
+        assenze:
+          type: object
+          properties:
+            allowance: { type: number }
+            used: { type: number }
+            remaining: { type: number }
+    RecoveryCredit:
+      type: object
+      required: [id, reason, unit, remaining]
+      properties:
+        id:
+          type: string
+        reason:
+          type: string
+        unit:
+          type: string
+          enum: [giorni, ore]
+        remaining:
+          type: number
+    TimeEntryInput:
+      type: object
+      required: [clientId, hours]
+      properties:
+        clientId:
+          type: string
+        hours:
+          type: number
+          minimum: 0
+          maximum: 24
+        note:
+          type: [string, "null"]
+          maxLength: 500
+    DailyHours:
+      type: object
+      required: [date, entries, totalHours, editable]
+      properties:
+        date:
+          type: string
+          format: date
+        entries:
+          type: array
+          items:
+            type: object
+            required: [clientId, clientLabel, hours, note]
+            properties:
+              clientId:
+                type: string
+              clientLabel:
+                type: string
+              hours:
+                type: number
+              note:
+                type: [string, "null"]
+        totalHours:
+          type: number
+        editable:
+          type: boolean
+          description: false per un membro se la giornata è già registrata
+        notWorked:
+          type: boolean
+          description: Segnata "Oggi non ho lavorato" (PR #50)
+        workingDay:
+          type: boolean
+          description: false per weekend e festivi (non si può segnare "non lavorato")
+    MonthlySummary:
+      type: object
+      required: [month, totalHours, days]
+      properties:
+        month:
+          type: string
+          example: "2026-11"
+        totalHours:
+          type: number
+        days:
+          type: array
+          items:
+            type: object
+            required: [date, hours]
+            properties:
+              date:
+                type: string
+                format: date
+              hours:
+                type: number
+    Client:
+      type: object
+      required: [id, name, label]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        label:
+          type: string
+          description: Con il nome del cliente padre per le voci interne
+    License:
+      type: object
+      required: [id, name, kind, vendor, department, keyMasked, accountMasked, hasPassword, expiresAt, expiry, activationLimit, activationsUsed]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [licenza, abbonamento] }
+        vendor: { type: [string, "null"] }
+        department:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/Department"
+        keyMasked: { type: [string, "null"] }
+        accountMasked: { type: [string, "null"] }
+        hasPassword: { type: boolean }
+        expiresAt: { type: [string, "null"], format: date-time }
+        expiry:
+          type: object
+          required: [status, label]
+          properties:
+            status: { type: string, enum: [none, ok, soon, expired, renews] }
+            label: { type: string }
+        activationLimit: { type: [integer, "null"] }
+        activationsUsed: { type: integer }
+    LicenseDetail:
+      allOf:
+        - $ref: "#/components/schemas/License"
+        - type: object
+          required: [notes, activations]
+          properties:
+            notes: { type: [string, "null"] }
+            activations:
+              type: array
+              items:
+                type: object
+                required: [id, label, note, createdAt]
+                properties:
+                  id: { type: string }
+                  label: { type: string }
+                  note: { type: [string, "null"] }
+                  createdAt: { type: string, format: date-time }
+    Department:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Me:
+      type: object
+      required: [id, name, email, role, employmentType, leaveTypes, hasSuperAdminRole, superAdminActive, managedDepartments, projectManager, reportsTo, capabilities]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [super_admin, admin, membro]
+          description: Ruolo effettivo (super_admin solo da rete interna fidata; dal pubblico un super admin è admin)
+        employmentType:
+          type: string
+          enum: [dipendente, partita_iva]
+        leaveTypes:
+          type: array
+          description: Tipi di richiesta ammessi per il rapporto di lavoro
+          items:
+            type: string
+            enum: [ferie, permesso, recupero, malattia, assenza, assenza_extra]
+        hasSuperAdminRole:
+          type: boolean
+        superAdminActive:
+          type: boolean
+        managedDepartments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Department"
+        projectManager:
+          type: boolean
+        reportsTo:
+          type: array
+          description: Nomi dei reparti a cui fa capo (claim reports_to di Keycloak)
+          items:
+            type: string
+        capabilities:
+          type: object
+          description: Cosa può usare l'app, calcolato dal server con gli stessi controlli dei service
+          required: [taskArchive, clientsView, clientsCreate, licensesView]
+          properties:
+            taskArchive:
+              type: boolean
+            clientsView:
+              type: boolean
+            clientsCreate:
+              type: boolean
+            licensesView:
+              type: boolean
+    OrgPerson:
+      type: object
+      required: [name, role, isManager, managed]
+      properties:
+        name: { type: string }
+        role: { type: string }
+        isManager: { type: boolean }
+        managed: { type: array, items: { type: string } }
+    OrgNode:
+      type: object
+      required: [id, name, managers, people, children]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        managers: { type: array, items: { type: string } }
+        people:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgPerson"
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgNode"
+    TokenRequest:
+      type: object
+      required: [code, codeVerifier, redirectUri]
+      properties:
+        code:
+          type: string
+          maxLength: 2048
+        codeVerifier:
+          type: string
+          minLength: 43
+          maxLength: 128
+        redirectUri:
+          type: string
+          description: |
+            Deve essere esattamente `https://time.colibrivision.it/mobile/oauth/callback` (link universale dell'app).
+            Solo sull'istanza di prova (variabili `MOBILE_DEV_*` impostate) è ammesso anche
+            `it.colibrivision.softuerino.dev:/oauth`, del client Keycloak di sviluppo; in produzione
+            quel valore dà sempre 400.
+        nonce:
+          type: string
+          maxLength: 512
+    TokenResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+          description: Scadenza del token per inattività (30 giorni dall'ultimo uso); ogni uso la sposta in avanti. Il logout o la scadenza della sessione SSO lo revocano prima.
+        user:
+          type: object
+          required: [id, name, email, role]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+            role:
+              type: string
+              enum: [super_admin, admin, membro]
+              description: Ruolo effettivo per la rete di questa richiesta, uguale a quello di /v1/me (un super admin dal pubblico risulta admin)
+    TaskRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Task:
+      type: object
+      required: [id, title, notes, status, priority, dueDate, completedAt, createdAt, client, assignees]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [not_started, in_progress, in_pausa, done]
+        priority:
+          type: [string, "null"]
+          enum: [low, medium, high, null]
+        dueDate:
+          type: [string, "null"]
+          format: date
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Valorizzato quando il task è `done`. Dopo 30 giorni il task passa in archivio, dopo 365 viene eliminato.
+        createdAt:
+          type: string
+          format: date-time
+        client:
+          oneOf:
+            - $ref: "#/components/schemas/TaskRef"
+            - type: "null"
+        assignees:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskRef"
+    TaskInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        notes:
+          type: string
+        clientId:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [not_started, in_progress, in_pausa, done]
+          default: not_started
+        priority:
+          type: [string, "null"]
+          enum: [low, medium, high, null]
+        dueDate:
+          type: [string, "null"]
+          format: date
+        assigneeIds:
+          type: array
+          items:
+            type: string
+    ClientDetail:
+      type: object
+      required: [id, name, active, categories, parent, loggers, childrenCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+        categories:
+          type: array
+          items:
+            type: string
+            enum: [comunicazione, it_design, produzione]
+        parent:
+          oneOf:
+            - $ref: "#/components/schemas/TaskRef"
+            - type: "null"
+        loggers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskRef"
+        childrenCount:
+          type: integer
+    ClientInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+            enum: [comunicazione, it_design, produzione]
+        parentId:
+          type: [string, "null"]
+        loggerIds:
+          type: array
+          items:
+            type: string

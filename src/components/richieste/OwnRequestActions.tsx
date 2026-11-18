@@ -5,7 +5,7 @@ import { withdrawOwnLeaveRequest } from "@/lib/actions";
 import type { EmploymentType } from "@/lib/constants";
 import type { LeaveCharges } from "@/lib/leave-accrual";
 import type { OpenRecoveryCredit } from "@/lib/recovery-credits";
-import { formatPeriod, type LeaveRequestRow } from "@/lib/leave-format";
+import { formatPeriod, leaveVersion, type LeaveRequestRow } from "@/lib/leave-format";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { NewLeaveRequestDialog } from "@/components/NewLeaveRequestDialog";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ export function OwnRequestActions({
         employmentType={context.employmentType}
         charges={context.charges}
         recoveryCredits={context.recoveryCredits}
-        editing={request}
+        editing={{ ...request, version: leaveVersion(request) }}
         trigger={
           <Button
             type="button"
@@ -56,7 +56,7 @@ export function OwnRequestActions({
         label={`Ritira richiesta, ${formatPeriod(request)}`}
         title="Ritirare la richiesta?"
         description={`${formatPeriod(request)}. La richiesta sparisce e chi doveva approvarla riceve un avviso.`}
-        onConfirm={() => withdrawOwnLeaveRequest(request.id)}
+        onConfirm={() => withdrawOwnLeaveRequest(request.id, leaveVersion(request))}
       />
     </div>
   );

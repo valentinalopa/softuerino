@@ -11,43 +11,33 @@ import {
   revokeSessions,
 } from "@/lib/auth/session";
 import { getLeaveBalancesForUsers } from "@/lib/leave-balance";
-import { getRecoveryCreditsForUsers } from "@/lib/recovery-credits";
-import { countedLeaveDays, isWorkingDay, slotsClash } from "@/lib/leave-days";
+import { isWorkingDay } from "@/lib/leave-days";
 import { addUpcomingClosuresFor } from "@/lib/closures";
 import { applyImport, parseImportFile, planImport, type ImportReport } from "@/lib/import-saldi";
-import { formatAmount, hoursBetween } from "@/lib/leave-format";
-import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { nextDeactivatedAt } from "@/lib/retention";
-import { purgeTaskArchive } from "@/lib/task-archive";
+import { ForbiddenError, purgeTaskArchive } from "@/lib/task-archive";
+import * as eventsService from "@/lib/services/events";
+import * as presenceService from "@/lib/services/presence";
+import * as leaveService from "@/lib/services/leave";
+import { leaveVersion } from "@/lib/leave-format";
+import * as timeService from "@/lib/services/time";
+import * as tasksService from "@/lib/services/tasks";
+import * as clientsService from "@/lib/services/clients";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/services/errors";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { randomBytes } from "crypto";
 import { isOidcConfigured, isSsoManaged } from "@/lib/auth/oidc";
-import { absenceConflict } from "@/lib/absence-conflicts";
-import { can, canOnPerson } from "@/lib/permissions";
-import { loggableClientsWhere } from "@/lib/clients";
+import { canOnPerson } from "@/lib/permissions";
 import {
-  LEAVE_SNAPSHOT_SELECT,
   notifyEventInvite,
   notifyLeaveDecision,
-  notifyLeaveWithdrawn,
-  notifyNewLeaveRequest,
-  notifyTaskAssigned,
 } from "@/lib/email/notifications";
 import {
-  EVENT_TYPES,
-  leaveTypesFor,
-  NOTE_REQUIRED_LEAVE_TYPES,
-  OPTIONAL_HOURLY_LEAVE_TYPES,
-  type LeaveType,
-  PRESENCE_SLOTS,
-  PRESENCE_MODES,
   ROLES,
   assignableRoles,
   isAdminRole,
   isSensitiveLeave,
   EMPLOYMENT_TYPES,
-  TASK_STATUSES,
-  TASK_PRIORITIES,
   CLIENT_CATEGORIES,
   PARTITA_IVA_ASSENZE_DAYS_PER_YEAR,
   type BalanceKind,
@@ -332,201 +322,35 @@ export async function changeOwnPassword(formData: FormData) {
 
 // --- Ferie / permesso / malattia ---
 
-type ParsedLeave = {
-  type: LeaveType;
-  startDate: Date;
-  endDate: Date;
-  hours: number | null;
-  startTime: string | null;
-  endTime: string | null;
-  note: string | null;
-  recoveryCreditId: string | null;
-};
-
-// Legge e controlla i campi del form di richiesta (nuova o modificata) per la
-// persona `targetUserId`. `excludeRequestId`: la richiesta che si sta
-// modificando, da non contare né nelle sovrapposizioni né nei recuperi.
-async function parseLeaveForm(
-  formData: FormData,
-  target: { id: string; employmentType: string },
-  excludeRequestId: string | null
-): Promise<{ error: string } | ParsedLeave> {
-  const type = String(formData.get("type") ?? "");
-  const startDateRaw = String(formData.get("startDate") ?? "");
-  const endDateRaw = String(formData.get("endDate") ?? startDateRaw) || startDateRaw;
-  const startTimeRaw = String(formData.get("startTime") ?? "").trim();
-  const endTimeRaw = String(formData.get("endTime") ?? "").trim();
-  const note = String(formData.get("note") ?? "").trim() || null;
-
-  // Dipendenti: ferie/permesso/recupero/malattia. Partite IVA: assenza
-  // (monte unico), recupero e assenza extra (fuori monte).
-  if (!leaveTypesFor(target.employmentType).includes(type as LeaveType)) {
-    return { error: "Tipo di richiesta non valido" };
-  }
-  if (!startDateRaw) {
-    return { error: "La data è obbligatoria" };
-  }
-  // Un recupero può smaltire un recupero da fare registrato dal super admin:
-  // in quel caso il motivo è già lì e la nota diventa facoltativa.
-  const recoveryCreditIdRaw =
-    type === "recupero" ? String(formData.get("recoveryCreditId") ?? "").trim() : "";
-  const recoveryCredit = recoveryCreditIdRaw
-    ? await prisma.recoveryCredit.findFirst({
-        where: { id: recoveryCreditIdRaw, userId: target.id },
-        select: { id: true, unit: true },
-      })
-    : null;
-  if (recoveryCreditIdRaw && !recoveryCredit) {
-    return { error: "Recupero da fare non trovato" };
-  }
-  if (NOTE_REQUIRED_LEAVE_TYPES.includes(type as LeaveType) && !note && !recoveryCredit) {
-    return { error: "Per il recupero la nota è obbligatoria: indica il motivo (es. la trasferta)" };
-  }
-  // A ore = un solo giorno con una fascia oraria: il permesso sempre,
-  // recupero e assenza quando si sceglie "A ore" (o quando il recupero da
-  // fare è in ore).
-  const isHourly =
-    type === "permesso" ||
-    (OPTIONAL_HOURLY_LEAVE_TYPES.includes(type as LeaveType) &&
-      (recoveryCredit ? recoveryCredit.unit === "ore" : String(formData.get("unit") ?? "") === "ore"));
-  const effectiveEndDateRaw = isHourly ? startDateRaw : endDateRaw;
-  if (effectiveEndDateRaw < startDateRaw) {
-    return { error: "La data di fine non può precedere quella di inizio" };
-  }
-
-  // A ore si indica la fascia (dalle/alle): le ore ne sono la durata. Dal
-  // saldo un permesso scala al massimo le ore di una giornata (leave-balance.ts).
-  let hours: number | null = null;
-  let startTime: string | null = null;
-  let endTime: string | null = null;
-  if (isHourly) {
-    if (!startTimeRaw || !endTimeRaw) {
-      return { error: "Indica la fascia oraria (dalle / alle)" };
-    }
-    hours = hoursBetween(startTimeRaw, endTimeRaw);
-    if (hours === null) {
-      return { error: "Fascia oraria non valida: l'orario di fine deve seguire quello di inizio" };
-    }
-    startTime = startTimeRaw;
-    endTime = endTimeRaw;
-  }
-
-  const startDate = localDate(startDateRaw);
-  const endDate = localDate(effectiveEndDateRaw);
-  // Festivi e weekend non si chiedono: non pesano su ferie, permessi o assenze.
-  if (isHourly ? !isWorkingDay(startDate) : countedLeaveDays(startDate, endDate) === 0) {
-    return {
-      error: isHourly
-        ? "È un giorno festivo o nel weekend: non serve chiedere il permesso"
-        : "Nel periodo non ci sono giorni lavorativi (solo weekend o festivi)",
-    };
-  }
-
-  const conflict = await findLeaveConflict(target.id, { startDate, endDate, startTime, endTime }, excludeRequestId);
-  if (conflict) return { error: conflict };
-
-  // Il recupero non può superare quanto resta del recupero da fare (le
-  // richieste già approvate o in attesa collegate lo hanno già in parte coperto).
-  if (recoveryCredit) {
-    const open = (await getRecoveryCreditsForUsers([target.id], excludeRequestId))
-      .get(target.id)
-      ?.find((c) => c.id === recoveryCredit.id);
-    const left = open ? Math.max(open.amount - open.used - open.pending, 0) : 0;
-    const requested = recoveryCredit.unit === "ore" ? (hours ?? 0) : countedLeaveDays(startDate, endDate);
-    if (requested > left + 1e-9) {
-      const unit = recoveryCredit.unit === "ore" ? "ore" : "giorni";
-      return {
-        error:
-          left > 0
-            ? `Di questo recupero restano ${formatAmount(left)} ${unit}: riduci la richiesta`
-            : "Questo recupero è già coperto da altre richieste",
-      };
-    }
-  }
-
+// Le regole (PR #50) stanno nel service (src/lib/services/leave.ts), usato anche
+// dall'app iPhone: qui solo il passaggio dal form e il ritorno come ActionResult.
+function leaveInputFromForm(formData: FormData): leaveService.LeaveRequestInput {
   return {
-    type: type as LeaveType,
-    startDate,
-    endDate,
-    hours,
-    startTime,
-    endTime,
-    note,
-    recoveryCreditId: recoveryCredit?.id ?? null,
+    type: formData.get("type"),
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate"),
+    startTime: formData.get("startTime"),
+    endTime: formData.get("endTime"),
+    note: formData.get("note"),
+    recoveryCreditId: formData.get("recoveryCreditId"),
+    unit: formData.get("unit"),
+    version: formData.get("version"),
+    userId: formData.get("userId"),
   };
 }
 
-// Una richiesta si sovrappone a un'altra (non rifiutata) della stessa persona
-// se tocca uno stesso giorno, salvo quando sono entrambe a ore con fasce che
-// non si toccano (es. permesso 9–11 e permesso 15–17 dello stesso giorno).
-async function findLeaveConflict(
-  userId: string,
-  request: { startDate: Date; endDate: Date; startTime: string | null; endTime: string | null },
-  excludeRequestId: string | null
-): Promise<string | null> {
-  const overlapping = await prisma.leaveRequest.findMany({
-    where: {
-      userId,
-      status: { not: "rejected" },
-      startDate: { lte: request.endDate },
-      endDate: { gte: request.startDate },
-      ...(excludeRequestId ? { id: { not: excludeRequestId } } : {}),
-    },
-    select: { startTime: true, endTime: true },
-  });
-  const clash = overlapping.find((other) => slotsClash(request, other));
-  if (!clash) return null;
-  return clash.startTime && clash.endTime && request.startTime
-    ? `C'è già una richiesta a ore in questo giorno (${clash.startTime}–${clash.endTime}) che si sovrappone alla fascia`
-    : "C'è già una richiesta che copre (in parte) queste date";
-}
-
-export async function createLeaveRequest(formData: FormData) {
+// Un admin può registrare ferie/permesso/malattia per conto di un altro membro:
+// la richiesta nasce già approvata/registrata (regole nel service).
+export async function createLeaveRequest(formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-
-  // Un admin può registrare ferie/permesso/malattia per conto di un altro
-  // membro (es. malattia comunicata a voce): in quel caso la richiesta nasce già
-  // approvata/registrata, senza passare dal flusso di approvazione.
-  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
-  const targetUserId = targetUserIdRaw || user.id;
-  const onBehalfOfOther = targetUserId !== user.id;
-  if (onBehalfOfOther && !isAdminRole(user.role)) {
-    return { error: "Non autorizzato" };
+  try {
+    const { userId, notify } = await leaveService.createLeaveRequest(user, leaveInputFromForm(formData));
+    revalidateLeavePaths(userId);
+    after(notify);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  const targetUser = onBehalfOfOther
-    ? await prisma.user.findUnique({
-        where: { id: targetUserId },
-        select: { id: true, employmentType: true },
-      })
-    : user;
-  if (!targetUser) {
-    return { error: "Membro non trovato" };
-  }
-
-  const parsed = await parseLeaveForm(formData, targetUser, null);
-  if ("error" in parsed) {
-    return onBehalfOfOther ? { error: parsed.error.replace("C'è già una richiesta", "Questo membro ha già una richiesta") } : parsed;
-  }
-
-  // La malattia si registra e basta, non richiede approvazione. Le richieste
-  // inserite dall'admin per conto di altri nascono già approvate.
-  const status =
-    parsed.type === "malattia"
-      ? "registrata"
-      : onBehalfOfOther
-        ? "approved"
-        : "pending";
-
-  const created = await prisma.leaveRequest.create({
-    data: { userId: targetUserId, status, ...parsed },
-  });
-
-  revalidateLeavePaths(targetUserId);
-  // Avviso ai responsabili ferie (e ai responsabili del reparto che possono
-  // approvare): solo per le richieste fatte dalla persona stessa.
-  if (!onBehalfOfOther) after(() => notifyNewLeaveRequest(created.id, user.id));
 }
 
 // Chi ha fatto una richiesta può cambiarla finché è in attesa: torna in attesa
@@ -534,63 +358,34 @@ export async function createLeaveRequest(formData: FormData) {
 export async function updateOwnLeaveRequest(requestId: string, formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-
-  const request = await prisma.leaveRequest.findUnique({
-    where: { id: requestId },
-    select: { userId: true, status: true },
-  });
-  if (!request || request.userId !== user.id) {
-    return { error: "Richiesta non trovata" };
+  try {
+    const { notify } = await leaveService.updateOwnLeaveRequest(user, requestId, leaveInputFromForm(formData));
+    revalidateLeavePaths(user.id);
+    after(notify);
+  } catch (err) {
+    return eventServiceError(err);
   }
-  if (request.status !== "pending") {
-    return { error: "La richiesta è già stata decisa: per cambiarla chiedi a un admin" };
-  }
-
-  const parsed = await parseLeaveForm(formData, user, requestId);
-  if ("error" in parsed) return parsed;
-  if (parsed.type === "malattia") {
-    return { error: "La malattia non passa dall'approvazione: registrala come nuova richiesta" };
-  }
-
-  // Solo se è ancora in attesa (nel frattempo qualcuno potrebbe averla decisa).
-  const updated = await prisma.leaveRequest.updateMany({
-    where: { id: requestId, userId: user.id, status: "pending" },
-    data: parsed,
-  });
-  if (updated.count === 0) {
-    return { error: "La richiesta è già stata decisa: per cambiarla chiedi a un admin" };
-  }
-  revalidateLeavePaths(user.id);
-  after(() => notifyNewLeaveRequest(requestId, user.id, "modificata"));
 }
 
 // Chi ha fatto una richiesta può ritirarla finché è in attesa: sparisce, e
 // chi doveva approvarla viene avvisato. Una malattia registrata per errore la
 // toglie un admin (riporta in attesa e rifiuta) o il super admin.
-export async function withdrawOwnLeaveRequest(requestId: string): Promise<ActionResult> {
+export async function withdrawOwnLeaveRequest(requestId: string, seenVersion?: string): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
-
-  const request = await prisma.leaveRequest.findUnique({
-    where: { id: requestId },
-    select: LEAVE_SNAPSHOT_SELECT,
-  });
-  if (!request || request.userId !== user.id) {
-    return { error: "Richiesta non trovata" };
+  try {
+    const { notify } = await leaveService.withdrawOwnLeaveRequest(user, requestId, undefined, seenVersion);
+    revalidateLeavePaths(user.id);
+    after(notify);
+  } catch (err) {
+    return eventServiceError(err);
   }
-  const deleted = await prisma.leaveRequest.deleteMany({
-    where: { id: requestId, userId: user.id, status: "pending" },
-  });
-  if (deleted.count === 0) {
-    return { error: "La richiesta è già stata decisa: per annullarla chiedi a un admin" };
-  }
-  revalidateLeavePaths(user.id);
-  after(() => notifyLeaveWithdrawn(request, user.id));
 }
 
 export async function updateLeaveStatus(
   requestId: string,
-  status: "approved" | "rejected"
+  status: "approved" | "rejected",
+  seenVersion?: string
 ): Promise<ActionResult> {
   // Admin e super admin; oppure chi ha il permesso "Approvare le richieste"
   // sulla persona (es. il responsabile del suo reparto). Mai le proprie,
@@ -600,7 +395,7 @@ export async function updateLeaveStatus(
 
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
-    select: { type: true, userId: true },
+    select: { userId: true, status: true, ...leaveService.VERSION_SELECT },
   });
   if (!request) {
     return { error: "Richiesta non trovata" };
@@ -623,12 +418,19 @@ export async function updateLeaveStatus(
 
   // updateMany invece di update: se la richiesta non è più pending (es. già
   // gestita da un altro admin) non deve esplodere con P2025, solo non fare nulla.
+  // Condizionato anche sulla versione vista: se chi l'ha fatta la modifica mentre il
+  // responsabile decide, la decisione non passa su dati che non ha visto.
+  const seen = leaveService.seenVersion(seenVersion);
+  if (request.status === "pending" && seen && seen !== leaveVersion(request)) {
+    return { error: leaveService.REQUEST_CHANGED };
+  }
   const updated = await prisma.leaveRequest.updateMany({
-    where: { id: requestId, status: "pending" },
+    where: { id: requestId, ...leaveService.versionWhere(request) },
     data: { status: nextStatus },
   });
   if (updated.count === 0) {
-    return { error: "Richiesta già gestita o non più in attesa" };
+    const stale = await leaveService.staleRequestError(requestId, "Richiesta già gestita o non più in attesa");
+    return { error: stale.message };
   }
   revalidateLeavePaths(request.userId);
   after(() => notifyLeaveDecision(requestId, currentUser.id));
@@ -941,143 +743,47 @@ function revalidateLeavePaths(userId: string) {
 
 // --- Calendario eventi (riunioni / shooting / altro) ---
 
-type EventFormData = {
-  title: string;
-  type: string;
-  startAt: Date;
-  endAt: Date;
-  location: string | null;
-  description: string | null;
-};
-
-// Campi del form evento, condivisi tra creazione e modifica.
-function parseEventForm(
-  formData: FormData
-): { error: string } | { data: EventFormData; participantIds: string[] } {
-  const title = String(formData.get("title") ?? "").trim();
-  const type = String(formData.get("type") ?? "");
-  const startAtRaw = String(formData.get("startAt") ?? "");
-  const endAtRaw = String(formData.get("endAt") ?? "");
-  const location = String(formData.get("location") ?? "").trim() || null;
-  const description =
-    String(formData.get("description") ?? "").trim() || null;
-  const participantIds = [...new Set(formData.getAll("participantIds").map(String))];
-
-  if (!title || !EVENT_TYPES.includes(type as (typeof EVENT_TYPES)[number])) {
-    return { error: "Dati evento non validi" };
-  }
-  if (!startAtRaw || !endAtRaw) {
-    return { error: "Le date/ora sono obbligatorie" };
-  }
-  const startAt = new Date(startAtRaw);
-  const endAt = new Date(endAtRaw);
-  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
-    return { error: "Le date/ora non sono valide" };
-  }
-  if (endAt < startAt) {
-    return { error: "La fine non può precedere l'inizio" };
-  }
-
+// Le regole stanno nel service (src/lib/services/events.ts), usato anche
+// dall'app iPhone: qui solo il passaggio dal form e il ritorno come ActionResult.
+function eventInputFromForm(formData: FormData): eventsService.EventInput {
   return {
-    data: { title, type, startAt, endAt, location, description },
-    participantIds,
+    title: formData.get("title"),
+    type: formData.get("type"),
+    startAt: formData.get("startAt"),
+    endAt: formData.get("endAt"),
+    location: formData.get("location"),
+    description: formData.get("description"),
+    participantIds: formData.getAll("participantIds"),
   };
 }
 
-// Chi è assente (giornata intera, già approvata/registrata) nelle date
-// dell'evento non può essere invitato: il form lo impedisce, qui lo si garantisce.
-async function participantAbsenceError(
-  participantIds: string[],
-  startAt: Date,
-  endAt: Date,
-  viewer: Parameters<typeof maskLeaveForViewer>[1]
-): Promise<ActionResult> {
-  if (participantIds.length === 0) return;
-  const [absences, participants] = await Promise.all([
-    prisma.leaveRequest.findMany({
-      where: {
-        userId: { in: participantIds },
-        status: { not: "rejected" },
-        startDate: { lte: endAt },
-        endDate: { gte: new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()) },
-      },
-      select: {
-        userId: true,
-        type: true,
-        status: true,
-        startDate: true,
-        endDate: true,
-        hours: true,
-        startTime: true,
-        endTime: true,
-      },
-    }),
-    prisma.user.findMany({
-      where: { id: { in: participantIds } },
-      select: { id: true, name: true },
-    }),
-  ]);
-  for (const participant of participants) {
-    // Il motivo finisce nel messaggio d'errore: niente "Malattia" dei colleghi.
-    const conflict = absenceConflict(
-      absences.map((absence) => maskLeaveForViewer(absence, viewer)),
-      participant.id,
-      startAt,
-      endAt
-    );
-    if (conflict?.kind === "blocked") {
-      return {
-        error: `${participant.name} è assente in quelle date (${conflict.reason}). Rimuovi questa persona dai partecipanti`,
-      };
-    }
+// Errori attesi del service → { error } (un throw non arriverebbe all'utente).
+function eventServiceError(err: unknown): { error: string } {
+  if (
+    err instanceof ValidationError ||
+    err instanceof ConflictError ||
+    err instanceof NotFoundError ||
+    err instanceof ForbiddenError
+  ) {
+    return { error: err.message };
   }
-}
-
-// Può modificare ed eliminare un evento: admin, chi l'ha creato, o un partecipante.
-async function eventAccessError(
-  eventId: string,
-  user: { id: string; role: string }
-): Promise<ActionResult> {
-  const event = await prisma.calendarEvent.findUnique({
-    where: { id: eventId },
-    select: { createdById: true },
-  });
-  if (!event) {
-    return { error: "Evento non trovato (forse è stato eliminato)" };
-  }
-  if (isAdminRole(user.role) || event.createdById === user.id) return;
-  const isParticipant = await prisma.eventParticipant.findUnique({
-    where: { eventId_userId: { eventId, userId: user.id } },
-  });
-  if (!isParticipant) {
-    return { error: "Non autorizzato" };
-  }
+  throw err;
 }
 
 export async function createEvent(formData: FormData): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const parsed = parseEventForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, participantIds } = parsed;
-
-  const absenceError = await participantAbsenceError(participantIds, data.startAt, data.endAt, user);
-  if (absenceError) return absenceError;
-
-  const event = await prisma.calendarEvent.create({
-    data: {
-      ...data,
-      createdById: user.id,
-      participants: {
-        create: participantIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let created;
+  try {
+    created = await eventsService.createEvent(user, eventInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/");
   revalidatePath("/calendario");
-  after(() => notifyEventInvite(event.id, participantIds, user.id));
+  after(() => notifyEventInvite(created.event.id, created.newParticipantIds, user.id));
 }
 
 // Modifica dal dettaglio dell'evento: tutti i campi, partecipanti compresi.
@@ -1085,37 +791,17 @@ export async function updateEvent(eventId: string, formData: FormData): Promise<
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const accessError = await eventAccessError(eventId, user);
-  if (accessError) return accessError;
-
-  const parsed = parseEventForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, participantIds } = parsed;
-
-  const absenceError = await participantAbsenceError(participantIds, data.startAt, data.endAt, user);
-  if (absenceError) return absenceError;
-
-  const previous = await prisma.eventParticipant.findMany({
-    where: { eventId },
-    select: { userId: true },
-  });
-
-  await prisma.calendarEvent.update({
-    where: { id: eventId },
-    data: {
-      ...data,
-      participants: {
-        deleteMany: {},
-        create: participantIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let updated;
+  try {
+    updated = await eventsService.updateEvent(user, eventId, eventInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/");
   revalidatePath("/calendario");
   // Invita solo chi è stato aggiunto adesso.
-  const previousIds = new Set(previous.map((p) => p.userId));
-  const added = participantIds.filter((id) => !previousIds.has(id));
+  const added = updated.newParticipantIds;
   if (added.length > 0) after(() => notifyEventInvite(eventId, added, user.id));
 }
 
@@ -1123,22 +809,19 @@ export async function deleteEvent(eventId: string): Promise<ActionResult> {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const accessError = await eventAccessError(eventId, user);
-  if (accessError) return accessError;
-
-  await prisma.calendarEvent.delete({ where: { id: eventId } });
+  try {
+    await eventsService.deleteEvent(user, eventId);
+  } catch (err) {
+    return eventServiceError(err);
+  }
   revalidatePath("/");
   revalidatePath("/calendario");
 }
 
 // --- Calendario presenze (self-log, nessuna approvazione) ---
 
-// Slot incompatibili sullo stesso giorno: "giornata intera" non può convivere
-// con mattina/pomeriggio (e viceversa). Impostare uno slot rimuove i conflitti.
-function conflictingSlots(slot: string) {
-  return slot === "giornata_intera" ? ["mattina", "pomeriggio"] : ["giornata_intera"];
-}
-
+// Le regole (slot incompatibili, validazione) stanno nel service
+// src/lib/services/presence.ts, usato anche dall'app iPhone.
 export async function createPresenceEntry(formData: FormData) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
@@ -1150,29 +833,12 @@ export async function createPresenceEntry(formData: FormData) {
   if (!date) {
     return { error: "La data è obbligatoria" };
   }
-  if (!PRESENCE_SLOTS.includes(slot as (typeof PRESENCE_SLOTS)[number])) {
-    return { error: "Fascia oraria non valida" };
-  }
-  if (!PRESENCE_MODES.includes(mode as (typeof PRESENCE_MODES)[number])) {
-    return { error: "Modalità non valida" };
-  }
 
-  await prisma.$transaction([
-    prisma.presenceEntry.deleteMany({
-      where: {
-        userId: user.id,
-        date: localDate(date),
-        slot: { in: conflictingSlots(slot) },
-      },
-    }),
-    prisma.presenceEntry.upsert({
-      where: {
-        userId_date_slot: { userId: user.id, date: localDate(date), slot },
-      },
-      update: { mode },
-      create: { userId: user.id, date: localDate(date), slot, mode },
-    }),
-  ]);
+  try {
+    await presenceService.savePresenceFor(user.id, { dates: [date], slot, mode });
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/calendario");
 }
@@ -1203,41 +869,11 @@ export async function createPresenceEntries({
     return { error: "Non autorizzato" };
   }
 
-  if (dates.length === 0) {
-    return { error: "Seleziona almeno un giorno" };
+  try {
+    await presenceService.savePresenceFor(userId, { dates, slot, mode, replace });
+  } catch (err) {
+    return eventServiceError(err);
   }
-  if (!PRESENCE_SLOTS.includes(slot as (typeof PRESENCE_SLOTS)[number])) {
-    return { error: "Fascia oraria non valida" };
-  }
-  if (!PRESENCE_MODES.includes(mode as (typeof PRESENCE_MODES)[number])) {
-    return { error: "Modalità non valida" };
-  }
-
-  await prisma.$transaction([
-    ...replace.map((item) =>
-      prisma.presenceEntry.deleteMany({
-        where: { userId, date: localDate(item.date), slot: item.slot },
-      })
-    ),
-    ...dates.map((date) =>
-      prisma.presenceEntry.deleteMany({
-        where: {
-          userId,
-          date: localDate(date),
-          slot: { in: conflictingSlots(slot) },
-        },
-      })
-    ),
-    ...dates.map((date) =>
-      prisma.presenceEntry.upsert({
-        where: {
-          userId_date_slot: { userId, date: localDate(date), slot },
-        },
-        update: { mode },
-        create: { userId, date: localDate(date), slot, mode },
-      })
-    ),
-  ]);
 
   revalidatePath("/calendario");
 }
@@ -1268,17 +904,11 @@ export async function deletePresenceEntries({
     return { error: "Non autorizzato" };
   }
 
-  if (items.length === 0) {
-    return { error: "Seleziona almeno un giorno" };
+  try {
+    await presenceService.removePresenceFor(userId, items);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  await prisma.$transaction(
-    items.map((item) =>
-      prisma.presenceEntry.deleteMany({
-        where: { userId, date: localDate(item.date), slot: item.slot },
-      })
-    )
-  );
 
   revalidatePath("/calendario");
 }
@@ -1311,42 +941,25 @@ async function parseClientStructure(
 }
 
 export async function createClient(formData: FormData) {
-  // Admin e super admin, o chi ha il permesso "Aggiungere clienti".
+  // Admin e super admin, o chi ha il permesso "Aggiungere clienti". Regole nel
+  // service (condiviso con l'app iPhone). Chi non è admin aggiunge solo clienti
+  // semplici, aperti a tutti: il form web non invia padre e persone, qui si
+  // scartano comunque.
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
   const isAdmin = isAdminRole(user.role);
-  if (!isAdmin && !(await can(user, "clienti"))) return { error: "Non autorizzato" };
-
-  const name = String(formData.get("name") ?? "").trim();
-  const categories = formData.getAll("categories").map(String);
-  if (!name) {
-    return { error: "Il nome del cliente è obbligatorio" };
-  }
-  if (
-    categories.some(
-      (c) => !CLIENT_CATEGORIES.includes(c as (typeof CLIENT_CATEGORIES)[number])
-    )
-  ) {
-    return { error: "Categoria non valida" };
-  }
-  // Chi non è admin aggiunge solo clienti semplici, aperti a tutti.
-  const structure = isAdmin ? await parseClientStructure(formData) : { parentId: null, loggerIds: [] };
-  if ("error" in structure) return structure;
 
   try {
-    await prisma.client.create({
-      data: {
-        name,
-        categories: categories.join(","),
-        parentId: structure.parentId,
-        loggers: { create: structure.loggerIds.map((userId) => ({ userId })) },
-      },
-    });
+    await clientsService.createClient(
+      { id: user.id, role: user.role },
+      {
+        name: formData.get("name"),
+        categories: formData.getAll("categories"),
+        ...(isAdmin ? { parentId: formData.get("parentId"), loggerIds: formData.getAll("loggerIds") } : {}),
+      }
+    );
   } catch (err) {
-    if (isUniqueViolation(err)) {
-      return { error: "Esiste già un cliente con questo nome" };
-    }
-    throw err;
+    return eventServiceError(err);
   }
   revalidatePath("/clienti");
   revalidatePath("/ore");
@@ -1428,79 +1041,21 @@ export async function saveDailyTimeEntries(formData: FormData) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
-  const targetUserId = targetUserIdRaw || user.id;
-  if (targetUserId !== user.id && !isAdminRole(user.role)) {
-    return { error: "Non autorizzato" };
-  }
-
+  // Regole nel service (condiviso con l'app). userId: un admin può farlo anche sul
+  // log di un altro membro.
+  const targetUserId = String(formData.get("userId") ?? "").trim() || user.id;
   const dateRaw = String(formData.get("date") ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-    return { error: "Data non valida" };
-  }
-
   const clientIds = formData.getAll("clientId").map(String);
   const hoursRaw = formData.getAll("hours").map(String);
-
-  const day = localDate(dateRaw);
-  const nextDay = new Date(day);
-  nextDay.setDate(nextDay.getDate() + 1);
-
   const entries = clientIds
     .map((clientId, i) => ({ clientId, hours: Number(hoursRaw[i]) }))
     .filter((e) => e.clientId && Number.isFinite(e.hours) && e.hours > 0);
 
-  // Una giornata già registrata la corregge solo un admin (dalla scheda
-  // membro): il form la nasconde, ma il vincolo va garantito anche qui.
-  if (!isAdminRole(user.role)) {
-    const alreadyLogged = await prisma.timeEntry.count({
-      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
-    });
-    if (alreadyLogged > 0) {
-      return { error: "Questa giornata è già registrata" };
-    }
+  try {
+    await timeService.replaceDayFor({ id: user.id, role: user.role }, targetUserId, dateRaw, entries);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  // Solo clienti su cui la persona può loggare (le voci riservate restano
-  // a chi è indicato), più quelli che hanno già ore quel giorno: in modifica
-  // un admin non deve perderle se nel frattempo il cliente è cambiato.
-  const requestedIds = [...new Set(entries.map((e) => e.clientId))];
-  if (requestedIds.length > 0) {
-    const allowed = await prisma.client.findMany({
-      where: {
-        id: { in: requestedIds },
-        OR: [
-          loggableClientsWhere(targetUserId),
-          { timeEntries: { some: { userId: targetUserId, date: { gte: day, lt: nextDay } } } },
-        ],
-      },
-      select: { id: true },
-    });
-    if (allowed.length !== requestedIds.length) {
-      return { error: "Non puoi loggare ore su uno dei clienti indicati" };
-    }
-  }
-
-  await prisma.$transaction([
-    prisma.timeEntry.deleteMany({
-      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
-    }),
-    // Ore registrate: il giorno non è più "non lavorato".
-    ...(entries.length > 0
-      ? [prisma.dayNotWorked.deleteMany({ where: { userId: targetUserId, date: { gte: day, lt: nextDay } } })]
-      : []),
-    ...entries.map((e) =>
-      prisma.timeEntry.create({
-        data: {
-          userId: targetUserId,
-          clientId: e.clientId,
-          date: day,
-          hours: e.hours,
-          description: "",
-        },
-      })
-    ),
-  ]);
 
   revalidatePath("/ore");
   revalidatePath(`/team/${targetUserId}`);
@@ -1514,36 +1069,16 @@ export async function setDayNotWorked(formData: FormData): Promise<ActionResult>
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const targetUserIdRaw = String(formData.get("userId") ?? "").trim();
-  const targetUserId = targetUserIdRaw || user.id;
-  if (targetUserId !== user.id && !isAdminRole(user.role)) {
-    return { error: "Non autorizzato" };
-  }
-  const dateRaw = String(formData.get("date") ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-    return { error: "Data non valida" };
-  }
-  const notWorked = formData.get("notWorked") === "1";
-  const day = localDate(dateRaw);
-  const nextDay = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
-
-  if (notWorked) {
-    if (!isWorkingDay(day)) {
-      return { error: "È già un giorno non lavorativo (weekend o festivo)" };
-    }
-    const logged = await prisma.timeEntry.count({
-      where: { userId: targetUserId, date: { gte: day, lt: nextDay } },
-    });
-    if (logged > 0) {
-      return { error: "In questa giornata ci sono già ore registrate" };
-    }
-    await prisma.dayNotWorked.upsert({
-      where: { userId_date: { userId: targetUserId, date: day } },
-      create: { userId: targetUserId, date: day },
-      update: {},
-    });
-  } else {
-    await prisma.dayNotWorked.deleteMany({ where: { userId: targetUserId, date: { gte: day, lt: nextDay } } });
+  const targetUserId = String(formData.get("userId") ?? "").trim() || user.id;
+  try {
+    await timeService.setDayNotWorkedFor(
+      { id: user.id, role: user.role },
+      targetUserId,
+      String(formData.get("date") ?? ""),
+      formData.get("notWorked") === "1"
+    );
+  } catch (err) {
+    return eventServiceError(err);
   }
 
   revalidatePath("/ore");
@@ -1579,94 +1114,53 @@ export async function applySaldiImport(
 
 // --- Task ---
 
-// Campi del form task (nuovo e modifica), già validati.
-type TaskFormData = {
-  title: string;
-  notes: string;
-  clientId: string | null;
-  status: string;
-  priority: string | null;
-  dueDate: Date | null;
-};
-
-function parseTaskForm(
-  formData: FormData
-): { error: string } | { data: TaskFormData; assigneeIds: string[] } {
-  const title = String(formData.get("title") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
-  const clientIdRaw = String(formData.get("clientId") ?? "").trim();
-  const clientId = clientIdRaw && clientIdRaw !== "none" ? clientIdRaw : null;
-  const status = String(formData.get("status") ?? "not_started");
-  const priorityRaw = String(formData.get("priority") ?? "").trim();
-  const priority = priorityRaw || null;
-  const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
-  const assigneeIds = [...new Set(formData.getAll("assigneeIds").map(String))];
-
-  if (!title) {
-    return { error: "Il task è obbligatorio" };
-  }
-  if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
-    return { error: "Stato non valido" };
-  }
-  if (priority && !TASK_PRIORITIES.includes(priority as (typeof TASK_PRIORITIES)[number])) {
-    return { error: "Priorità non valida" };
-  }
-  if (dueDateRaw && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw)) {
-    return { error: "Scadenza non valida" };
-  }
-
+// Regole nel service (condiviso con l'app iPhone): qui solo il passaggio dal form
+// e il ritorno come ActionResult. Durante un "vedi come" la scrittura è rifiutata.
+function taskInputFromForm(formData: FormData) {
   return {
-    data: {
-      title,
-      notes,
-      clientId,
-      status,
-      priority,
-      // localDate, non new Date(): una stringa data-only verrebbe letta come
-      // mezzanotte UTC e mostrata un giorno prima nei fusi negativi.
-      dueDate: dueDateRaw ? localDate(dueDateRaw) : null,
-    },
-    assigneeIds,
+    title: formData.get("title"),
+    notes: formData.get("notes"),
+    clientId: formData.get("clientId"),
+    status: formData.get("status") ?? undefined,
+    priority: formData.get("priority"),
+    dueDate: formData.get("dueDate"),
+    assigneeIds: formData.getAll("assigneeIds"),
   };
 }
+
+const taskActor = (user: { id: string; role: string; projectManager: boolean }) => ({
+  id: user.id,
+  role: user.role,
+  projectManager: user.projectManager,
+});
 
 export async function createTask(formData: FormData) {
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const parsed = parseTaskForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, assigneeIds } = parsed;
-
-  const task = await prisma.task.create({
-    data: {
-      ...data,
-      completedAt: data.status === "done" ? new Date() : null,
-      assignees: {
-        create: assigneeIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let created;
+  try {
+    created = await tasksService.createTask(taskActor(user), taskInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/task");
-  after(() => notifyTaskAssigned(task.id, assigneeIds, user.id));
+  after(created.notify);
 }
 
 export async function updateTaskStatus(
   taskId: string,
   status: string
 ): Promise<ActionResult> {
-  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
 
-  if (!TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
-    return { error: "Stato non valido" };
+  try {
+    await tasksService.setTaskStatus(taskActor(user), taskId, status);
+  } catch (err) {
+    return eventServiceError(err);
   }
-
-  const updated = await prisma.task.updateMany({
-    where: { id: taskId },
-    data: { status, completedAt: status === "done" ? new Date() : null },
-  });
-  if (updated.count === 0) return { error: "Task non trovato (forse è stato eliminato)" };
   revalidatePath("/task");
 }
 
@@ -1675,45 +1169,26 @@ export async function updateTask(taskId: string, formData: FormData): Promise<Ac
   const user = await requireWritableUser();
   if (!user) return READ_ONLY_ERROR;
 
-  const parsed = parseTaskForm(formData);
-  if ("error" in parsed) return { error: parsed.error };
-  const { data, assigneeIds } = parsed;
-
-  const current = await prisma.task.findUnique({
-    where: { id: taskId },
-    select: { status: true, completedAt: true, assignees: { select: { userId: true } } },
-  });
-  if (!current) return { error: "Task non trovato" };
-
-  // completedAt fa partire il conto per l'eliminazione: si azzera solo se il
-  // task esce da "done", e non si sposta se ci resta.
-  const completedAt =
-    data.status !== "done" ? null : current.status === "done" ? current.completedAt : new Date();
-
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      ...data,
-      completedAt,
-      assignees: {
-        deleteMany: {},
-        create: assigneeIds.map((userId) => ({ userId })),
-      },
-    },
-  });
+  let updated;
+  try {
+    updated = await tasksService.updateTask(taskActor(user), taskId, taskInputFromForm(formData));
+  } catch (err) {
+    return eventServiceError(err);
+  }
 
   revalidatePath("/task");
-  // Avvisa solo chi è stato aggiunto adesso.
-  const previous = new Set(current.assignees.map((a) => a.userId));
-  const added = assigneeIds.filter((id) => !previous.has(id));
-  if (added.length > 0) after(() => notifyTaskAssigned(taskId, added, user.id));
+  after(updated.notify);
 }
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
-  if (!(await requireWritableUser())) return READ_ONLY_ERROR;
+  const user = await requireWritableUser();
+  if (!user) return READ_ONLY_ERROR;
   // I task sono condivisi: chiunque nel team li modifica e li elimina.
-  const deleted = await prisma.task.deleteMany({ where: { id: taskId } });
-  if (deleted.count === 0) return { error: "Task non trovato (forse è già stato eliminato)" };
+  try {
+    await tasksService.deleteTask(taskActor(user), taskId);
+  } catch (err) {
+    return eventServiceError(err);
+  }
   revalidatePath("/task");
 }
 
