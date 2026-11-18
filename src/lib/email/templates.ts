@@ -130,7 +130,15 @@ const DECISION_LABELS: Record<string, string> = {
 export function leaveDecisionEmail(
   recipient: Recipient,
   appUrl: string,
-  data: { type: string; status: string; startDate: Date; endDate: Date; hours: number | null }
+  data: {
+    type: string;
+    status: string;
+    startDate: Date;
+    endDate: Date;
+    hours: number | null;
+    // Nota di chi ha deciso (facoltativa): mostrata in un riquadro, con escape HTML.
+    decisionNote?: string | null;
+  }
 ): Mail | null {
   const decision = DECISION_LABELS[data.status];
   if (!decision) return null;
@@ -145,6 +153,7 @@ export function leaveDecisionEmail(
     subject: `Richiesta ${type} ${decision}`,
     intro: [`la tua richiesta di ${type} è stata `, { strong: decision }, "."],
     details,
+    note: data.decisionNote || undefined,
     link: { path: "/richieste", label: "Vedi le tue richieste" },
   });
 }

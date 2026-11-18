@@ -379,15 +379,19 @@ export async function withdrawOwnLeaveRequest(requestId: string, seenVersion?: s
 export async function updateLeaveStatus(
   requestId: string,
   status: "approved" | "rejected",
-  seenVersion?: string
+  seenVersion?: string,
+  decisionNote?: string
 ): Promise<ActionResult> {
   // Regole nel service (decideLeaveRequest), condivise con l'app: admin e
   // responsabili col permesso "Approvare", mai le proprie, malattia e 104 solo
-  // admin, versione vista → 409 se la richiesta è cambiata.
+  // admin, versione vista → 409 se la richiesta è cambiata. `decisionNote`:
+  // nota facoltativa (max 500 caratteri) che vede il richiedente.
   const currentUser = await requireWritableUser();
   if (!currentUser) return READ_ONLY_ERROR;
   try {
-    const { userId, notify } = await leaveService.decideLeaveRequest(currentUser, requestId, status, seenVersion);
+    const { userId, notify } = await leaveService.decideLeaveRequest(currentUser, requestId, status, seenVersion, {
+      note: decisionNote,
+    });
     revalidateLeavePaths(userId);
     after(notify);
   } catch (err) {
@@ -435,7 +439,7 @@ export async function revertLeaveToPending(requestId: string): Promise<ActionRes
 
   const updated = await prisma.leaveRequest.updateMany({
     where: { id: requestId, status: { not: "pending" } },
-    data: { status: "pending" },
+    data: { status: "pending", ...leaveService.clearDecisionNote() },
   });
   if (updated.count === 0) {
     return { error: "La richiesta è già in attesa" };

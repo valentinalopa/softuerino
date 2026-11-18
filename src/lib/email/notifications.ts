@@ -53,7 +53,7 @@ async function activeRecipients(userIds: string[], excludeUserId: string) {
 export async function notifyLeaveDecision(requestId: string, actorId: string) {
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
-    select: { userId: true, type: true, status: true, startDate: true, endDate: true, hours: true },
+    select: { userId: true, type: true, status: true, startDate: true, endDate: true, hours: true, decisionNote: true },
   });
   if (!request) return;
   await deliver(await activeRecipients([request.userId], actorId), (recipient, appUrl) =>

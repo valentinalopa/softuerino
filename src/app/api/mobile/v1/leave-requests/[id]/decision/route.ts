@@ -15,7 +15,8 @@ function revalidateLeave(userId: string) {
 }
 
 // Approva o rifiuta una richiesta di un'altra persona, con le stesse regole del
-// web (decideLeaveRequest). Corpo {status: "approved"|"rejected", version}.
+// web (decideLeaveRequest). Corpo {status: "approved"|"rejected", version, note?}.
+// `note` (facoltativa, max 500 caratteri, oltre → 400): la vede il richiedente.
 // Dall'app la versione è obbligatoria: senza, o se la richiesta è cambiata → 409.
 // 403: proprie richieste, malattia/104 da non admin, fuori ambito, "vedi come".
 // 404: richiesta inesistente. 409: già decisa o ritirata. Mail a chi l'ha fatta.
@@ -27,7 +28,7 @@ export const POST = withMobileAuth<unknown, P>(async ({ user, impersonating }, r
     id,
     body.status,
     body.version,
-    { requireVersion: true }
+    { requireVersion: true, note: body.note }
   );
   revalidateLeave(userId);
   after(notify);

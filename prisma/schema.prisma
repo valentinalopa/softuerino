@@ -142,6 +142,10 @@ model LeaveRequest {
   endTime   String?
   status    String   @default("pending") // pending | approved | rejected | registrata
   note      String?
+  // Nota di chi ha deciso (approvato/rifiutato), visibile al richiedente. Max 500
+  // caratteri; azzerata quando la richiesta torna in attesa. NON fa parte di
+  // leaveVersion: scriverla non invalida le versioni viste da altri.
+  decisionNote String?
   createdAt DateTime @default(now())
   // Solo per type = "recupero": quale recupero da fare sta smaltendo.
   recoveryCreditId String?

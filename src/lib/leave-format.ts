@@ -11,6 +11,8 @@ export type LeaveRequestRow = {
   endTime?: string | null;
   status: string;
   note?: string | null;
+  // Nota di chi ha approvato/rifiutato (F6 T1b), visibile al richiedente.
+  decisionNote?: string | null;
   createdAt: Date;
   user?: { name: string };
   // Solo per i recuperi collegati a un recupero da fare.

@@ -212,4 +212,105 @@ describe("approvazione richieste dall'app", () => {
       ForbiddenError
     );
   });
+
+  // F6 T1b (decisione ⚑ elemento #353): nota del responsabile alla decisione.
+  describe("nota alla decisione", () => {
+    const noteOf = async (id: string) => (await prisma.leaveRequest.findUniqueOrThrow({ where: { id } })).decisionNote;
+
+    it("app: la nota viene salvata (con trim), restituita da decision e dagli elenchi del richiedente", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const req = await pending("ap-m");
+      await login("ap-ad");
+      const res = await decide(req.id, { status: "rejected", version: leaveVersion(req), note: "  Periodo di chiusura, riprova a gennaio  " });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { request: { decisionNote: string | null; status: string } };
+      assert.equal(body.request.status, "rejected");
+      assert.equal(body.request.decisionNote, "Periodo di chiusura, riprova a gennaio");
+      assert.equal(await noteOf(req.id), "Periodo di chiusura, riprova a gennaio");
+
+      // Il richiedente la vede nell'elenco e nel dettaglio delle sue richieste.
+      await login("ap-m");
+      const { GET: listOwn } = await import("../src/app/api/mobile/v1/leave-requests/route");
+      const { GET: getOne } = await import("../src/app/api/mobile/v1/leave-requests/[id]/route");
+      const list = await listOwn(send("GET", "/leave-requests"));
+      const items = ((await list.json()) as { requests: { id: string; decisionNote: string | null }[] }).requests;
+      assert.equal(items.find((r) => r.id === req.id)?.decisionNote, "Periodo di chiusura, riprova a gennaio");
+      const one = await getOne(send("GET", `/leave-requests/${req.id}`), idCtx(req.id));
+      assert.equal(((await one.json()) as { request: { decisionNote: string | null } }).request.decisionNote, "Periodo di chiusura, riprova a gennaio");
+    });
+
+    it("nota vuota o di soli spazi → null; senza nota → null; la nota non cambia la versione", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const a = await pending("ap-m");
+      const b = await pending("ap-m", "ferie", "2026-12-02");
+      const versionBefore = leaveVersion(a);
+      await login("ap-ad");
+      assert.equal((await decide(a.id, { status: "approved", version: versionBefore, note: "   " })).status, 200);
+      assert.equal(await noteOf(a.id), null);
+      assert.equal((await decide(b.id, { status: "approved", version: leaveVersion(b) })).status, 200);
+      assert.equal(await noteOf(b.id), null);
+      const after = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: a.id } });
+      assert.equal(leaveVersion(after), versionBefore);
+    });
+
+    it("500 caratteri passano, 501 → 400 e la richiesta resta in attesa; nota non testuale → 400", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const req = await pending("ap-m");
+      await login("ap-ad");
+      const tooLong = await decide(req.id, { status: "approved", version: leaveVersion(req), note: "x".repeat(501) });
+      assert.equal(tooLong.status, 400);
+      assert.equal(await statusOf(req.id), "pending");
+      assert.equal(await noteOf(req.id), null);
+      const notText = await decide(req.id, { status: "approved", version: leaveVersion(req), note: 42 });
+      assert.equal(notText.status, 400);
+      assert.equal(await statusOf(req.id), "pending");
+      const ok = await decide(req.id, { status: "approved", version: leaveVersion(req), note: "x".repeat(500) });
+      assert.equal(ok.status, 200);
+      assert.equal((await noteOf(req.id))?.length, 500);
+    });
+
+    it("service (web): la nota facoltativa passa nelle opzioni; i 409 restano quelli di prima", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-ad2", "admin");
+      await makeUser("ap-m");
+      const req = await pending("ap-m");
+      const actor = (id: string) => ({ id, role: "admin", employmentType: "dipendente" });
+      const deps = { notifyLeaveDecision: async () => undefined };
+      const out = await decideLeaveRequest(actor("ap-ad"), req.id, "approved", leaveVersion(req), { deps, note: "Ok, buone ferie" });
+      assert.equal(out.request.decisionNote, "Ok, buone ferie");
+      await assert.rejects(
+        decideLeaveRequest(actor("ap-ad2"), req.id, "rejected", undefined, { deps, note: "troppo tardi" }),
+        ConflictError
+      );
+      assert.equal(await noteOf(req.id), "Ok, buone ferie");
+    });
+
+    it("riportare in attesa azzera la nota", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const req = await pending("ap-m");
+      await login("ap-ad");
+      assert.equal((await decide(req.id, { status: "rejected", version: leaveVersion(req), note: "no" })).status, 200);
+      assert.equal(await noteOf(req.id), "no");
+      const { clearDecisionNote } = await import("../src/lib/services/leave");
+      await prisma.leaveRequest.update({ where: { id: req.id }, data: { status: "pending", ...clearDecisionNote() } });
+      assert.equal(await noteOf(req.id), null);
+    });
+
+    it("mail di esito: mostra la nota (con escape HTML) solo se c'è", async () => {
+      const { leaveDecisionEmail } = await import("../src/lib/email/templates");
+      const base = { type: "ferie", status: "rejected", startDate: new Date("2026-12-01T00:00:00"), endDate: new Date("2026-12-01T00:00:00"), hours: null };
+      const rec = { name: "Anna Rossi", email: "anna@approve.test" };
+      const withNote = leaveDecisionEmail(rec as never, "https://time.test", { ...base, decisionNote: "Vedi <b>Marco</b> & riprova" });
+      assert.ok(withNote);
+      assert.ok(withNote.html.includes("Vedi &lt;b&gt;Marco&lt;/b&gt; &amp; riprova"));
+      assert.ok(!withNote.html.includes("<b>Marco</b>"));
+      const without = leaveDecisionEmail(rec as never, "https://time.test", { ...base, decisionNote: null });
+      assert.ok(without);
+      assert.ok(!without.html.includes("Marco"));
+    });
+  });
 });

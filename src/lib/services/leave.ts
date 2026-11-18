@@ -75,6 +75,8 @@ export type LeaveRequestView = {
   endTime: string | null;
   status: string;
   note: string | null;
+  // Nota di chi ha approvato/rifiutato (F6 T1b): null se non c'è o se la richiesta è in attesa.
+  decisionNote: string | null;
   createdAt: string;
   // Versione della richiesta: da rimandare nel PATCH/DELETE per accorgersi di modifiche in contemporanea.
   version: string;
@@ -168,6 +170,7 @@ function toView(row: RequestRow): LeaveRequestView {
     endTime: row.endTime,
     status: row.status,
     note: row.note,
+    decisionNote: row.decisionNote,
     createdAt: row.createdAt.toISOString(),
     version: leaveVersion(row),
     recoveryCredit: row.recoveryCredit,
@@ -456,6 +459,24 @@ export async function withdrawOwnLeaveRequest(
 // --- Decisione: approvare o rifiutare (web "Da approvare" e app) ---
 
 export type LeaveDecision = "approved" | "rejected";
+
+// Nota del responsabile alla decisione (decisione ⚑ elemento #353): facoltativa,
+// tagliata dagli spazi, al massimo 500 caratteri; vuota → nessuna nota. Non fa
+// parte di leaveVersion, quindi scriverla non cambia la versione vista da altri.
+export const DECISION_NOTE_MAX = 500;
+export function normalizeDecisionNote(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new ValidationError("La nota deve essere un testo");
+  const note = value.trim();
+  if (note.length > DECISION_NOTE_MAX) {
+    throw new ValidationError(`La nota è troppo lunga: al massimo ${DECISION_NOTE_MAX} caratteri`);
+  }
+  return note || null;
+}
+// Da aggiungere ai dati quando una richiesta torna in attesa.
+export function clearDecisionNote() {
+  return { decisionNote: null as string | null };
+}
 type DecisionDeps = { notifyLeaveDecision: (requestId: string, actorId: string) => Promise<unknown> };
 const realDecisionDeps: DecisionDeps = { notifyLeaveDecision };
 
@@ -502,13 +523,14 @@ export async function decideLeaveRequest(
   requestId: string,
   status: unknown,
   seenVersionRaw?: unknown,
-  opts: { requireVersion?: boolean; deps?: DecisionDeps } = {}
+  opts: { requireVersion?: boolean; deps?: DecisionDeps; note?: unknown } = {}
 ): Promise<{ userId: string; request: ApprovalRequestView; notify: () => Promise<void> }> {
   const deps = opts.deps ?? realDecisionDeps;
   if (actor.impersonating) throw new ForbiddenError(READ_ONLY_MESSAGE);
   if (status !== "approved" && status !== "rejected") {
     throw new ValidationError("Esito non valido: approved o rejected");
   }
+  const decisionNote = normalizeDecisionNote(opts.note);
   const request = await prisma.leaveRequest.findUnique({
     where: { id: requestId },
     select: { userId: true, status: true, ...VERSION_SELECT },
@@ -538,7 +560,7 @@ export async function decideLeaveRequest(
   }
   const updated = await prisma.leaveRequest.updateMany({
     where: { id: requestId, ...versionWhere(request) },
-    data: { status: nextStatus },
+    data: { status: nextStatus, decisionNote },
   });
   if (updated.count === 0) {
     throw await staleRequestError(requestId, "Richiesta già gestita o non più in attesa");

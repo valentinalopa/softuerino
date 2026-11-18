@@ -572,6 +572,10 @@ paths:
               properties:
                 status: { type: string, enum: [approved, rejected] }
                 version: { type: string, description: "`version` della richiesta come l'app l'ha vista" }
+                note:
+                  type: [string, "null"]
+                  maxLength: 500
+                  description: Nota facoltativa per chi ha fatto la richiesta (la vede su web e app e nella mail di esito). Tagliata dagli spazi; vuota = nessuna nota; oltre 500 caratteri → 400. Non cambia la `version`.
       responses:
         "200":
           description: Richiesta aggiornata
@@ -1526,8 +1530,12 @@ components:
     LeaveRequest:
       type: object
       description: Richiesta propria
-      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, createdAt, version, recoveryCredit]
+      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, decisionNote, createdAt, version, recoveryCredit]
       properties:
+        decisionNote:
+          type: [string, "null"]
+          maxLength: 500
+          description: Nota di chi ha approvato o rifiutato la richiesta, visibile al richiedente. `null` se non c'è o se la richiesta è in attesa.
         id:
           type: string
         type:
