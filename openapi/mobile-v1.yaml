@@ -529,6 +529,78 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/report:
+    get:
+      operationId: getReport
+      summary: Report / Panoramica (solo admin)
+      description: Gli stessi dati di /panoramica del web (ore per cliente negli ultimi 12 mesi, assenze dell'anno). Solo admin e super admin; gli altri 403. Solo numeri ed etichette.
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report]
+                properties:
+                  report:
+                    $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/people:
+    get:
+      operationId: listPeople
+      summary: Persone visibili all'utente
+      description: Come /team. Admin e super admin tutte le persone (anche disattivate) con i saldi dell'anno; gli altri le persone attive dei reparti su cui hanno un permesso (presenze e ore, richieste e saldi, approvare), senza saldi e senza sé stessi. Senza permessi l'elenco è vuoto.
+      responses:
+        "200":
+          description: Elenco ordinato per nome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [people]
+                properties:
+                  people:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Person"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/people/{id}:
+    get:
+      operationId: getPerson
+      summary: Dettaglio di una persona
+      description: Stesse condizioni dell'elenco. Persona inesistente o non visibile → 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Persona
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [person]
+                properties:
+                  person:
+                    $ref: "#/components/schemas/Person"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/leave-requests/pending-approval:
     get:
       operationId: listPendingApprovals
@@ -1527,6 +1599,99 @@ components:
         endAt:
           type: string
           format: date-time
+    Person:
+      type: object
+      description: Persona vista da chi ha il permesso (balances e toRecover solo per gli admin, altrimenti null)
+      required: [id, name, email, role, active, employmentType, departments, managedDepartments, balances, toRecover]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        active: { type: boolean }
+        employmentType: { type: string }
+        departments:
+          type: array
+          items: { type: string }
+        managedDepartments:
+          type: array
+          description: Reparti di cui è responsabile
+          items: { type: string }
+        balances:
+          description: Saldi dell'anno (stesse cifre delle barrette di Persone, come `figures` di /balance); null se non admin
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties:
+                $ref: "#/components/schemas/BalanceFigures"
+        toRecover:
+          type: [string, "null"]
+          description: Recuperi da fare, già formattati
+    Report:
+      type: object
+      description: Dati di /panoramica. Ore per cliente sugli ultimi `months` mesi, assenze dell'anno `year`.
+      required: [months, year, hoursByMonth, clientTotals, clientBreakdown, leaveTotals]
+      properties:
+        months: { type: integer }
+        year: { type: integer }
+        hoursByMonth:
+          type: object
+          required: [clients, rows]
+          properties:
+            clients:
+              type: array
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+            rows:
+              type: array
+              description: Una riga per mese (key, label) con le ore di ogni cliente nella proprietà col suo id
+              items:
+                type: object
+                required: [key, label]
+                additionalProperties:
+                  type: [string, number]
+        clientTotals:
+          type: array
+          items:
+            type: object
+            required: [id, name, hours]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              hours: { type: number }
+        clientBreakdown:
+          type: array
+          description: Totale per cliente con ripartizione per voce (parts) e ore mese per mese (months)
+          items:
+            type: object
+            required: [id, name, hours, months, parts]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              hours: { type: number }
+              months:
+                type: array
+                items: { type: number }
+              parts:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, hours, months]
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+                    hours: { type: number }
+                    months:
+                      type: array
+                      items: { type: number }
+        leaveTotals:
+          type: object
+          required: [ferieDays, permessoHours, malattiaDays, assenzeDays, recuperoDays, recuperoHours, assenzeExtraDays, permesso104Days, permesso104Hours]
+          additionalProperties: { type: number }
     LeaveRequest:
       type: object
       description: Richiesta propria
