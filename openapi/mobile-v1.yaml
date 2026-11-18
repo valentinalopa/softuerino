@@ -1766,30 +1766,38 @@ components:
               name: { type: string }
               hours: { type: number }
         clientBreakdown:
-          type: array
-          description: Totale per cliente con ripartizione per voce (parts) e ore mese per mese (months)
-          items:
-            type: object
-            required: [id, name, hours, months, parts]
-            properties:
-              id: { type: string }
-              name: { type: string }
-              hours: { type: number }
-              months:
-                type: array
-                items: { type: number }
-              parts:
-                type: array
-                items:
-                  type: object
-                  required: [id, name, hours, months]
-                  properties:
-                    id: { type: string }
-                    name: { type: string }
-                    hours: { type: number }
-                    months:
-                      type: array
-                      items: { type: number }
+          type: object
+          description: Tabella con il totale per cliente, la ripartizione per voce (parts) e le ore mese per mese
+          required: [months, rows]
+          properties:
+            months:
+              type: array
+              description: Etichette dei mesi (una per ogni elemento di `months` delle righe, nello stesso ordine)
+              items: { type: string }
+            rows:
+              type: array
+              items:
+                type: object
+                required: [id, name, hours, months, parts]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  hours: { type: number }
+                  months:
+                    type: array
+                    items: { type: number }
+                  parts:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, hours, months]
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        hours: { type: number }
+                        months:
+                          type: array
+                          items: { type: number }
         leaveTotals:
           type: object
           required: [ferieDays, permessoHours, malattiaDays, assenzeDays, recuperoDays, recuperoHours, assenzeExtraDays, permesso104Days, permesso104Hours]
