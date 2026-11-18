@@ -1,37 +1,12 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { getAuthContext } from "@/lib/auth/session";
+import { certResponse, isCertFile, readCertFile } from "@/lib/cert-files";
 
 // Download del Certificato Colibrì (solo file pubblici della CA interna):
 // profilo iOS/macOS (.mobileconfig), DMG per Mac e certificato CA (.crt) per
 // Windows e Android. Come la VPN: serve il login
 // (qualsiasi utente attivo) e non è disponibile durante un "vedi come".
-// Whitelist fissa: dal client non arriva mai un percorso. I file stanno in
-// CERT_FILES_DIR, fuori da public.
-const FILES = {
-  "colibri.mobileconfig": {
-    diskName: "colibri.mobileconfig",
-    contentType: "application/x-apple-aspen-config",
-    downloadName: "Certificato-Colibri-Vision.mobileconfig",
-  },
-  "colibri.dmg": {
-    diskName: "colibri.dmg",
-    contentType: "application/x-apple-diskimage",
-    downloadName: "Certificato-Colibri-Vision.dmg",
-  },
-  crt: {
-    diskName: "root.crt",
-    contentType: "application/x-x509-ca-cert",
-    downloadName: "Colibri-Vision-Root-CA.crt",
-  },
-} as const;
-
-type CertFile = keyof typeof FILES;
-
-function isCertFile(name: string): name is CertFile {
-  return Object.prototype.hasOwnProperty.call(FILES, name);
-}
-
+// La whitelist dei file è in lib/cert-files.ts (condivisa con il link monouso
+// dell'app, /api/cert/dl/[token]).
 export async function GET(_request: Request, { params }: { params: Promise<{ file: string }> }) {
   const context = await getAuthContext();
   if (!context) return text("Accesso richiesto", 401);
@@ -42,27 +17,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ fil
   const { file } = await params;
   if (!isCertFile(file)) return text("File non trovato", 404);
 
-  const dir = process.env.CERT_FILES_DIR || "/var/lib/softuerino/cert";
-  let content: Buffer;
-  try {
-    content = await readFile(path.join(dir, FILES[file].diskName));
-  } catch {
-    return text("File non disponibile", 404);
-  }
+  const content = await readCertFile(file);
+  if (!content) return text("File non disponibile", 404);
 
   // VpnDownload richiede una sezione VPN: qui basta una riga nel log del servizio.
   console.info(`[cert] download ${file} utente=${context.user.id}`);
-
-  const meta = FILES[file];
-  return new Response(new Uint8Array(content), {
-    headers: {
-      "Content-Type": meta.contentType,
-      "Content-Disposition": `attachment; filename="${meta.downloadName}"`,
-      "Content-Length": String(content.length),
-      "Cache-Control": "no-store, private",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+  return certResponse(file, content);
 }
 
 function text(message: string, status: number) {

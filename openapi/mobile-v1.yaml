@@ -601,6 +601,108 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/vpn:
+    get:
+      operationId: listVpnProfiles
+      summary: Profili VPN
+      description: Come la scheda VPN di Security sul web, per qualsiasi utente autenticato. Solo consultazione e download; la gestione dei profili e il registro dei download restano ai super admin sul web. Il contenuto del file non è mai nell'elenco.
+      responses:
+        "200":
+          description: Profili ordinati per nome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, notes, fileName, hasConfig]
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        notes:
+                          type: string
+                          nullable: true
+                        fileName:
+                          type: string
+                          nullable: true
+                        hasConfig:
+                          type: boolean
+                          description: false se il profilo non ha ancora un file caricato (il download darebbe 404)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/vpn/{id}/config:
+    get:
+      operationId: downloadVpnConfig
+      summary: Scarica il file .ovpn di un profilo
+      description: Stessi controlli di /api/vpn/{id}/config sul web. Ogni download è registrato (VpnDownload). Mai durante un "vedi come" (403). Profilo inesistente o senza file → 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File .ovpn (attachment, nome in Content-Disposition)
+          content:
+            application/x-openvpn-profile:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/security/cert-link:
+    post:
+      operationId: createCertificateLink
+      summary: Link monouso per scaricare il Certificato Colibrì
+      description: "Safari non ha il Bearer, quindi l'app chiede un link col token casuale: valido 5 minuti e una sola volta, tenuto in memoria dal server (un riavvio lo annulla). Il link (GET https://time.colibrivision.it/api/cert/dl/{token}, senza altre credenziali) serve il profilo dal server; link scaduto, già usato o sconosciuto → 410 (fuori da /v1, testo semplice). Mai durante un \"vedi come\" (403)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  enum: [mobileconfig]
+      responses:
+        "200":
+          description: Link creato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expiresAt]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  expiresAt:
+                    type: string
+                    format: date-time
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/leave-requests/pending-approval:
     get:
       operationId: listPendingApprovals
