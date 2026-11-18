@@ -20,6 +20,7 @@ import {
 } from "@/lib/email/notifications";
 import { canOnPerson, peopleInScope } from "@/lib/permissions";
 import {
+  canDecideOwnLeave,
   isAdminRole,
   isSensitiveLeave,
   SENSITIVE_LEAVE_TYPES,
@@ -503,7 +504,9 @@ export async function listPendingApprovals(actor: LeaveActor): Promise<ApprovalR
     where: {
       status: "pending",
       ...(isAdmin ? {} : { type: { notIn: [...SENSITIVE_LEAVE_TYPES] } }),
-      user: scope === "all" ? { id: { not: actor.id } } : { id: { in: scope } },
+      // Tutte tranne le proprie; il super admin vede anche le sue (può deciderle).
+      user:
+        scope === "all" ? (canDecideOwnLeave(actor.role) ? {} : { id: { not: actor.id } }) : { id: { in: scope } },
     },
     include: APPROVAL_INCLUDE,
     orderBy: { startDate: "asc" },
@@ -536,7 +539,8 @@ export async function decideLeaveRequest(
     select: { userId: true, status: true, ...VERSION_SELECT },
   });
   if (!request) throw new NotFoundError("Richiesta non trovata");
-  if (request.userId === actor.id) {
+  // Le proprie richieste le decide un altro admin; solo il super admin può decidere anche le sue.
+  if (request.userId === actor.id && !canDecideOwnLeave(actor.role)) {
     throw new ForbiddenError("Non puoi decidere le tue richieste: le approva un altro admin");
   }
   if (!isAdminRole(actor.role)) {

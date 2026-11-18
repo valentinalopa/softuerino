@@ -383,7 +383,8 @@ export async function updateLeaveStatus(
   decisionNote?: string
 ): Promise<ActionResult> {
   // Regole nel service (decideLeaveRequest), condivise con l'app: admin e
-  // responsabili col permesso "Approvare", mai le proprie, malattia e 104 solo
+  // responsabili col permesso "Approvare", mai le proprie (solo il super admin può
+  // decidere anche le sue), malattia e 104 solo
   // admin, versione vista → 409 se la richiesta è cambiata. `decisionNote`:
   // nota facoltativa (max 500 caratteri) che vede il richiedente.
   const currentUser = await requireWritableUser();

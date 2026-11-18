@@ -142,6 +142,47 @@ describe("approvazione richieste dall'app", () => {
     assert.equal(await statusOf(other.id), "pending");
   });
 
+  it("super admin: le sue richieste compaiono in pending-approval e può approvarle (200, mail); admin e responsabile no (403)", async () => {
+    await makeUser("ap-sa", "super_admin");
+    await makeUser("ap-ad", "admin");
+    await makeUser("ap-r");
+    await department("AP-uno", [{ userId: "ap-r", isManager: true }]);
+    const ownSa = await pending("ap-sa");
+    const ownAd = await pending("ap-ad", "ferie", "2026-12-02");
+    const ownR = await pending("ap-r", "ferie", "2026-12-03");
+
+    // Il ruolo effettivo di super admin esiste solo dalle reti fidate; dal pubblico vale admin (divieto).
+    const { token: saToken } = await issueSessionToken("ap-sa", { authMethod: "oidc", client: "ios" });
+    setRequest({ bearer: saToken, headers: { "x-real-ip": "192.168.40.142", "x-softuerino-network": "public" } });
+    const outsideIds = (await (await getPending(send("GET", "/leave-requests/pending-approval"))).json()).requests.map((r: { id: string }) => r.id);
+    assert.ok(!outsideIds.includes(ownSa.id), "dal pubblico (admin) la sua richiesta non c'è");
+    assert.equal((await decide(ownSa.id, { status: "approved", version: leaveVersion(ownSa) })).status, 403);
+    assert.equal(await statusOf(ownSa.id), "pending");
+
+    setRequest({ bearer: saToken, headers: { "x-real-ip": "192.168.11.5" } });
+    const ids = (await (await getPending(send("GET", "/leave-requests/pending-approval"))).json()).requests.map((r: { id: string }) => r.id);
+    assert.ok(ids.includes(ownSa.id), "la sua richiesta è in elenco");
+    assert.ok(ids.includes(ownAd.id) && ids.includes(ownR.id), "le altre ci sono comunque");
+    resetCacheCalls();
+    const res = await decide(ownSa.id, { status: "approved", version: leaveVersion(ownSa) });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).request.status, "approved");
+    assert.equal(cacheCalls.after, 1, "mail programmata come per le altre");
+    assert.equal(await statusOf(ownSa.id), "approved");
+    // Versione vecchia → 409 anche per il super admin sulla propria.
+    assert.equal((await decide(ownSa.id, { status: "rejected", version: leaveVersion(ownSa) })).status, 409);
+
+    await login("ap-ad");
+    const adIds = (await (await getPending(send("GET", "/leave-requests/pending-approval"))).json()).requests.map((r: { id: string }) => r.id);
+    assert.ok(!adIds.includes(ownAd.id), "l'admin non vede la propria");
+    assert.equal((await decide(ownAd.id, { status: "approved", version: leaveVersion(ownAd) })).status, 403);
+    assert.equal(await statusOf(ownAd.id), "pending");
+
+    await login("ap-r");
+    assert.equal((await decide(ownR.id, { status: "approved", version: leaveVersion(ownR) })).status, 403);
+    assert.equal(await statusOf(ownR.id), "pending");
+  });
+
   it("malattia e 104 decise da un non admin → 403; un admin approva la malattia → registrata", async () => {
     await makeUser("ap-r");
     await makeUser("ap-a");
