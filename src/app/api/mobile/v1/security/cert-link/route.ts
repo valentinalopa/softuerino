@@ -13,5 +13,8 @@ export const POST = withMobileAuth(async ({ user, impersonating }, req) => {
   }
   const { token, expiresAt } = createCertLink("colibri.mobileconfig", user.id);
   console.info(`[cert] link creato file=mobileconfig utente=${user.id}`);
-  return { url: `https://time.colibrivision.it/api/cert/dl/${token}`, expiresAt: expiresAt.toISOString() };
+  // Base del link: CERT_LINK_BASE_URL (senza "/" finale) per provare su un altro server (per esempio :3100);
+  // in produzione non si imposta e vale il sito pubblico.
+  const base = (process.env.CERT_LINK_BASE_URL || "https://time.colibrivision.it").replace(/\/+$/, "");
+  return { url: `${base}/api/cert/dl/${token}`, expiresAt: expiresAt.toISOString() };
 });

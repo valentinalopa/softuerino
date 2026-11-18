@@ -118,6 +118,26 @@ describe("VPN e certificato dall'app", () => {
     assert.equal((await getCertDl(new Request(url), tokCtx("sconosciuto"))).status, 410);
   });
 
+  it("cert-link: CERT_LINK_BASE_URL cambia l'host del link (anche con \"/\" finale); vuota = sito pubblico", async () => {
+    await makeUser("vc3");
+    await login("vc3");
+    const saved = process.env.CERT_LINK_BASE_URL;
+    try {
+      process.env.CERT_LINK_BASE_URL = "http://time.local.example.invalid:3100/";
+      const res = await postCertLink(req("POST", "/security/cert-link", { file: "mobileconfig" }));
+      assert.equal(res.status, 200);
+      const { url } = (await res.json()) as { url: string };
+      assert.match(url, /^http:\/\/time\.local\.example\.invalid:3100\/api\/cert\/dl\/[A-Za-z0-9_-]{43}$/);
+
+      process.env.CERT_LINK_BASE_URL = "";
+      const def = (await (await postCertLink(req("POST", "/security/cert-link", { file: "mobileconfig" }))).json()) as { url: string };
+      assert.match(def.url, /^https:\/\/time\.colibrivision\.it\/api\/cert\/dl\//);
+    } finally {
+      if (saved === undefined) delete process.env.CERT_LINK_BASE_URL;
+      else process.env.CERT_LINK_BASE_URL = saved;
+    }
+  });
+
   it("link scaduto → 410; file mancante → 404 e il link resta utilizzabile", async () => {
     const t0 = Date.now();
     const { token } = createCertLink("colibri.mobileconfig", "u", t0);
