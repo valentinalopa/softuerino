@@ -479,7 +479,7 @@ paths:
     patch:
       operationId: updateLeaveRequest
       summary: Modifica una propria richiesta in attesa
-      description: Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa, sovrapposta o cambiata nel frattempo («La richiesta è cambiata, ricarica»: rimanda `version` letta dalla richiesta per accorgersene; senza `version` resta solo la protezione tra lettura e scrittura); 404 non propria.
+      description: "Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa, sovrapposta o cambiata nel frattempo («La richiesta è cambiata, ricarica»: rimanda `version` letta dalla richiesta per accorgersene; senza `version` resta solo la protezione tra lettura e scrittura); 404 non propria."
       requestBody:
         required: true
         content:
@@ -533,7 +533,14 @@ paths:
     get:
       operationId: getReport
       summary: Report / Panoramica (solo admin)
-      description: Gli stessi dati di /panoramica del web (ore per cliente negli ultimi 12 mesi, assenze dell'anno). Solo admin e super admin; gli altri 403. Solo numeri ed etichette.
+      description: "Gli stessi dati di /panoramica del web (ore per cliente negli ultimi 12 mesi, assenze dell'anno). Solo admin e super admin; gli altri 403. Con userId i dati sono solo di quella persona; se non esiste 404. Solo numeri ed etichette."
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: "Id della persona: ore e assenze filtrate su di lei (senza, report di tutto il team)"
+          schema:
+            type: string
       responses:
         "200":
           description: Report
@@ -549,6 +556,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
   /v1/people:
@@ -1115,7 +1124,7 @@ paths:
     get:
       operationId: getLicense
       summary: Dettaglio licenza (mascherato)
-      description: Con note e attivazioni. Licenza inesistente o non visibile: 404.
+      description: "Con note e attivazioni. Licenza inesistente o non visibile: 404."
       parameters:
         - name: id
           in: path

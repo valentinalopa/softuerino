@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import type { ClientHoursEntryWithParent } from "@/lib/panoramica-utils";
 
 // Ore di tutto il team dal giorno indicato, con il cliente padre delle voci
-// (Panoramica e relativo CSV).
-export async function loadClientHoursEntries(from: Date): Promise<ClientHoursEntryWithParent[]> {
+// (Panoramica e relativo CSV). Con userId solo le ore di quella persona
+// (Report per persona, F6).
+export async function loadClientHoursEntries(from: Date, userId?: string): Promise<ClientHoursEntryWithParent[]> {
   const entries = await prisma.timeEntry.findMany({
-    where: { date: { gte: from } },
+    where: { date: { gte: from }, ...(userId ? { userId } : {}) },
     select: {
       date: true,
       hours: true,

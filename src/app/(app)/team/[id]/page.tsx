@@ -34,11 +34,16 @@ import { OreLogSection, type OreLogParams } from "@/components/ore/OreLogSection
 import { AttendanceSection } from "@/components/presenze/AttendanceSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
+import { getReport } from "@/lib/services/report";
+import { HoursByClientChart } from "@/components/panoramica/HoursByClientChart";
+import { ClientDistributionChart } from "@/components/panoramica/ClientDistributionChart";
+import { LeaveStatsChart } from "@/components/panoramica/LeaveStatsChart";
+import { ClientBreakdownTable } from "@/components/panoramica/ClientBreakdownTable";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Scheda membro" };
 
-const TABS = ["profilo", "saldi", "richieste", "presenze", "ore"] as const;
+const TABS = ["profilo", "saldi", "richieste", "presenze", "ore", "report"] as const;
 
 const TAB_LABELS: Record<(typeof TABS)[number], string> = {
   profilo: "Profilo",
@@ -46,6 +51,7 @@ const TAB_LABELS: Record<(typeof TABS)[number], string> = {
   richieste: "Richieste",
   presenze: "Presenze",
   ore: "Ore",
+  report: "Report",
 };
 type Tab = (typeof TABS)[number];
 
@@ -154,6 +160,54 @@ export default async function TeamMemberPage({
           canDelete={currentUser.role === "super_admin"}
         />
       )}
+
+      {tab === "report" && <ReportTab memberId={member.id} actorRole={currentUser.role} />}
+    </div>
+  );
+}
+
+// Report della persona: gli stessi dati e grafici di /panoramica, filtrati su
+// di lei (ore per cliente negli ultimi 12 mesi, assenze dell'anno). Solo admin
+// e super admin (la pagina è già riservata; getReport lo ricontrolla).
+async function ReportTab({ memberId, actorRole }: { memberId: string; actorRole: string }) {
+  const report = await getReport({ role: actorRole }, new Date(), memberId);
+  return (
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Ore per cliente nel tempo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <HoursByClientChart rows={report.hoursByMonth.rows} clients={report.hoursByMonth.clients} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Distribuzione ore per cliente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ClientDistributionChart totals={report.clientTotals} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Assenze ({report.year})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LeaveStatsChart totals={report.leaveTotals} />
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-2">
+        <CardHeader>
+          <CardTitle>Ore per cliente (ultimi {report.months} mesi)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ClientBreakdownTable rows={report.clientBreakdown.rows} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
