@@ -32,6 +32,8 @@ export function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/auth/oidc/") ||
     // Avvisi giornalieri: autenticati con CRON_SECRET, non con la sessione.
     request.nextUrl.pathname.startsWith("/api/cron/") ||
+    // Download del certificato col link monouso dell'app: il token è la credenziale.
+    request.nextUrl.pathname.startsWith("/api/cert/dl/") ||
     isMobileApi;
 
   if (!hasSession && !isPublicPath) {

@@ -14,7 +14,7 @@ import { PayslipComparison } from "@/components/team/PayslipComparison";
 import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LEAVE_TYPE_LABELS, PARTITA_IVA_ASSENZE_DAYS_PER_YEAR, type EmploymentType } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
-import { isAdminRole, SENSITIVE_LEAVE_TYPES } from "@/lib/constants";
+import { canDecideOwnLeave, isAdminRole, SENSITIVE_LEAVE_TYPES } from "@/lib/constants";
 import { peopleInScope } from "@/lib/permissions";
 import { maskLeaveForViewer } from "@/lib/leave-privacy";
 import { AllPendingView, TeamRequestsView, type TeamParams } from "@/components/richieste/TeamRequestsViews";
@@ -48,7 +48,10 @@ export default async function RichiestePage({
     ? await prisma.leaveRequest.count({
         where: {
           status: "pending",
-          user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope } },
+          user:
+            approveScope === "all"
+              ? canDecideOwnLeave(user.role) ? {} : { id: { not: user.id } }
+              : { id: { in: approveScope } },
         },
       })
     : 0;
@@ -128,7 +131,7 @@ async function ScopedPendingView({ user, scope }: { user: Viewer; scope: string[
       status: "pending",
       // Malattia e 104 li decide solo un admin.
       ...(isAdminRole(user.role) ? {} : { type: { notIn: [...SENSITIVE_LEAVE_TYPES] } }),
-      user: scope === "all" ? { id: { not: user.id } } : { id: { in: scope } },
+      user: scope === "all" ? (canDecideOwnLeave(user.role) ? {} : { id: { not: user.id } }) : { id: { in: scope } },
     },
     include: {
       user: { select: { name: true } },

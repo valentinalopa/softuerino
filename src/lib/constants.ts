@@ -23,6 +23,13 @@ export function isAdminRole(role: string) {
   return role === "super_admin" || role === "admin";
 }
 
+// Decisione di Giacomo (18/11/2026): solo il super admin può decidere anche le
+// proprie richieste di assenza (web e app); per admin e responsabili il divieto
+// resta. `role` è il ruolo effettivo: dal percorso pubblico un super admin vale admin.
+export function canDecideOwnLeave(role: string) {
+  return role === "super_admin";
+}
+
 // Ruoli che un utente può assegnare: solo un super admin crea o nomina altri
 // super admin.
 export function assignableRoles(actorRole: string): readonly Role[] {

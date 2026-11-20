@@ -479,7 +479,7 @@ paths:
     patch:
       operationId: updateLeaveRequest
       summary: Modifica una propria richiesta in attesa
-      description: Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa, sovrapposta o cambiata nel frattempo («La richiesta è cambiata, ricarica»: rimanda `version` letta dalla richiesta per accorgersene; senza `version` resta solo la protezione tra lettura e scrittura); 404 non propria.
+      description: "Stesse regole e messaggi del web. Resta in attesa e i responsabili ricevono di nuovo l'avviso. 400 dati non validi o malattia; 409 già decisa, sovrapposta o cambiata nel frattempo («La richiesta è cambiata, ricarica»: rimanda `version` letta dalla richiesta per accorgersene; senza `version` resta solo la protezione tra lettura e scrittura); 404 non propria."
       requestBody:
         required: true
         content:
@@ -523,6 +523,259 @@ paths:
           description: Ritirata
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/report:
+    get:
+      operationId: getReport
+      summary: Report / Panoramica (solo admin)
+      description: "Gli stessi dati di /panoramica del web (ore per cliente negli ultimi 12 mesi, assenze dell'anno). Solo admin e super admin; gli altri 403. Con userId i dati sono solo di quella persona; se non esiste 404. Solo numeri ed etichette."
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: "Id della persona: ore e assenze filtrate su di lei (senza, report di tutto il team)"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report]
+                properties:
+                  report:
+                    $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/people:
+    get:
+      operationId: listPeople
+      summary: Persone visibili all'utente
+      description: Come /team. Admin e super admin tutte le persone (anche disattivate) con i saldi dell'anno; gli altri le persone attive dei reparti su cui hanno un permesso (presenze e ore, richieste e saldi, approvare), senza saldi e senza sé stessi. Senza permessi l'elenco è vuoto.
+      responses:
+        "200":
+          description: Elenco ordinato per nome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [people]
+                properties:
+                  people:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Person"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/people/{id}:
+    get:
+      operationId: getPerson
+      summary: Dettaglio di una persona
+      description: Stesse condizioni dell'elenco. Persona inesistente o non visibile → 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Persona
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [person]
+                properties:
+                  person:
+                    $ref: "#/components/schemas/Person"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/vpn:
+    get:
+      operationId: listVpnProfiles
+      summary: Profili VPN
+      description: Come la scheda VPN di Security sul web, per qualsiasi utente autenticato. Solo consultazione e download; la gestione dei profili e il registro dei download restano ai super admin sul web. Il contenuto del file non è mai nell'elenco.
+      responses:
+        "200":
+          description: Profili ordinati per nome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, notes, fileName, hasConfig]
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        notes:
+                          type: string
+                          nullable: true
+                        fileName:
+                          type: string
+                          nullable: true
+                        hasConfig:
+                          type: boolean
+                          description: false se il profilo non ha ancora un file caricato (il download darebbe 404)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/vpn/{id}/config:
+    get:
+      operationId: downloadVpnConfig
+      summary: Scarica il file .ovpn di un profilo
+      description: Stessi controlli di /api/vpn/{id}/config sul web. Ogni download è registrato (VpnDownload). Mai durante un "vedi come" (403). Profilo inesistente o senza file → 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File .ovpn (attachment, nome in Content-Disposition)
+          content:
+            application/x-openvpn-profile:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/security/cert-link:
+    post:
+      operationId: createCertificateLink
+      summary: Link monouso per scaricare il Certificato Colibrì
+      description: "Safari non ha il Bearer, quindi l'app chiede un link col token casuale: valido 5 minuti e una sola volta, tenuto in memoria dal server (un riavvio lo annulla). Il link (GET https://time.colibrivision.it/api/cert/dl/{token}, senza altre credenziali) serve il profilo dal server; link scaduto, già usato o sconosciuto → 410 (fuori da /v1, testo semplice). Mai durante un \"vedi come\" (403)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  enum: [mobileconfig]
+      responses:
+        "200":
+          description: Link creato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expiresAt]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  expiresAt:
+                    type: string
+                    format: date-time
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/pending-approval:
+    get:
+      operationId: listPendingApprovals
+      summary: Richieste in attesa che l'utente può decidere
+      description: Come la vista web "Da approvare". Admin tutte tranne le proprie; responsabili quelle delle persone su cui hanno il permesso "Approvare" (tutti i loro reparti), senza malattia e permesso 104. `version` va rimandata nella decisione.
+      responses:
+        "200":
+          description: Elenco (vuoto se l'utente non può approvare)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ApprovalRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/leave-requests/{id}/decision:
+    post:
+      operationId: decideLeaveRequest
+      summary: Approva o rifiuta una richiesta di un'altra persona
+      description: Stesse regole del web. Mai le proprie (nemmeno admin); malattia e 104 solo admin; malattia approvata → `registrata`. Versione obbligatoria. Mail di esito a chi ha fatto la richiesta.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, version]
+              properties:
+                status: { type: string, enum: [approved, rejected] }
+                version: { type: string, description: "`version` della richiesta come l'app l'ha vista" }
+                note:
+                  type: [string, "null"]
+                  maxLength: 500
+                  description: Nota facoltativa per chi ha fatto la richiesta (la vede su web e app e nella mail di esito). Tagliata dagli spazi; vuota = nessuna nota; oltre 500 caratteri → 400. Non cambia la `version`.
+      responses:
+        "200":
+          description: Richiesta aggiornata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request]
+                properties:
+                  request:
+                    $ref: "#/components/schemas/ApprovalRequest"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -871,7 +1124,7 @@ paths:
     get:
       operationId: getLicense
       summary: Dettaglio licenza (mascherato)
-      description: Con note e attivazioni. Licenza inesistente o non visibile: 404.
+      description: "Con note e attivazioni. Licenza inesistente o non visibile: 404."
       parameters:
         - name: id
           in: path
@@ -1457,11 +1710,116 @@ components:
         endAt:
           type: string
           format: date-time
+    Person:
+      type: object
+      description: Persona vista da chi ha il permesso (balances e toRecover solo per gli admin, altrimenti null)
+      required: [id, name, email, role, active, employmentType, departments, managedDepartments, balances, toRecover]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        active: { type: boolean }
+        employmentType: { type: string }
+        departments:
+          type: array
+          items: { type: string }
+        managedDepartments:
+          type: array
+          description: Reparti di cui è responsabile
+          items: { type: string }
+        balances:
+          description: Saldi dell'anno (stesse cifre delle barrette di Persone, come `figures` di /balance); null se non admin
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties:
+                $ref: "#/components/schemas/BalanceFigures"
+        toRecover:
+          type: [string, "null"]
+          description: Recuperi da fare, già formattati
+    Report:
+      type: object
+      description: Dati di /panoramica. Ore per cliente sugli ultimi `months` mesi, assenze dell'anno `year`.
+      required: [months, year, hoursByMonth, clientTotals, clientBreakdown, leaveTotals]
+      properties:
+        months: { type: integer }
+        year: { type: integer }
+        hoursByMonth:
+          type: object
+          required: [clients, rows]
+          properties:
+            clients:
+              type: array
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+            rows:
+              type: array
+              description: Una riga per mese (key, label) con le ore di ogni cliente nella proprietà col suo id
+              items:
+                type: object
+                required: [key, label]
+                additionalProperties:
+                  type: [string, number]
+        clientTotals:
+          type: array
+          items:
+            type: object
+            required: [id, name, hours]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              hours: { type: number }
+        clientBreakdown:
+          type: object
+          description: Tabella con il totale per cliente, la ripartizione per voce (parts) e le ore mese per mese
+          required: [months, rows]
+          properties:
+            months:
+              type: array
+              description: Etichette dei mesi (una per ogni elemento di `months` delle righe, nello stesso ordine)
+              items: { type: string }
+            rows:
+              type: array
+              items:
+                type: object
+                required: [id, name, hours, months, parts]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  hours: { type: number }
+                  months:
+                    type: array
+                    items: { type: number }
+                  parts:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, hours, months]
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        hours: { type: number }
+                        months:
+                          type: array
+                          items: { type: number }
+        leaveTotals:
+          type: object
+          required: [ferieDays, permessoHours, malattiaDays, assenzeDays, recuperoDays, recuperoHours, assenzeExtraDays, permesso104Days, permesso104Hours]
+          additionalProperties: { type: number }
     LeaveRequest:
       type: object
       description: Richiesta propria
-      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, createdAt, version, recoveryCredit]
+      required: [id, type, startDate, endDate, hours, startTime, endTime, status, note, decisionNote, createdAt, version, recoveryCredit]
       properties:
+        decisionNote:
+          type: [string, "null"]
+          maxLength: 500
+          description: Nota di chi ha approvato o rifiutato la richiesta, visibile al richiedente. `null` se non c'è o se la richiesta è in attesa.
         id:
           type: string
         type:
@@ -1505,6 +1863,19 @@ components:
                 unit:
                   type: string
                   enum: [giorni, ore]
+    ApprovalRequest:
+      description: Richiesta di un'altra persona vista da chi la decide (malattia e 104 solo per gli admin)
+      allOf:
+        - $ref: "#/components/schemas/LeaveRequest"
+        - type: object
+          required: [user]
+          properties:
+            user:
+              type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
     LeaveRequestInput:
       type: object
       required: [type, startDate]

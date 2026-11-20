@@ -35,15 +35,21 @@ describe("superficie dell'API mobile", () => {
       "/v1/events/[id]",
       "/v1/leave-requests",
       "/v1/leave-requests/[id]",
+      "/v1/leave-requests/[id]/decision",
+      "/v1/leave-requests/pending-approval",
       "/v1/leave-requests/preview",
       "/v1/licenses",
       "/v1/licenses/[id]",
       "/v1/licenses/[id]/reveal",
       "/v1/me",
       "/v1/org",
+      "/v1/people",
+      "/v1/people/[id]",
       "/v1/presence",
       "/v1/presence/[date]",
       "/v1/recovery-credits",
+      "/v1/report",
+      "/v1/security/cert-link",
       "/v1/tasks",
       "/v1/tasks/[id]",
       "/v1/tasks/[id]/status",
@@ -53,13 +59,18 @@ describe("superficie dell'API mobile", () => {
       "/v1/time/[date]",
       "/v1/time/[date]/not-worked",
       "/v1/time/clients",
+      "/v1/vpn",
+      "/v1/vpn/[id]/config",
     ]);
   });
 
   it("nessun percorso mobile per Email/SMTP, Aggiornamenti, Ruoli, VPN, impersonificazione, password locale", () => {
     const forbidden = /email|smtp|aggiornament|update|system|ruoli|roles|vpn|impersona|password|login|settings|impostazion|cron|delete/i;
     // v1/auth/token è il login con codice PKCE (Keycloak), non il login con password.
-    const offenders = routes.filter((r) => forbidden.test(r) && r !== "/v1/auth/token");
+    // /v1/vpn (elenco e download dei profili) è ammesso dalla decisione elemento #351
+    // (F6): la gestione dei profili resta solo sul web.
+    const allowed = ["/v1/auth/token", "/v1/vpn", "/v1/vpn/[id]/config"];
+    const offenders = routes.filter((r) => forbidden.test(r) && !allowed.includes(r));
     assert.deepEqual(offenders, []);
   });
 

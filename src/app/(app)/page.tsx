@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { TONE_TEXT } from "@/lib/tones";
 import { MISSING_BALANCE_TEXT, formatAmount, formatHourlySlot, formatWhen, hourBalanceDetail } from "@/lib/leave-format";
 import { eventTypeStyle } from "@/components/calendar/types";
-import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS, PARTITA_IVA_ASSENZE_DAYS_PER_YEAR, isAdminRole, SENSITIVE_LEAVE_TYPES } from "@/lib/constants";
+import { LEAVE_TYPE_LABELS, EVENT_TYPE_LABELS, PARTITA_IVA_ASSENZE_DAYS_PER_YEAR, canDecideOwnLeave, isAdminRole, SENSITIVE_LEAVE_TYPES } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -46,7 +46,10 @@ export default async function Home() {
     status: "pending",
     // Malattia e 104 li decide solo un admin.
     ...(isAdminRole(user.role) ? {} : { type: { notIn: [...SENSITIVE_LEAVE_TYPES] } }),
-    user: approveScope === "all" ? { id: { not: user.id } } : { id: { in: approveScope as string[] } },
+    user:
+      approveScope === "all"
+        ? canDecideOwnLeave(user.role) ? {} : { id: { not: user.id } }
+        : { id: { in: approveScope as string[] } },
   };
   const hoursFrom = addDays(today, -HOURS_LOOKBACK_DAYS);
   const [balance, pendingRequests, upcomingEvents, recentEntries, recentLeaves, toApprove, toApproveCount, absentToday, notWorkedDays] = await Promise.all([

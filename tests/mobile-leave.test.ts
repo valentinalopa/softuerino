@@ -364,6 +364,16 @@ describe("richieste dell'app", () => {
     await notify();
     assert.equal(calls.length, 0);
     assert.equal(await countRequests("m2"), 1);
+    // Chi e quando (decisione ⚑ elemento #363): inserita dall'admin per conto di altri → actor/now.
+    const row = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: request.id } });
+    assert.equal(row.decidedById, "adm2");
+    assert.ok(row.decidedAt);
+    // Fatta dalla persona stessa (pending): nessuna decisione.
+    const own = await createLeaveRequest({ id: "m2", role: "membro", employmentType: "dipendente" }, { type: "ferie", startDate: "2027-12-15" }, deps);
+    const ownRow = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: own.request.id } });
+    assert.equal(ownRow.status, "pending");
+    assert.equal(ownRow.decidedById, null);
+    assert.equal(ownRow.decidedAt, null);
   });
 
   it("service: impersonificazione → 403 e nessuna riga", async () => {

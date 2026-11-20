@@ -151,6 +151,9 @@ export function LeaveRequestsTable({
               <p className="truncate text-xs text-muted-foreground">{formatRecoveryCredit(request.recoveryCredit)}</p>
             )}
             {request.note && <p className="truncate text-xs text-muted-foreground">{request.note}</p>}
+            {request.decisionNote && (
+              <p className="truncate text-xs text-muted-foreground">Risposta: {request.decisionNote}</p>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Inviata il {formatDate(request.createdAt)}</span>
               {(showActions || canDelete || own) && (
@@ -210,6 +213,11 @@ export function LeaveRequestsTable({
                 {request.note && (
                   <span className="block max-w-56 truncate text-xs text-muted-foreground">
                     {request.note}
+                  </span>
+                )}
+                {request.decisionNote && (
+                  <span className="block max-w-56 truncate text-xs text-muted-foreground">
+                    Risposta: {request.decisionNote}
                   </span>
                 )}
               </TableCell>
@@ -280,6 +288,14 @@ export function LeaveRequestsTable({
                       {selected.note || <span className="text-muted-foreground">—</span>}
                     </dd>
                   </div>
+                  {selected.decisionNote && (
+                    <div className="flex flex-col gap-1 py-3">
+                      <dt className="text-muted-foreground">
+                        Nota su {selected.status === "rejected" ? "il rifiuto" : "la decisione"}
+                      </dt>
+                      <dd className="whitespace-pre-wrap text-foreground">{selected.decisionNote}</dd>
+                    </div>
+                  )}
                 </dl>
               </SheetBody>
               {(showActions || canDelete || (own && selected.status === "pending")) && (

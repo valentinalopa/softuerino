@@ -10,7 +10,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/Toaster";
 import { ImpersonationBanner } from "@/components/impersonation/ImpersonationBanner";
-import { HOME_PATH, isAdminRole, SENSITIVE_LEAVE_TYPES, type Role } from "@/lib/constants";
+import { canDecideOwnLeave, HOME_PATH, isAdminRole, SENSITIVE_LEAVE_TYPES, type Role } from "@/lib/constants";
 
 export default async function AppLayout({
   children,
@@ -30,7 +30,8 @@ export default async function AppLayout({
   const teamPendingCount =
     isAdminRole(user.role)
       ? await prisma.leaveRequest.count({
-          where: { status: "pending", userId: { not: user.id } },
+          // Tutte tranne le proprie; il super admin può decidere anche le sue.
+          where: { status: "pending", ...(canDecideOwnLeave(user.role) ? {} : { userId: { not: user.id } }) },
         })
       : 0;
 
