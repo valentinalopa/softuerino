@@ -254,6 +254,67 @@ describe("approvazione richieste dall'app", () => {
     );
   });
 
+  // Decisione ⚑ elemento #363: si salva chi ha deciso e quando (non mostrato).
+  describe("chi e quando ha deciso", () => {
+    const decidedOf = async (id: string) => {
+      const r = await prisma.leaveRequest.findUniqueOrThrow({ where: { id } });
+      return { by: r.decidedById, at: r.decidedAt };
+    };
+
+    it("approvata o rifiutata (app e service): decidedById = chi decide, decidedAt valorizzato", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const a = await pending("ap-m", "ferie", "2026-12-01");
+      const b = await pending("ap-m", "ferie", "2026-12-02");
+      assert.deepEqual(await decidedOf(a.id), { by: null, at: null });
+      await login("ap-ad");
+      const before = Date.now();
+      assert.equal((await decide(a.id, { status: "approved", version: leaveVersion(a) })).status, 200);
+      const da = await decidedOf(a.id);
+      assert.equal(da.by, "ap-ad");
+      assert.ok(da.at && da.at.getTime() >= before - 1000 && da.at.getTime() <= Date.now() + 1000);
+      const deps = { notifyLeaveDecision: async () => undefined };
+      await decideLeaveRequest({ id: "ap-ad", role: "admin", employmentType: "dipendente" }, b.id, "rejected", undefined, { deps });
+      assert.equal((await decidedOf(b.id)).by, "ap-ad");
+      assert.ok((await decidedOf(b.id)).at);
+    });
+
+    it("409 (versione cambiata o già decisa): nessun campo scritto", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const req = await pending("ap-m");
+      await login("ap-ad");
+      assert.equal((await decide(req.id, { status: "approved", version: "versione-vecchia" })).status, 409);
+      assert.deepEqual(await decidedOf(req.id), { by: null, at: null });
+    });
+
+    it("riportare in attesa azzera chi e quando", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const req = await pending("ap-m");
+      await login("ap-ad");
+      assert.equal((await decide(req.id, { status: "approved", version: leaveVersion(req) })).status, 200);
+      assert.equal((await decidedOf(req.id)).by, "ap-ad");
+      const { clearDecisionNote } = await import("../src/lib/services/leave");
+      await prisma.leaveRequest.update({ where: { id: req.id }, data: { status: "pending", ...clearDecisionNote() } });
+      assert.deepEqual(await decidedOf(req.id), { by: null, at: null });
+    });
+
+    it("decisore cancellato: decidedById torna null, la richiesta resta", async () => {
+      await makeUser("ap-ad", "admin");
+      await makeUser("ap-m");
+      const req = await pending("ap-m");
+      await login("ap-ad");
+      assert.equal((await decide(req.id, { status: "approved", version: leaveVersion(req) })).status, 200);
+      await prisma.session.deleteMany();
+      await prisma.impersonationLog.deleteMany();
+      await prisma.user.delete({ where: { id: "ap-ad" } });
+      const r = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: req.id } });
+      assert.equal(r.status, "approved");
+      assert.equal(r.decidedById, null);
+    });
+  });
+
   // F6 T1b (decisione ⚑ elemento #353): nota del responsabile alla decisione.
   describe("nota alla decisione", () => {
     const noteOf = async (id: string) => (await prisma.leaveRequest.findUniqueOrThrow({ where: { id } })).decisionNote;

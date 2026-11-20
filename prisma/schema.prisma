@@ -52,6 +52,7 @@ model User {
   impersonationsDone     ImpersonationLog[] @relation("ImpersonationAdmin")
   impersonationsReceived ImpersonationLog[] @relation("ImpersonationTarget")
   leaveRequests          LeaveRequest[]
+  leaveDecisions         LeaveRequest[]     @relation("LeaveDecidedBy")
   events                 EventParticipant[]
   createdEvents          CalendarEvent[]
   presenceEntries        PresenceEntry[]
@@ -146,6 +147,11 @@ model LeaveRequest {
   // caratteri; azzerata quando la richiesta torna in attesa. NON fa parte di
   // leaveVersion: scriverla non invalida le versioni viste da altri.
   decisionNote String?
+  // Chi ha deciso la richiesta e quando (approvata/rifiutata, o inserita già
+  // approvata da un admin per conto di altri). Solo registrazione: non mostrato.
+  // Azzerati quando la richiesta torna in attesa. NON fanno parte di leaveVersion.
+  decidedById String?
+  decidedAt   DateTime?
   createdAt DateTime @default(now())
   // Solo per type = "recupero": quale recupero da fare sta smaltendo.
   recoveryCreditId String?
@@ -153,10 +159,12 @@ model LeaveRequest {
   closureId String?
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy      User?           @relation("LeaveDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
   recoveryCredit RecoveryCredit? @relation(fields: [recoveryCreditId], references: [id], onDelete: SetNull)
   closure        CompanyClosure? @relation(fields: [closureId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([decidedById])
   @@index([startDate, endDate])
   @@index([recoveryCreditId])
   @@index([closureId])

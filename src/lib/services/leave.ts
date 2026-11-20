@@ -375,7 +375,8 @@ export async function createLeaveRequest(
   const status = parsed.type === "malattia" ? "registrata" : onBehalfOfOther ? "approved" : "pending";
 
   const created = await prisma.leaveRequest.create({
-    data: { userId: targetUserId, status, ...parsed },
+    // Inserita da un admin per conto di altri: nasce già decisa, da lui e adesso.
+    data: { userId: targetUserId, status, ...parsed, ...(onBehalfOfOther && status !== "pending" ? { decidedById: actor.id, decidedAt: new Date() } : {}) },
     include: REQUEST_INCLUDE,
   });
 
@@ -474,9 +475,10 @@ export function normalizeDecisionNote(value: unknown): string | null {
   }
   return note || null;
 }
-// Da aggiungere ai dati quando una richiesta torna in attesa.
+// Da aggiungere ai dati quando una richiesta torna in attesa: azzera la nota e
+// anche chi/quando ha deciso.
 export function clearDecisionNote() {
-  return { decisionNote: null as string | null };
+  return { decisionNote: null as string | null, decidedById: null as string | null, decidedAt: null as Date | null };
 }
 type DecisionDeps = { notifyLeaveDecision: (requestId: string, actorId: string) => Promise<unknown> };
 const realDecisionDeps: DecisionDeps = { notifyLeaveDecision };
@@ -564,7 +566,7 @@ export async function decideLeaveRequest(
   }
   const updated = await prisma.leaveRequest.updateMany({
     where: { id: requestId, ...versionWhere(request) },
-    data: { status: nextStatus, decisionNote },
+    data: { status: nextStatus, decisionNote, decidedById: actor.id, decidedAt: new Date() },
   });
   if (updated.count === 0) {
     throw await staleRequestError(requestId, "Richiesta già gestita o non più in attesa");
